@@ -267,6 +267,29 @@ public static class ScanPresentation
         return !isIgnored && standing == Standing.NeedsAttention;
     }
 
+    /// <summary>An answer read with administrator rights is kept this long while ordinary scans cannot read it themselves.</summary>
+    public static readonly TimeSpan AdministratorAnswerLifetime = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Which answer to show for a check when a new one arrives. The new one, except in one
+    /// case: an ordinary scan can only say "needs administrator rights" about some checks, and
+    /// an answer the administrator checks gave earlier says more. That earlier answer is kept,
+    /// with its own date, until it is older than <see cref="AdministratorAnswerLifetime"/>.
+    /// </summary>
+    /// <param name="shown">The answer on screen; null when there is none.</param>
+    /// <param name="arrived">The answer that just came in.</param>
+    /// <param name="now">The current time.</param>
+    public static ScannedCheck Newer(ScannedCheck? shown, ScannedCheck arrived, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(arrived);
+
+        bool arrivedOnlyAsks = arrived.Result.Outcome.Status == CheckStatus.NeedsAdmin;
+        bool shownAnswered = shown is { Result.Elevated: true } && shown.Result.Outcome.Status != CheckStatus.NeedsAdmin;
+        return arrivedOnlyAsks && shownAnswered && now - shown!.Result.CheckedAt <= AdministratorAnswerLifetime
+            ? shown
+            : arrived;
+    }
+
     /// <summary>How long ago a scan finished, in words: "just now", "5 minutes ago", "1 day ago", "3 days ago".</summary>
     public static string Age(DateTimeOffset finishedAt, DateTimeOffset now)
     {

@@ -40,6 +40,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/Config` | Readers for the settings files of developer tools: TOML, YAML, INI, Git's settings format, XML and Java-style properties. Each covers what settings files use and stops at the first thing it does not understand, with the line number: a file is read in full or not judged at all. Seeded mutation tests keep them from crashing or hanging |
 | `src/SecReview.Core/SupplyChain` | The developer supply-chain checks, a folder per tool or topic (uv, pnpm, Scoop, npm, Yarn, pip, NuGet, Cargo, Go, Git, editors, AI agents and MCP servers, Docker, winget, Chocolatey, environment variables, stored credentials): release cooldowns, unsafe package sources, switched-off protections, secrets stored as plain text. No tool is ever run: versions come from files, and where none records one the result says so. A check does not apply when its tool is absent |
 | `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
+| `src/SecReview.Core/Elevation` | The administrator checks: the pipe's name and rules, what the helper does when started elevated, and the app's side (make the pipe, start the helper through the Windows prompt, verify who answers, read the answer) |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording, handing each result over as it arrives; filters, groups and the headline; the last scan kept in `results.json`; the made-up results behind `--demo` |
 | `src/SecReview.Core/Settings` | What is remembered between runs (`settings.json`): ignored checks with their reasons. A damaged file is set aside and never stops the app |
 | `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
@@ -53,6 +54,29 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 | `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
+
+## Administrator checks
+
+Some checks need administrator rights. The app never has them: it starts
+`SecReviewCli.exe --elevated-scan --pipe <name>` through the Windows prompt and reads the
+answer from a pipe.
+
+- **The helper takes one thing:** a pipe name of the one form the app makes (`SecReview.Elev.`
+  and 32 random hexadecimal digits). No paths, lists or options. It runs the machine-scope
+  checks that need administrator rights, writes their results as one document and exits. It
+  reads nothing from the pipe, and connects without lending its identity to whoever made it.
+- **The app trusts nothing it did not check:** the pipe is the first of its name, open to this
+  user, SYSTEM and Administrators only, never over the network; only a connection from the
+  process Windows started is heard; the answer is capped at 1 MB, read like `results.json`,
+  and may hold results for administrator checks of this version only.
+- **Only from Program Files.** The helper runs elevated, so it must be a file an ordinary
+  user cannot replace. A copy of SecReview anywhere else shows why the button is not there.
+- **Saying no at the prompt** changes nothing: the checks stay "needs administrator".
+- **Afterwards** an ordinary scan keeps an administrator answer for the checks it cannot read
+  itself, with its date, for 30 days.
+- The build runs the compiled helper over a real pipe (`build.ps1` stands in for the app). On
+  a build machine that runs with administrator rights, as hosted runners do, the checks are
+  really answered. The Windows prompt itself cannot be exercised by a build.
 
 ## Error reports
 

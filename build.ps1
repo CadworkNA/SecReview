@@ -235,6 +235,41 @@ Invoke-Step 'Smoke test' {
         Write-Host "Known-malicious list: $($list.summary)"
     }
 
+    # The administrator helper, over a real pipe. This script stands in for the window: it
+    # makes a pipe of the name the helper accepts, starts the compiled helper and reads its
+    # answer. On a build machine that runs with administrator rights the checks are really
+    # answered; anywhere else they say that they need those rights. Either way the answer
+    # must be the administrator checks and nothing else.
+    $pipeName = 'SecReview.Elev.' + (-join (1..32 | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) }))
+    $pipe = [System.IO.Pipes.NamedPipeServerStream]::new(
+        $pipeName, [System.IO.Pipes.PipeDirection]::In, 1,
+        [System.IO.Pipes.PipeTransmissionMode]::Byte, [System.IO.Pipes.PipeOptions]::Asynchronous)
+    try {
+        $connected = $pipe.WaitForConnectionAsync()
+        $helper = Start-Process -FilePath $cli -ArgumentList '--elevated-scan', '--pipe', $pipeName -PassThru -WindowStyle Hidden
+        if (-not $connected.Wait(30000)) { throw 'SecReviewCli --elevated-scan did not connect to the pipe within 30 seconds.' }
+        $answer = [System.IO.StreamReader]::new($pipe, [System.Text.Encoding]::UTF8).ReadToEnd()
+        if (-not $helper.WaitForExit(60000)) { $helper.Kill(); throw 'SecReviewCli --elevated-scan did not exit.' }
+        if ($helper.ExitCode -ne 0) { throw "SecReviewCli --elevated-scan exited with $($helper.ExitCode), expected 0." }
+    } finally {
+        $pipe.Dispose()
+    }
+    $administratorScan = $answer | ConvertFrom-Json
+    $elevatedHere = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    $asking = @($administratorScan.checks | Where-Object { $_.status -eq 'NeedsAdmin' }).Count
+    if ($administratorScan.schemaVersion -ne 1 -or $administratorScan.appVersion -ne $Version -or $administratorScan.checks.Count -lt 5) {
+        throw "The administrator helper's answer is malformed: $($answer.Substring(0, [Math]::Min(200, $answer.Length)))"
+    }
+    if ($administratorScan.checks.Count -ge $report.checks.Count) { throw 'The administrator helper answered for more than the administrator checks.' }
+    if ($administratorScan.elevated -ne $elevatedHere) { throw "The helper says elevated=$($administratorScan.elevated); this build runs elevated=$elevatedHere." }
+    if ($elevatedHere -and $asking -gt 0) { throw "$asking administrator checks still ask for administrator rights although the helper had them." }
+    if (-not $elevatedHere -and $asking -eq 0) { throw 'Without administrator rights some checks must say they need them.' }
+    Write-Host "Administrator helper: $($administratorScan.checks.Count) checks answered over a pipe (administrator rights: $elevatedHere; still asking: $asking)."
+
+    & $cli --elevated-scan --pipe 'not-a-pipe-of-ours' 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 2) { throw "SecReviewCli --elevated-scan with another pipe name exited with $LASTEXITCODE, expected 2." }
+
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
