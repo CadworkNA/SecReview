@@ -1,17 +1,19 @@
 namespace SecReview.CommandLine;
 
 /// <summary>
-/// Parses SecReviewCli's arguments. Deliberately strict: exactly one known command, nothing
-/// extra, because some commands run elevated and must not accept anything unexpected.
+/// Parses SecReviewCli's arguments. Deliberately strict: exactly one known command with exactly
+/// the arguments it takes, because some commands run elevated and must not accept anything
+/// unexpected.
 /// </summary>
 public static class CliArguments
 {
     public const string Usage = """
         Usage: SecReviewCli <command>
 
-          --diagnose   Show which readings work on this PC (for support).
-          --version    Print the version.
-          --help       Print this text.
+          --report <file>   Run the checks and write the results to <file> as JSON.
+          --diagnose        Show which readings work on this PC (for support).
+          --version         Print the version.
+          --help            Print this text.
         """;
 
     public static CliCommand Parse(IReadOnlyList<string> args)
@@ -23,20 +25,38 @@ public static class CliArguments
             return new HelpCommand();
         }
 
-        CliCommand command = args[0] switch
+        return args[0] switch
         {
-            "--help" or "-h" or "/?" => new HelpCommand(),
-            "--version" => new VersionCommand(),
-            "--diagnose" => new DiagnoseCommand(),
+            "--help" or "-h" or "/?" => WithoutArguments(args, new HelpCommand()),
+            "--version" => WithoutArguments(args, new VersionCommand()),
+            "--diagnose" => WithoutArguments(args, new DiagnoseCommand()),
+            "--report" => Report(args),
             _ => new InvalidCommand($"Unknown command '{Printable(args[0])}'."),
         };
+    }
 
-        if (command is not InvalidCommand && args.Count > 1)
+    private static CliCommand WithoutArguments(IReadOnlyList<string> args, CliCommand command) =>
+        args.Count > 1 ? new InvalidCommand($"Unexpected argument '{Printable(args[1])}'.") : command;
+
+    private static CliCommand Report(IReadOnlyList<string> args)
+    {
+        if (args.Count < 2 || string.IsNullOrWhiteSpace(args[1]))
         {
-            return new InvalidCommand($"Unexpected argument '{Printable(args[1])}'.");
+            return new InvalidCommand("--report needs the file to write.");
         }
 
-        return command;
+        if (args.Count > 2)
+        {
+            return new InvalidCommand($"Unexpected argument '{Printable(args[2])}'.");
+        }
+
+        // A file name starting with "--" is almost certainly a mistyped switch.
+        if (args[1].StartsWith("--", StringComparison.Ordinal))
+        {
+            return new InvalidCommand("--report needs the file to write.");
+        }
+
+        return new ReportCommand(args[1]);
     }
 
     /// <summary>

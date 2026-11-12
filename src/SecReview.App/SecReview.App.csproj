@@ -12,6 +12,12 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- The app itself has no unsafe code. The WinRT interop generator needs this switch to
+         emit the tables that let WinUI controls use .NET collections; without it a bound list
+         fails at run time with "not a supported vector". -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Report every type the generator cannot make usable from WinUI, including built-in ones. -->
+    <CsWinRTAotWarningLevel>2</CsWinRTAotWarningLevel>
   </PropertyGroup>
 
   <!-- Unpackaged (no MSIX) with the Windows App SDK copied next to the exe: an installer can

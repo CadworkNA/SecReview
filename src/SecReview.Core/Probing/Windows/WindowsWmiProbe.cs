@@ -88,7 +88,7 @@ internal sealed class WindowsWmiProbe : IWmiProbe
                 AuthenticationWinNt,
                 AuthorizationNone,
                 null,
-                RPC_C_AUTHN_LEVEL.RPC_C_AUTHN_LEVEL_CALL,
+                RPC_C_AUTHN_LEVEL.RPC_C_AUTHN_LEVEL_PKT_PRIVACY,
                 RPC_C_IMP_LEVEL.RPC_C_IMP_LEVEL_IMPERSONATE,
                 null,
                 EOLE_AUTHENTICATION_CAPABILITIES.EOAC_NONE);

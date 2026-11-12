@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using SecReview.CommandLine;
+using SecReview.Diagnostics;
 
 namespace SecReview.App;
 
@@ -11,8 +12,8 @@ namespace SecReview.App;
 /// </summary>
 internal static class Program
 {
-    /// <summary>A smoke test that has not finished by then is a failure.</summary>
-    private static readonly TimeSpan SmokeTestLimit = TimeSpan.FromSeconds(30);
+    /// <summary>An automated run (smoke test, screenshot) that has not finished by then has failed.</summary>
+    private static readonly TimeSpan AutomatedRunLimit = TimeSpan.FromSeconds(60);
 
     [STAThread]
     private static int Main(string[] args)
@@ -20,7 +21,7 @@ internal static class Program
         switch (AppArguments.Parse(args))
         {
             case UiRole ui:
-                return RunWindow(ui.SmokeTest);
+                return RunWindow(ui);
 
             case InvalidRole:
                 // A windowed app has no console to explain itself on; the exit code says it.
@@ -31,20 +32,40 @@ internal static class Program
         }
     }
 
-    private static int RunWindow(bool smokeTest)
+    private static int RunWindow(UiRole role)
     {
-        using Timer? watchdog = smokeTest
+        bool automated = role.SmokeTest || role.ScreenshotPath is not null;
+        using Timer? watchdog = automated
             ? new Timer(
-                _ => Environment.Exit(ExitCode.SmokeTestTimedOut), null, SmokeTestLimit, Timeout.InfiniteTimeSpan)
+                _ => Environment.Exit(ExitCode.SmokeTestTimedOut), null, AutomatedRunLimit, Timeout.InfiniteTimeSpan)
             : null;
 
-        WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(startParameters =>
+        AppLog log = AppLog.ForThisProcess();
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            SynchronizationContext.SetSynchronizationContext(
-                new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            _ = new App(smokeTest);
-        });
+            if (e.ExceptionObject is Exception exception)
+            {
+                log.Error("Unhandled error", exception);
+            }
+        };
+
+        try
+        {
+            WinRT.ComWrappersSupport.InitializeComWrappers();
+            Application.Start(startParameters =>
+            {
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
+                _ = new App(role, log);
+            });
+        }
+#pragma warning disable CA1031 // Last resort: record why the window could not run, then fail visibly.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            log.Error("The window could not start", exception);
+            return ExitCode.UnhandledError;
+        }
 
         return ExitCode.Ok;
     }

@@ -16,4 +16,16 @@ public static class ExitCode
 
     /// <summary>This Windows is older than SecReview supports.</summary>
     public const int UnsupportedWindows = 5;
+
+    /// <summary><c>SecReviewCli --report</c>: the report file could not be written.</summary>
+    public const int ReportNotWritten = 6;
+
+    /// <summary><c>SecReview.exe --screenshot</c>: the picture could not be saved.</summary>
+    public const int ScreenshotFailed = 7;
+
+    /// <summary>An error nobody handled; the local log has the details.</summary>
+    public const int UnhandledError = 8;
+
+    /// <summary>An automated run of the window: the scan itself could not run; see the local log.</summary>
+    public const int ScanFailed = 9;
 }

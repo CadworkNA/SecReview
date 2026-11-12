@@ -126,12 +126,16 @@ public static class ProbeDiagnostics
         ? "none registered"
         : string.Join("; ", products.Select(Describe));
 
-    private static string Describe(SecurityProduct product) => product.SignaturesUpToDate switch
+    private static string Describe(SecurityProduct product)
     {
-        null => $"{product.Name} ({product.State})",
-        true => $"{product.Name} ({product.State}, definitions current)",
-        false => $"{product.Name} ({product.State}, definitions out of date)",
-    };
+        string origin = product.IsBuiltIn ? "part of Windows" : "another vendor";
+        return product.SignaturesUpToDate switch
+        {
+            null => $"{product.Name} ({product.State}, {origin})",
+            true => $"{product.Name} ({product.State}, definitions current, {origin})",
+            false => $"{product.Name} ({product.State}, definitions out of date, {origin})",
+        };
+    }
 
     private static string Describe(AccountPolicy policy)
     {

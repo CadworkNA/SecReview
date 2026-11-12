@@ -34,6 +34,11 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | Path | Contents |
 |------|----------|
 | `src/SecReview.Core` | Everything without UI: checks, rules, readers, command-line parsing. All logic lives here and is unit-tested |
+| `src/SecReview.Core/Checks` | The check model (`ICheck`, outcomes, findings), the runner (time limit and isolation per check) and, under `BuiltIn/`, the checks written in code |
+| `src/SecReview.Core/Catalogue` | The wording of every check (`checks.en.json`: titles, why, fix steps, Settings link), embedded as data. Tests enforce completeness and length limits |
+| `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording; the display order and headline; the made-up results behind `--demo` |
+| `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
+| `src/SecReview.Core/Diagnostics` | `--diagnose`, the local error log (size-capped, names removed) and where SecReview keeps its files |
 | `src/SecReview.Core/Probing` | How the machine is read. Interfaces and result types at the top; `Windows/` holds the real implementations (the only place with Windows API calls and unsafe code). `NativeMethods.txt` lists the Windows APIs that CsWin32 generates declarations for |
 | `src/SecReview.Cli` | `SecReviewCli.exe` (Native AOT console). The only binary that ever runs elevated |
 | `src/SecReview.App` | `SecReview.exe` (WinUI 3, Native AOT, unpackaged, Windows App SDK copied next to it). `Program.Main` picks the role before XAML starts |
@@ -41,6 +46,26 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships: every binary not ours must be signed by Microsoft and chain to a pinned root, every other file must match its recorded hash) |
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
+
+## Looking at the window
+
+```
+SecReview.exe                                  # scan this PC and show the results
+SecReview.exe --demo                           # made-up results covering every kind of outcome
+SecReview.exe --demo --screenshot shot.png     # save a picture of the window, then exit
+```
+
+Use `--demo` for screenshots in documentation and pull requests: it shows no real PC's results.
+The build saves one to `artifacts\screenshots\demo.png`.
+
+Set `SECREVIEW_DATA_DIR` to keep the app's files (its log, for now) out of your profile while
+developing; `build.ps1` points it at `artifacts\appdata` for its smoke tests. If the window
+fails to start, the reason is in `logs\SecReview.log` there.
+
+The app project needs `AllowUnsafeBlocks` although it has no unsafe code: the WinRT interop
+generator emits nothing without it, and bound lists then fail at run time with "not a supported
+vector". Collections bound to list controls are typed as `object` and named in
+`ViewModels/WinRtExposedTypes.cs` for the same reason.
 
 ## Dependencies
 

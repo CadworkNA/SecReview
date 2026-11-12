@@ -9,7 +9,8 @@ public sealed class AppArgumentsTests
     public void NoArguments_ShowsTheWindow()
     {
         var role = Assert.IsInstanceOfType<UiRole>(AppArguments.Parse([]));
-        Assert.IsFalse(role.SmokeTest);
+
+        Assert.AreEqual(new UiRole(SmokeTest: false, Demo: false, ScreenshotPath: null), role);
     }
 
     [TestMethod]
@@ -17,6 +18,24 @@ public sealed class AppArgumentsTests
     {
         var role = Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--smoke-test"]));
         Assert.IsTrue(role.SmokeTest);
+    }
+
+    [TestMethod]
+    public void DemoAndScreenshot_CanBeCombined_InAnyOrder()
+    {
+        var first = Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--demo", "--screenshot", @"C:\Temp\a.png"]));
+        var second = Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--screenshot", @"C:\Temp\a.png", "--demo"]));
+
+        Assert.AreEqual(new UiRole(SmokeTest: false, Demo: true, ScreenshotPath: @"C:\Temp\a.png"), first);
+        Assert.AreEqual(first, second);
+    }
+
+    [TestMethod]
+    public void Screenshot_WithoutAFile_IsInvalid()
+    {
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--screenshot"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--screenshot", "--demo"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--screenshot", "  "]));
     }
 
     [TestMethod]
@@ -30,9 +49,18 @@ public sealed class AppArgumentsTests
     }
 
     [TestMethod]
-    public void RepeatedSwitch_IsInvalid()
+    [DataRow("--smoke-test")]
+    [DataRow("--demo")]
+    public void RepeatedSwitch_IsInvalid(string argument)
     {
-        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--smoke-test", "--smoke-test"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse([argument, argument]));
+    }
+
+    [TestMethod]
+    public void RepeatedScreenshot_IsInvalid()
+    {
+        Assert.IsInstanceOfType<InvalidRole>(
+            AppArguments.Parse(["--screenshot", "a.png", "--screenshot", "b.png"]));
     }
 
     [TestMethod]

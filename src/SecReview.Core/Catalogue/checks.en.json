@@ -1,0 +1,57 @@
+{
+  "logon.automatic": {
+    "name": "Automatic sign-in",
+    "titlePass": "Windows asks who you are at start-up",
+    "titleFail": "Windows signs in automatically at start-up",
+    "why": "With automatic sign-in, anyone who turns the PC on is signed in as you. The password is also kept on the PC in readable form.",
+    "fix": [
+      "Press Windows+R, type netplwiz and press Enter.",
+      "Tick \"Users must enter a user name and password to use this computer\" and select OK.",
+      "Change your password, since the old one was stored on the PC."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": "ms-settings:signinoptions",
+    "references": []
+  },
+  "firewall.enabled": {
+    "name": "Firewall",
+    "titlePass": "Firewall is on",
+    "titleFail": "Firewall is off",
+    "why": "A firewall stops other devices on the same network from reaching your PC. It matters most on public Wi-Fi.",
+    "fix": [
+      "Open Windows Security and select Firewall & network protection.",
+      "Select each network shown as off and turn Microsoft Defender Firewall on."
+    ],
+    "timeToFix": "1 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "antivirus.active": {
+    "name": "Antivirus",
+    "titlePass": "Antivirus is on",
+    "titleFail": "Antivirus is off or out of date",
+    "why": "Antivirus blocks known malware before it runs. Out-of-date definitions miss recent threats.",
+    "fix": [
+      "Open Windows Security and select Virus & threat protection.",
+      "Turn real-time protection on, or follow the action shown for your antivirus.",
+      "Select Protection updates and check for updates."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "disk.encryption": {
+    "name": "Disk encryption",
+    "titlePass": "Disk encryption is on",
+    "titleFail": "Disk encryption is off",
+    "why": "Without encryption, anyone who takes the PC or its drive can read every file on it.",
+    "fix": [
+      "Open Settings > Privacy & security > Device encryption and turn it on.",
+      "If that page is missing, search for Manage BitLocker and turn BitLocker on for each drive.",
+      "Store the recovery key where your organisation asks you to."
+    ],
+    "timeToFix": "10 min, then encrypts in the background",
+    "settingsLink": "ms-settings:deviceencryption",
+    "references": []
+  }
+}
