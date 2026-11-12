@@ -195,6 +195,8 @@ public sealed class SshConfigCheckTests
     [DataRow("Include ${HOME}/x\n", "variable")]
     [DataRow("Include %d/x\n", "variable")]
     [DataRow("Include */config\n", "wildcard")]
+    [DataRow("Include //server.example/share/config\n", "another computer")]
+    [DataRow("Include \\\\server.example\\share\\*.conf\n", "another computer")]
     [DataRow("Host \"unclosed\n", "quote")]
     public void WhatCannotBeFollowed_IsCouldNotCheck_WithTheLine(string text, string reason)
     {

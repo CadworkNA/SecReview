@@ -184,6 +184,13 @@ internal static class SshConfigFile
         private void Include(string pattern, string baseFolder, bool allHosts, string hosts, int depth, string source)
         {
             string path = pattern.Replace('/', '\\');
+            if (path.StartsWith(@"\\", StringComparison.Ordinal))
+            {
+                // Following it would sign the user in to a server named by whoever wrote the file.
+                Problem ??= $"Could not evaluate {source}: an included file on another computer is not read.";
+                return;
+            }
+
             if (path.StartsWith(@"~\", StringComparison.Ordinal))
             {
                 ProbeResult<string> profile = probes.Environment.Folder(KnownFolder.UserProfile);

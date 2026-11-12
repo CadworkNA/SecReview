@@ -15,7 +15,7 @@ public sealed class DiskFileProbe : IFileProbe
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumBytes);
         if (!IsFullPath(path))
         {
-            return ProbeFailure.Failed("The file's location is not a full path.");
+            return ProbeFailure.Failed("The file's location is not a path on this PC.");
         }
 
         try
@@ -54,7 +54,7 @@ public sealed class DiskFileProbe : IFileProbe
     {
         if (!IsFullPath(directory))
         {
-            return ProbeFailure.Failed("The folder's location is not a full path.");
+            return ProbeFailure.Failed("The folder's location is not a path on this PC.");
         }
 
         try
@@ -130,5 +130,14 @@ public sealed class DiskFileProbe : IFileProbe
         }
     }
 
-    private static bool IsFullPath(string? path) => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path);
+    /// <summary>
+    /// Only a path on a drive of this PC ("C:\..."). A network path ("\\server\share") is refused:
+    /// opening one makes Windows sign in to that server as the user, and where a path comes
+    /// from a file someone else may have written, that server would be theirs to choose.
+    /// Device paths ("\\?\", "\\.\") are refused with it.
+    /// </summary>
+    internal static bool IsFullPath(string? path) =>
+        path is { Length: >= 3 } &&
+        char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/' &&
+        Path.IsPathFullyQualified(path);
 }

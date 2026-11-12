@@ -77,6 +77,29 @@ public sealed class DiskFileProbeTests
     }
 
     [TestMethod]
+    [DataRow(@"\\server.example\share\file.txt")]
+    [DataRow(@"//server.example/share/file.txt")]
+    [DataRow(@"\\?\C:\Windows\win.ini")]
+    [DataRow(@"\\.\C:\Windows\win.ini")]
+    [DataRow(@"C:relative.txt")]
+    [DataRow(@"\Windows\win.ini")]
+    [DataRow("")]
+    public void APathThatIsNotOnADriveOfThisPc_IsRefused_BeforeAnythingIsOpened(string path)
+    {
+        // A network path would make Windows sign in to that server as the user.
+        Assert.IsFalse(DiskFileProbe.IsFullPath(path));
+        Assert.AreEqual(ProbeStatus.Failed, Probe.ReadText(path).Status);
+        Assert.AreEqual(ProbeStatus.Failed, Probe.List(path).Status);
+    }
+
+    [TestMethod]
+    public void APathOnADrive_IsAccepted()
+    {
+        Assert.IsTrue(DiskFileProbe.IsFullPath(@"C:\Users\tester\.ssh\config"));
+        Assert.IsTrue(DiskFileProbe.IsFullPath("d:/data/file.txt"));
+    }
+
+    [TestMethod]
     public void ReadText_AFolder_IsAFailure_NotAnException()
     {
         Assert.IsFalse(Probe.ReadText(_folder).IsOk);
