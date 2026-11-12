@@ -82,3 +82,6 @@ GetFirmwareType
 Tbsi_GetDeviceInfo
 TPM_DEVICE_INFO
 GetPwrCapabilities
+
+// The pipe the administrator helper answers on: who is at the other end
+GetNamedPipeClientProcessId
