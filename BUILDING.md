@@ -58,21 +58,33 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 
 The app can report its own errors (an unhandled error, a check that threw, a run that never
 closed down) and send feedback the user types. It uses the Sentry SDK, in the app only: the
-command-line helper, the only binary that runs elevated, has no such code.
+command-line helper, the only binary that runs elevated, has no such code, and the build fails
+if it ever does (`check-lockfiles.ps1` allows the package in the app's lock file only;
+`check-stage.ps1` looks inside the helper).
 
 - Nothing is sent unless the build was given an address (`.\build.ps1 -ErrorReportAddress`),
-  the organisation has not set `NoErrorReports` under `HKLM\SOFTWARE\Policies\SecReview`, and
-  the user has left the switch in Settings on. A plain build has no address.
-- A report holds the error's type, where in SecReview it happened, and the versions of
-  SecReview, Windows and .NET. The message of an error inside a check is dropped: it can quote
-  what the check read. Other messages lose the user's and the computer's name. No results, no
-  device details, no installation identifier, no trail of earlier events, nothing on disk, and
-  no memory dumps (the SDK's native crash handler is not compiled in).
+  the organisation has not set `NoErrorReports` under `HKLM\SOFTWARE\Policies\SecReview`, the
+  settings could be read, the user has closed the welcome notice (which says that errors are
+  reported) and has left the switch in Settings on. A plain build has no address. Made-up
+  results (`--demo`) and automated runs (`--smoke-test`, `--screenshot`) never report.
+- A report holds the error's type and stack, the check it happened in, and the versions of
+  SecReview, Windows and .NET. Never an error's message (it can quote anything), no results,
+  no names or paths, no device details, no installation identifier, no trail of earlier
+  events, nothing on disk, and no memory dumps.
+- What leaves is not the report the SDK made but a new one that `ErrorReporter.Clean` fills
+  with those few things. A field the SDK adds in a later version is left behind unless that
+  method names it.
+- Each bug is reported once a day and at most ten different ones a day; `reported.txt` in the
+  data folder remembers the day and a hash per bug.
 - `SecReview.exe --error-report-test <file>` raises made-up errors carrying this PC's real
-  names and a made-up secret and writes what would have been sent to the file. The build reads
-  it and fails if any of that is in there, or if the SDK wrote into the user's profile.
-- The package's own build steps (uploading symbols or sources with its command-line tool) are
-  switched off in the app's project file.
+  names and a made-up secret (in messages, in errors inside errors, in attached data) and
+  writes what would have been sent to the file. The build reads it and fails if any of that
+  is in there, if a bug was written twice, or if anything was written to the folders it gave
+  the app as its profile and temporary folder.
+- Only the package's library is used. Its build steps and its code generator are left out in
+  the app's project file: they write every build property, the project folder among them,
+  into the program, and can upload symbols and sources. `check-stage.ps1` fails the build if
+  either program contains the folder it was built in.
 
 ## The list of known-malicious packages
 

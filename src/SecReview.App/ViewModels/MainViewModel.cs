@@ -186,15 +186,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// <summary>What the first-run notice says. It names error reporting only when that is on.</summary>
     public string FirstRunMessage =>
         "It checks this PC's security settings and explains what it finds. It never changes a setting, and the results stay on this PC." +
-        (_reporter.State == ErrorReportsState.On
-            ? " Errors of SecReview itself are reported to its developers, never your results; Settings has the switch."
+        (_reporter.State is ErrorReportsState.On or ErrorReportsState.NotYetKnown
+            ? " Once you close this notice, errors of SecReview itself are reported to its developers, never your results; Settings has the switch."
             : string.Empty);
 
     /// <summary>Whether error reports are on right now.</summary>
     public bool ErrorReportsOn => _reporter.State == ErrorReportsState.On;
 
     /// <summary>Whether the user's switch decides: not when the build has nowhere to send, or the organisation said no.</summary>
-    public bool CanChangeErrorReports => _reporter.State is ErrorReportsState.On or ErrorReportsState.OffBySetting;
+    public bool CanChangeErrorReports => _reporter.State is ErrorReportsState.On or ErrorReportsState.OffBySetting or ErrorReportsState.NotYetKnown;
+
+    /// <summary>Where the user has left the switch, whether or not reports are being sent yet.</summary>
+    public bool ErrorReportsSwitch => _settings.SendErrorReports;
 
     /// <summary>The state of error reporting in a sentence.</summary>
     public string ErrorReportsDescription => ErrorReports.Describe(_reporter.State);
@@ -381,9 +384,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// <summary>Which checks do not pass, as it would go with feedback; null without results.</summary>
     public string? ResultsForFeedback() => CurrentScan() is { } scan ? ErrorReports.ResultsForFeedback(scan) : null;
 
-    /// <summary>Sends feedback. False when it was not sent. With made-up results nothing is ever sent.</summary>
-    public bool SendFeedback(string text, bool includeResults) =>
-        !_role.Demo && _reporter.SendFeedback(text, includeResults ? ResultsForFeedback() : null);
+    /// <summary>
+    /// Sends feedback with exactly the text the user was shown as included (null for nothing).
+    /// False when it was not sent. With made-up results nothing is ever sent.
+    /// </summary>
+    public bool SendFeedback(string text, string? included) => !_role.Demo && _reporter.SendFeedback(text, included);
 
     /// <summary>Closes the first-run notice for good.</summary>
     public void DismissFirstRun()
@@ -393,6 +398,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             _settings = _settings with { FirstRunDone = true };
             SaveSettings();
+
+            // The notice has said that errors are reported; from now on they may be.
+            ApplyErrorReports();
         }
     }
 
@@ -455,10 +463,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         if (!_role.Demo && WindowsProbes.IsSupported)
         {
-            _reporter.Apply(_settings.SendErrorReports, WindowsProbes.Create().Registry);
+            // Settings that could not be read say nothing about the user's choice; and until
+            // the first-run notice is closed the user has not been told.
+            var choice = new ErrorReportsChoice(_settings.SendErrorReports, SettingsWereRead: !HasSettingsProblem, NoticeSeen: _settings.FirstRunDone);
+            _reporter.Apply(choice, WindowsProbes.Create().Registry);
         }
 
         Changed(nameof(ErrorReportsOn));
+        Changed(nameof(ErrorReportsSwitch));
         Changed(nameof(CanChangeErrorReports));
         Changed(nameof(ErrorReportsDescription));
         Changed(nameof(CanSendFeedback));

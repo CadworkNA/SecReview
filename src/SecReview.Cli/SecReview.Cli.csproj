@@ -22,6 +22,8 @@
   <ItemGroup>
     <!-- Load DLLs from System32 only, never from the exe's or the current directory. -->
     <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+    <!-- The program names its symbol file without the folder it was built in. -->
+    <LinkerArg Include="/PDBALTPATH:SecReviewCli.pdb" />
   </ItemGroup>
 
   <ItemGroup>

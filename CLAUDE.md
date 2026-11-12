@@ -28,10 +28,11 @@ done; start there when resuming work.
 - **Dependencies:** Microsoft-published packages only, exact versions, at least 7 days old. The
   one exception, approved by the maintainer, is the error-reporting SDK (`Sentry`, app only).
   Ask before adding anything else.
-- **Error reports** hold an error's type, where in SecReview it happened and the versions of
-  SecReview and Windows. Never results, names, paths or an identifier. Every report goes
-  through `ErrorReporter.Clean`; the build's `--error-report-test` proves it. The elevated
-  helper never reports anything.
+- **Error reports** hold an error's type and stack, the check it happened in and the versions
+  of SecReview and Windows. Never a message, results, names, paths or an identifier. What
+  leaves is a new report that `ErrorReporter.Clean` fills field by field: add nothing there
+  without asking. The build's `--error-report-test` proves it. The elevated helper never
+  reports anything.
 - **Text is short.** Titles one sentence, reasons one line, fix steps as numbered actions. The
   same goes for docs, pull requests and issues.
 

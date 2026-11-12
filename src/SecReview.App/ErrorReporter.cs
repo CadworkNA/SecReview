@@ -1,3 +1,4 @@
+using System.Reflection;
 using Sentry;
 using Sentry.Extensibility;
 using Sentry.Protocol;
@@ -12,15 +13,16 @@ namespace SecReview.App;
 /// Reports errors of SecReview itself, through the Sentry SDK. What may be reported, and
 /// whether anything is, is decided by <see cref="ErrorReports"/>; this class only carries it
 /// out. Nothing is started, and so nothing can be sent, unless the build has an address, the
-/// organisation allows it and the user has left it on.
+/// organisation allows it and the user is known to have left it on.
 /// </summary>
 /// <remarks>
-/// Every report passes through <see cref="Clean"/> on its way out, whatever raised it: names
-/// are removed from texts, the message of an error inside a check is dropped, and everything
-/// the SDK adds about the device beyond the versions of Windows and .NET is taken off. The
-/// SDK's native crash handler is not compiled in (it would send memory dumps), no trail of
-/// earlier events is kept, nothing is written to disk, and no identifier of the installation
-/// or the device goes along (the SDK would otherwise make one up and keep it in a file).
+/// Every report passes through <see cref="Clean"/> on its way out, whatever raised it, and
+/// what leaves is not the report the SDK made but a new one, filled with the few things that
+/// are allowed: the error's type and stack, the check it came from, the versions of Windows
+/// and .NET. Anything the SDK adds, now or in a later version, is therefore left behind
+/// unless this file names it. The SDK's native crash handler is not compiled in (it would
+/// send memory dumps), no trail of earlier events is kept, nothing is written to disk, and
+/// no identifier of the installation or the device goes along.
 /// </remarks>
 internal sealed partial class ErrorReporter : IDisposable
 {
@@ -28,38 +30,47 @@ internal sealed partial class ErrorReporter : IDisposable
 
     private static readonly TimeSpan FlushTime = TimeSpan.FromSeconds(2);
 
-    /// <summary>What the SDK may say about where it runs. Everything else it gathers is removed.</summary>
-    private static readonly string[] KeptContexts = ["os", "runtime", "app", "trace", "feedback"];
-
     private readonly string? _address;
     private readonly AppLog _log;
     private readonly ITransport? _transport;
     private readonly PrivacyFilter _privacy;
-    private readonly ErrorReportBudget _budget = new();
+    private readonly ErrorReportBudget _budget;
     private readonly Lock _gate = new();
     private IDisposable? _sdk;
 
     /// <param name="address">Where reports go; null for a build without an address.</param>
     /// <param name="log">The local log.</param>
-    /// <param name="privacy">Removes the user's and the computer's name from texts.</param>
+    /// <param name="privacy">Removes the user's and the computer's name from what the user types as feedback.</param>
+    /// <param name="budget">Keeps one bug from being reported over and over.</param>
     /// <param name="transport">For the self-test: receives the reports instead of the network.</param>
-    public ErrorReporter(string? address, AppLog log, PrivacyFilter privacy, ITransport? transport = null)
+    public ErrorReporter(string? address, AppLog log, PrivacyFilter privacy, ErrorReportBudget budget, ITransport? transport = null)
     {
         _address = address;
         _log = log;
         _privacy = privacy;
+        _budget = budget;
         _transport = transport;
     }
+
+    /// <summary>
+    /// Where this build sends reports; null for a build without an address (a development
+    /// build, or one somebody else compiled), which therefore sends nothing.
+    /// </summary>
+    public static string? CompiledAddress { get; } =
+        typeof(ErrorReporter).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == ErrorReports.AddressMetadataKey)?.Value is { Length: > 0 } address
+            ? address
+            : null;
 
     /// <summary>Whether reports are sent right now, and if not, why.</summary>
     public ErrorReportsState State { get; private set; }
 
-    /// <summary>Starts or stops reporting to match the build, the organisation's policy and the user's switch.</summary>
-    public void Apply(bool settingOn, IRegistryProbe registry)
+    /// <summary>Starts or stops reporting to match the build, the organisation's policy and what the user has said.</summary>
+    public void Apply(ErrorReportsChoice choice, IRegistryProbe registry)
     {
         lock (_gate)
         {
-            State = ErrorReports.State(_address, settingOn, registry);
+            State = ErrorReports.State(_address, choice, registry);
             if (State == ErrorReportsState.On && _sdk is null)
             {
                 try
@@ -76,6 +87,8 @@ internal sealed partial class ErrorReporter : IDisposable
             }
             else if (State != ErrorReportsState.On && _sdk is not null)
             {
+                // Switched off: what was waiting is dropped, not sent (the SDK is told not to
+                // wait at shutdown).
                 _sdk.Dispose();
                 _sdk = null;
             }
@@ -85,7 +98,7 @@ internal sealed partial class ErrorReporter : IDisposable
     /// <summary>Reports an error; <paramref name="checkId"/> names the check it happened in, if any. Never throws.</summary>
     public void Report(Exception exception, string? checkId = null)
     {
-        if (_sdk is null || !_budget.Allow(ErrorReports.Fingerprint(exception, checkId)))
+        if (_sdk is null || !_budget.Allow(ErrorReports.Fingerprint(exception)))
         {
             return;
         }
@@ -93,9 +106,9 @@ internal sealed partial class ErrorReporter : IDisposable
         try
         {
             var report = new SentryEvent(exception);
-            if (checkId is not null)
+            if (ErrorReports.IsCheckId(checkId))
             {
-                report.SetTag(CheckTag, checkId);
+                report.SetTag(CheckTag, checkId!);
             }
 
             SentrySdk.CaptureEvent(report);
@@ -111,15 +124,15 @@ internal sealed partial class ErrorReporter : IDisposable
     /// <summary>Reports that the previous run never closed down. Says nothing else: there is nothing else known.</summary>
     public void ReportAbnormalEnd()
     {
-        if (_sdk is not null && _budget.Allow("previous run ended abnormally"))
+        if (_sdk is not null && _budget.Allow(ErrorReports.AbnormalEndMessage))
         {
-            SentrySdk.CaptureMessage("The previous run of SecReview ended without closing down.", SentryLevel.Warning);
+            SentrySdk.CaptureMessage(ErrorReports.AbnormalEndMessage, SentryLevel.Warning);
         }
     }
 
     /// <summary>
-    /// Sends what the user wrote, with what they chose to include. Returns false when nothing
-    /// was sent because reporting is not on.
+    /// Hands what the user wrote, with exactly the text they were shown as included, to the
+    /// SDK for sending. Returns false when reporting is not on.
     /// </summary>
     public bool SendFeedback(string text, string? included)
     {
@@ -131,11 +144,20 @@ internal sealed partial class ErrorReporter : IDisposable
         string message = ErrorReports.Text(text, _privacy, ErrorReports.MaximumFeedbackLength);
         if (!string.IsNullOrWhiteSpace(included))
         {
-            message += Environment.NewLine + Environment.NewLine + _privacy.Scrub(included);
+            message += Environment.NewLine + Environment.NewLine + included;
         }
 
         SentrySdk.CaptureFeedback(new SentryFeedback(message));
         return true;
+    }
+
+    /// <summary>Sends what is waiting, for a moment at most. For the end of the process.</summary>
+    public void Flush()
+    {
+        if (_sdk is not null)
+        {
+            SentrySdk.Flush(FlushTime);
+        }
     }
 
     /// <summary>Sends what is waiting, briefly, and stops.</summary>
@@ -169,12 +191,16 @@ internal sealed partial class ErrorReporter : IDisposable
         options.ReportAssembliesMode = ReportAssembliesMode.None;
         options.TracesSampleRate = 0;
         options.IsGlobalModeEnabled = true;
-        options.AttachStacktrace = true;
+        options.AttachStacktrace = false;
+        options.ShutdownTimeout = TimeSpan.Zero; // sending at exit is Flush's job; switching off must not send
 
-        // SecReview decides itself what is an error worth reporting (Program and the scanner
-        // call Report); the SDK's own hooks would bypass the once-per-error rule.
+        // SecReview decides itself what is an error worth reporting (Program, the window and
+        // the scanner call Report); the SDK's own hooks would bypass the once-a-day rule.
         options.DisableAppDomainUnhandledExceptionCapture();
         options.DisableUnobservedTaskExceptionCapture();
+        options.DisableWinUiUnhandledExceptionIntegration();
+        options.DisableDiagnosticSourceIntegration();
+        options.DisableSystemDiagnosticsMetricsIntegration();
 
         options.SetBeforeBreadcrumb(_ => null);
         options.SetBeforeSend((report, _) => Clean(report));
@@ -185,39 +211,97 @@ internal sealed partial class ErrorReporter : IDisposable
         }
     }
 
-    /// <summary>The last word on what leaves the PC: every report goes through here.</summary>
-    private SentryEvent Clean(SentryEvent report)
+    /// <summary>
+    /// The last word on what leaves the PC. Returns a new report holding only what is named
+    /// here; null (nothing is sent) when the report has none of it.
+    /// </summary>
+    private static SentryEvent? Clean(SentryEvent report)
     {
-        bool fromCheck = report.Tags.ContainsKey(CheckTag);
-
-        report.ServerName = null;
-        report.User = new SentryUser();
-        if (report.Message is { } message)
+        var clean = new SentryEvent
         {
-            report.Message = new SentryMessage { Message = ErrorReports.Text(message.Formatted ?? message.Message, _privacy, ErrorReports.MaximumMessageLength) };
-        }
+            Level = report.Level,
+            Release = report.Release,
+            Environment = report.Environment,
+            User = new SentryUser(),
+        };
 
-        foreach (SentryException error in report.SentryExceptions ?? [])
+        // An error: its type and where it happened. Never its message, which can quote
+        // anything, nor anything attached to it.
+        if (report.SentryExceptions is { } errors)
         {
-            // The message of an error inside a check can quote what the check was reading.
-            error.Value = fromCheck ? null : ErrorReports.Text(error.Value, _privacy, ErrorReports.MaximumMessageLength);
-            error.Mechanism?.Data.Clear();
-            foreach (SentryStackFrame frame in error.Stacktrace?.Frames ?? [])
+            clean.SentryExceptions = errors.Select(error => new SentryException
             {
-                frame.AbsolutePath = frame.AbsolutePath is null ? null : _privacy.Scrub(frame.AbsolutePath);
-                frame.FileName = frame.FileName is null ? null : _privacy.Scrub(frame.FileName);
-                frame.ContextLine = null;
-                frame.Vars.Clear();
-            }
+                Type = error.Type,
+                Module = error.Module,
+                Stacktrace = error.Stacktrace is null
+                    ? null
+                    : new SentryStackTrace { Frames = [.. error.Stacktrace.Frames.Select(CleanFrame)] },
+                Mechanism = error.Mechanism is null
+                    ? null
+                    : new Mechanism
+                    {
+                        Type = error.Mechanism.Type,
+                        Handled = error.Mechanism.Handled,
+                        ExceptionId = error.Mechanism.ExceptionId,
+                        ParentId = error.Mechanism.ParentId,
+                        IsExceptionGroup = error.Mechanism.IsExceptionGroup,
+                    },
+            }).ToList();
         }
 
-        foreach (string context in report.Contexts.Keys.Where(key => !KeptContexts.Contains(key)).ToArray())
+        // The one message SecReview sends, a fixed text. Any other message is not sent.
+        string? message = report.Message?.Formatted ?? report.Message?.Message;
+        if (message == ErrorReports.AbnormalEndMessage)
         {
-            report.Contexts.Remove(context);
+            clean.Message = new SentryMessage { Message = ErrorReports.AbnormalEndMessage };
         }
 
-        return report;
+        // Feedback: the text the user approved, nothing else of it.
+        if (report.Contexts.Feedback is { Message: { Length: > 0 } feedback })
+        {
+            clean.Contexts.Feedback = new SentryFeedback(feedback);
+        }
+
+        // The versions of Windows and .NET.
+        if (report.Contexts.TryGetValue(Sentry.Protocol.OperatingSystem.Type, out object? os) && os is Sentry.Protocol.OperatingSystem system)
+        {
+            clean.Contexts.OperatingSystem.Name = system.Name;
+            clean.Contexts.OperatingSystem.Version = system.Version;
+            clean.Contexts.OperatingSystem.Build = system.Build;
+            clean.Contexts.OperatingSystem.RawDescription = system.RawDescription;
+        }
+
+        if (report.Contexts.TryGetValue(Runtime.Type, out object? net) && net is Runtime runtime)
+        {
+            clean.Contexts.Runtime.Name = runtime.Name;
+            clean.Contexts.Runtime.Version = runtime.Version;
+            clean.Contexts.Runtime.RawDescription = runtime.RawDescription;
+        }
+
+        // The check the error happened in: an identifier from SecReview's own catalogue.
+        if (report.Tags.TryGetValue(CheckTag, out string? check) && ErrorReports.IsCheckId(check))
+        {
+            clean.SetTag(CheckTag, check);
+        }
+
+        bool hasSomething = clean.SentryExceptions is not null || clean.Message is not null || clean.Contexts.Feedback is not null;
+        return hasSomething ? clean : null;
     }
+
+    /// <summary>A step of the stack: which method, in which module, at which address. No source paths, no variables.</summary>
+    private static SentryStackFrame CleanFrame(SentryStackFrame frame) => new()
+    {
+        Function = frame.Function,
+        Module = frame.Module,
+        Package = frame.Package,
+        InApp = frame.InApp,
+        LineNumber = frame.LineNumber,
+        ColumnNumber = frame.ColumnNumber,
+        InstructionAddress = frame.InstructionAddress,
+        ImageAddress = frame.ImageAddress,
+        SymbolAddress = frame.SymbolAddress,
+        AddressMode = frame.AddressMode,
+    };
 
     /// <summary>
     /// For the self-test: writes each report to a file as it would have gone over the network,

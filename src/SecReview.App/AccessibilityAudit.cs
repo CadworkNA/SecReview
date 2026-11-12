@@ -60,6 +60,14 @@ internal static class AccessibilityAudit
     private static void Walk(AutomationPeer peer, List<string> problems, ref int operated, int depth)
     {
         AutomationControlType type = peer.GetAutomationControlType();
+
+        // A scroll bar's arrows and thumb are for the mouse; the keyboard scrolls the list
+        // itself. They show up only while the bar is expanded, and are not held to the rules.
+        if (type == AutomationControlType.ScrollBar)
+        {
+            return;
+        }
+
         if ((IsOperated(type) || IsOperated(peer)) && peer.IsControlElement())
         {
             operated++;

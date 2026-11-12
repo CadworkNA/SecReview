@@ -4,11 +4,24 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 
-$allowed = Get-Content (Join-Path $PSScriptRoot 'allowed-packages.txt') |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and -not $_.StartsWith('#') }
-$allowedSet = [System.Collections.Generic.HashSet[string]]::new(
-    [string[]] $allowed, [System.StringComparer]::OrdinalIgnoreCase)
+# A line is a package id, optionally followed by "only:<project>" for a package that may
+# appear in that one project's lock file and nowhere else.
+$allowedSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$onlyIn = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($line in Get-Content (Join-Path $PSScriptRoot 'allowed-packages.txt')) {
+    $line = $line.Trim()
+    if (-not $line -or $line.StartsWith('#')) { continue }
+    $parts = $line -split '\s+'
+    if ($parts.Count -eq 1) {
+        [void] $allowedSet.Add($parts[0])
+    } elseif ($parts.Count -eq 2 -and $parts[1].StartsWith('only:') -and $parts[1].Length -gt 5) {
+        [void] $allowedSet.Add($parts[0])
+        $onlyIn[$parts[0]] = $parts[1].Substring(5)
+    } else {
+        Write-Host "::error::allowed-packages.txt: cannot read the line '$line'."
+        exit 1
+    }
+}
 
 $problems = @()
 # Match on the path inside the repo, so a checkout under a folder named "obj" or "artifacts"
@@ -36,6 +49,8 @@ foreach ($project in $projects) {
             if ($package.Value.type -eq 'Project') { continue }
             if (-not $allowedSet.Contains($package.Name)) {
                 $problems += "$($project.Name): '$($package.Name)' is not in scripts\allowed-packages.txt."
+            } elseif ($onlyIn.ContainsKey($package.Name) -and $project.BaseName -ne $onlyIn[$package.Name]) {
+                $problems += "$($project.Name): '$($package.Name)' is allowed in $($onlyIn[$package.Name]) only."
             }
         }
     }

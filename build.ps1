@@ -162,10 +162,11 @@ function Get-AppLog {
 }
 
 # Starts SecReview.exe with the given arguments. Returns its exit code, or 'timeout'.
-function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90) {
+function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90, [hashtable] $Environment = @{}) {
     $start = [System.Diagnostics.ProcessStartInfo]::new((Join-Path $stage 'SecReview.exe'))
     $start.UseShellExecute = $false
     $start.Environment['SECREVIEW_DATA_DIR'] = $appData
+    foreach ($name in $Environment.Keys) { $start.Environment[$name] = $Environment[$name] }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
 
     $process = [System.Diagnostics.Process]::Start($start)
@@ -264,28 +265,51 @@ Invoke-Step 'Smoke test' {
     # name, computer name, profile path and a made-up secret, and writes what it would have
     # sent to a file instead of sending it. The errors must be there; none of those may be,
     # nor anything else about the device, and nothing may be written to the user's profile.
-    $sdkFolder = Join-Path $env:LOCALAPPDATA 'Sentry'
-    $sdkFoldersBefore = @(Get-ChildItem $sdkFolder -ErrorAction SilentlyContinue).Count
+    # The app gets empty folders of its own as its profile's local data and its temporary
+    # folder: whatever the reporting library writes would land there, and both must stay empty.
+    $sandbox = Join-Path $root 'artifacts\error-report-sandbox'
+    if (Test-Path $sandbox) { Remove-Item $sandbox -Recurse -Force }
+    $sandboxLocal = (New-Item -ItemType Directory -Path (Join-Path $sandbox 'local')).FullName
+    $sandboxTemp = (New-Item -ItemType Directory -Path (Join-Path $sandbox 'temp')).FullName
     $reportFile = Join-Path $root 'artifacts\error-report-test.txt'
     if (Test-Path $reportFile) { Remove-Item $reportFile -Force }
-    $exit = Invoke-App '--error-report-test', $reportFile
+    $exit = Invoke-App '--error-report-test', $reportFile -Environment @{ LOCALAPPDATA = $sandboxLocal; TEMP = $sandboxTemp; TMP = $sandboxTemp }
     if ($exit -ne 0 -or -not (Test-Path $reportFile)) {
         throw "SecReview.exe --error-report-test ended with '$exit'.$(Get-AppLog)"
     }
     $reports = Get-Content $reportFile -Raw
-    foreach ($expected in 'System.InvalidOperationException', 'System.FormatException', 'selftest.check',
+    foreach ($expected in 'System.InvalidOperationException', 'System.FormatException', 'System.AggregateException',
+            'System.InvalidCastException', 'System.ArgumentException', 'System.NotSupportedException', '"check":"selftest.check"',
             "secreview@$Version", 'ended without closing down', 'Self-test feedback', 'firewall.enabled: Fail') {
         if (-not $reports.Contains($expected)) { throw "The error-report test output lacks '$expected'." }
     }
+
+    # Each made-up bug once (four errors and the fixed message), and the feedback: the second
+    # and third copy of a bug, in the same check or another, must not have been written.
+    $events = [regex]::Matches($reports, '"type":"event"').Count
+    $feedbacks = [regex]::Matches($reports, '"type":"feedback"').Count
+    if ($events -ne 5 -or $feedbacks -ne 1) {
+        throw "The error-report test wrote $events reports and $feedbacks feedback; 5 and 1 were expected."
+    }
+
     $forbidden = [ordered]@{
-        'the made-up secret'    = 'made-up-token-7c1f'
-        'the computer name'     = $env:COMPUTERNAME
-        'the profile path'      = $env:USERPROFILE.Replace('\', '\\')
-        'the server name field' = '"server_name"'
-        'a device section'      = '"device"'
-        'the time zone'         = 'timezone'
-        'a user id'             = '"user":{"id"'
-        'the list of modules'   = '"modules"'
+        'the made-up secret'          = 'made-up-token-7c1f'
+        'an error message'            = 'Self-test error:'
+        'the computer name'           = $env:COMPUTERNAME
+        'the profile path'            = $env:USERPROFILE.Replace('\', '\\')
+        'the folder SecReview is in'  = $root.Replace('\', '\\')
+        'the server name field'       = '"server_name"'
+        'a device section'            = '"device"'
+        'the time zone'               = 'timezone'
+        'the time the app started'    = 'app_start_time'
+        'a user id'                   = '"user":{"id"'
+        'a user name field'           = '"username"'
+        'an address of the PC'        = 'ip_address'
+        'the list of modules'         = '"modules"'
+        'the list of program files'   = 'debug_meta'
+        'extra data'                  = '"extra"'
+        'a trail of earlier events'   = '"breadcrumbs"'
+        'a second check tag'          = 'selftest.other'
     }
     # A user name such as "admin" is too ordinary a word to be told from text and is left alone
     # by the scrubber; any other is looked for.
@@ -297,10 +321,11 @@ Invoke-Step 'Smoke test' {
             throw "The error-report test output holds $what."
         }
     }
-    if (@(Get-ChildItem $sdkFolder -ErrorAction SilentlyContinue).Count -ne $sdkFoldersBefore) {
-        throw "The error-reporting SDK wrote into $sdkFolder; it must write nothing to the user's profile."
+    $written = @(Get-ChildItem $sandbox -Recurse -File)
+    if ($written.Count -gt 0) {
+        throw "Reporting wrote to the user's folders, which it must not: $($written[0].FullName.Substring($sandbox.Length + 1))"
     }
-    Write-Host "Error reports: 4 made-up reports written to a file, none sent; no name, path, secret or device detail in them."
+    Write-Host "Error reports: $events made-up reports and $feedbacks feedback written to a file, none sent; no message, name, path, secret or device detail in them; nothing written to the profile."
 
     $exit = Invoke-App '--no-such-argument'
     if ($exit -ne 2) { throw "SecReview.exe with an unknown argument exited with '$exit', expected 2." }

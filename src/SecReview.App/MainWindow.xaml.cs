@@ -33,7 +33,12 @@ public sealed partial class MainWindow : Window
     private int _frames;
     private bool _dialogOpen;
 
-    internal MainWindow(UiRole role, AppLog log, ErrorReporter reporter, bool previousRunCrashed)
+    /// <param name="role">How the window was started.</param>
+    /// <param name="log">The local log.</param>
+    /// <param name="reporter">Reports errors of SecReview itself, when that is on.</param>
+    /// <param name="previousRunCrashed">Whether the previous run never closed down.</param>
+    /// <param name="closed">Called when the window has been closed by the user.</param>
+    internal MainWindow(UiRole role, AppLog log, ErrorReporter reporter, bool previousRunCrashed, Action? closed)
     {
         ArgumentNullException.ThrowIfNull(role);
         ArgumentNullException.ThrowIfNull(log);
@@ -51,7 +56,11 @@ public sealed partial class MainWindow : Window
         _ticker.Interval = TimeSpan.FromMilliseconds(300);
         _ticker.Tick += (_, _) => ViewModel.Tick();
         _ticker.Start();
-        Closed += (_, _) => _ticker.Stop();
+        Closed += (_, _) =>
+        {
+            _ticker.Stop();
+            closed?.Invoke();
+        };
     }
 
     public MainViewModel ViewModel { get; }
@@ -316,9 +325,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        bool sent = ViewModel.SendFeedback(text.Text, include.IsChecked == true);
+        // What goes along is the very text the dialog showed, not a fresh look at the results:
+        // a scan may have finished in between.
+        bool sent = ViewModel.SendFeedback(text.Text, include.IsChecked == true ? include.Tag as string : null);
         await ShowAsync(sent
-            ? Message("Thank you", "Your feedback was sent.")
+            ? Message("Thank you", "Your feedback is on its way.")
             : Message("Not sent", "Feedback could not be sent from this copy of SecReview."));
     }
 
@@ -338,7 +349,7 @@ public sealed partial class MainWindow : Window
             MaxLength = ErrorReports.MaximumFeedbackLength,
         };
         string? results = ViewModel.ResultsForFeedback();
-        var tick = new CheckBox { Content = "Include which checks do not pass", IsEnabled = results is not null };
+        var tick = new CheckBox { Content = "Include which checks do not pass", IsEnabled = results is not null, Tag = results };
         var preview = new TextBlock
         {
             Text = results ?? string.Empty,
@@ -434,7 +445,7 @@ public sealed partial class MainWindow : Window
         var reports = new ToggleSwitch
         {
             Header = "Report errors of SecReview to its developers",
-            IsOn = ViewModel.ErrorReportsOn,
+            IsOn = ViewModel.CanChangeErrorReports && ViewModel.ErrorReportsSwitch,
             IsEnabled = ViewModel.CanChangeErrorReports,
         };
         var state = new TextBlock { Text = ViewModel.ErrorReportsDescription, TextWrapping = TextWrapping.Wrap, Foreground = secondary };
@@ -447,7 +458,7 @@ public sealed partial class MainWindow : Window
         panel.Children.Add(state);
         panel.Children.Add(new TextBlock
         {
-            Text = "A report holds the kind of error, where in SecReview it happened, and the versions of SecReview and Windows. Never your results, the name of this PC, your name or a path in your profile.",
+            Text = "A report holds the kind of error, where in SecReview it happened, and the versions of SecReview and Windows. Never the error's message, your results, the name of this PC, your name or a path.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = secondary,
         });

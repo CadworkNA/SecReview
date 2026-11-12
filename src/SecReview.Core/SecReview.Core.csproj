@@ -31,12 +31,6 @@
     <AssemblyMetadata Include="KnownMaliciousListSha256" Value="$(KnownMaliciousListSha256)" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(ErrorReportAddress)' != ''">
-    <!-- Where errors of SecReview itself are reported (build.ps1 -ErrorReportAddress). Only an
-         official build has one; without it nothing is ever sent. -->
-    <AssemblyMetadata Include="ErrorReportAddress" Value="$(ErrorReportAddress)" />
-  </ItemGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />
   </ItemGroup>

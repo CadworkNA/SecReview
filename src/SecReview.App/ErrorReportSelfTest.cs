@@ -7,18 +7,22 @@ namespace SecReview.App;
 
 /// <summary>
 /// <c>SecReview.exe --error-report-test file</c>: raises made-up errors that carry this PC's
-/// real user name, computer name, profile path and a made-up secret, sends them through the
-/// very same code real reports take, and writes what would have gone over the network to the
-/// file instead. Nothing is sent. The build then reads the file: the errors must be there and
-/// none of those names may be.
+/// real user name, computer name, profile path and a made-up secret (in their messages, in
+/// errors inside errors, in data attached to them), sends them through the very same code real
+/// reports take, and writes what would have gone over the network to the file instead. Nothing
+/// is sent. The build then reads the file: the errors must be there, each once, and none of
+/// what they carried may be.
 /// </summary>
 internal static class ErrorReportSelfTest
 {
     /// <summary>A made-up address: reports need one to be built, and this one leads nowhere.</summary>
     private const string Address = "https://0123456789abcdef0123456789abcdef@reports.invalid/1";
 
-    /// <summary>What a check's error message might quote from a file it read. Must never reach a report.</summary>
+    /// <summary>What an error might quote from a file a check read. Must never reach a report.</summary>
     public const string MadeUpSecret = "made-up-token-7c1f";
+
+    /// <summary>How every made-up error's message begins. No error message may reach a report.</summary>
+    public const string MessagePrefix = "Self-test error:";
 
     public static int Run(string path)
     {
@@ -28,25 +32,40 @@ internal static class ErrorReportSelfTest
             string output = Path.GetFullPath(path);
             File.Delete(output);
 
-            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            using (var reporter = new ErrorReporter(Address, log, PrivacyFilter.ForThisProcess(), new ErrorReporter.FileTransport(output)))
+            string names = $"{Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\made-up.txt on {Environment.MachineName} for {Environment.UserName}, {MadeUpSecret}";
+            var transport = new ErrorReporter.FileTransport(output);
+
+            // Remembered for this run only: the self-test leaves nothing behind but its output.
+            using (var reporter = new ErrorReporter(Address, log, PrivacyFilter.ForThisProcess(), new ErrorReportBudget(null, TimeProvider.System), transport))
             {
-                reporter.Apply(settingOn: true, new NoPolicy());
+                reporter.Apply(new ErrorReportsChoice(SwitchOn: true, SettingsWereRead: true, NoticeSeen: true), new NoPolicy());
                 if (reporter.State != ErrorReportsState.On)
                 {
                     return ExitCode.UnhandledError;
                 }
 
-                // An error of the app itself: its message stays, without the names.
-                reporter.Report(Thrown(new InvalidOperationException(
-                    $"Self-test: could not open {profile}\\made-up.txt on {Environment.MachineName} for {Environment.UserName}")));
+                // An error of the app itself.
+                reporter.Report(Thrown(new InvalidOperationException($"{MessagePrefix} could not open {names}")));
 
-                // An error inside a check: its message can quote what the check read, so it is dropped.
-                reporter.Report(Thrown(new FormatException($"Self-test: {MadeUpSecret} in {profile}\\.npmrc is malformed")), "selftest.check");
+                // An error inside a check, with data attached to it.
+                var inCheck = new FormatException($"{MessagePrefix} {names} is malformed");
+                inCheck.Data["file"] = names;
+                reporter.Report(Thrown(inCheck), "selftest.check");
 
-                // The same error again: reported once.
-                reporter.Report(Thrown(new FormatException("Self-test: again")), "selftest.check");
+                // The same bug again, in the same check and in another: reported once.
+                reporter.Report(Thrown(new FormatException($"{MessagePrefix} again")), "selftest.check");
+                reporter.Report(Thrown(new FormatException($"{MessagePrefix} again")), "selftest.other");
 
+                // Errors inside errors.
+                reporter.Report(Thrown(new AggregateException(
+                    $"{MessagePrefix} several things failed for {names}",
+                    new InvalidCastException($"{MessagePrefix} inner, {names}"),
+                    new TimeoutException($"{MessagePrefix} inner too", new ArgumentException($"{MessagePrefix} innermost, {names}")))));
+
+                // A check identifier that is not one is not sent as one.
+                reporter.Report(Thrown(new NotSupportedException($"{MessagePrefix} odd check")), names);
+
+                reporter.ReportAbnormalEnd();
                 reporter.ReportAbnormalEnd();
                 reporter.SendFeedback($"Self-test feedback written by {Environment.UserName} on {Environment.MachineName}", "firewall.enabled: Fail");
             }

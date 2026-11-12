@@ -46,8 +46,14 @@ internal static class Program
 
         AppLog log = AppLog.ForThisProcess();
 
-        // Made-up results report nothing, whatever the build: they are for looking at the window.
-        using var reporter = new ErrorReporter(role.Demo ? null : ErrorReports.CompiledAddress, log, PrivacyFilter.ForThisProcess());
+        // Made-up results and automated runs report nothing, whatever the build: the first are
+        // for looking at the window, the second run on build machines, whose errors are the
+        // build's business and not a user's.
+        using var reporter = new ErrorReporter(
+            role.Demo || automated ? null : ErrorReporter.CompiledAddress,
+            log,
+            PrivacyFilter.ForThisProcess(),
+            new ErrorReportBudget(AppData.Directory, TimeProvider.System));
 
         // A run that is being looked at by a person leaves a marker while its window is open;
         // one found at the next start, with its process gone, is a run that crashed.
@@ -60,7 +66,7 @@ internal static class Program
             {
                 log.Error("Unhandled error", exception);
                 reporter.Report(exception);
-                reporter.Dispose(); // the process is about to end: send what is waiting
+                reporter.Flush(); // the process is about to end: send what is waiting
             }
         };
 
@@ -71,7 +77,9 @@ internal static class Program
             {
                 SynchronizationContext.SetSynchronizationContext(
                     new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                _ = new App(role, log, reporter, previousRunCrashed);
+                // The marker goes when the user closes the window, not when the process has
+                // finished winding down: ending Windows right after is not a crash.
+                _ = new App(role, log, reporter, previousRunCrashed, () => marker?.End());
             });
         }
 #pragma warning disable CA1031 // Last resort: record why the window could not run, then fail visibly.

@@ -127,6 +127,31 @@ foreach ($file in $files) {
     if ($reason) { $problems.Add("$(Get-RelativePath $file): $reason") }
 }
 
+# Our own programs, read as bytes. Neither may carry the folder it was built in (under a
+# user's profile that is the builder's name, shipped to everyone), and the command-line helper,
+# the only program that runs elevated, must hold nothing of the error-reporting library.
+function Test-Contains([string] $program, [string] $text) {
+    # The text as single bytes, and as the two-byte characters Windows programs keep text in.
+    $wide = -join ($text.ToCharArray() | ForEach-Object { "$_`0" })
+    return $program.IndexOf($text, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+        $program.IndexOf($wide, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+$repository = (Split-Path $PSScriptRoot -Parent).TrimEnd('\')
+foreach ($name in 'SecReview.exe', 'SecReviewCli.exe') {
+    $program = Join-Path $stagePath $name
+    if (-not (Test-Path $program)) { continue }
+
+    # One character per byte, so the file can be searched as text.
+    $bytes = [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($program))
+    if (Test-Contains $bytes $repository) {
+        $problems.Add("$name contains the folder it was built in ($repository).")
+    }
+    if ($name -eq 'SecReviewCli.exe' -and (Test-Contains $bytes 'sentry')) {
+        $problems.Add('SecReviewCli.exe contains the error-reporting library; only the app may.')
+    }
+}
+
 if ($problems.Count -gt 0) {
     $problems | Select-Object -First 50 | ForEach-Object { Write-Host "::error::$_" }
     exit 1

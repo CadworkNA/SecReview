@@ -204,7 +204,20 @@ public sealed class CheckRunner
         catch (Exception exception)
 #pragma warning restore CA1031
         {
-            onUnexpected?.Invoke(check.Definition.Id, exception);
+            // A check that stopped because its time was up has not hit a bug. And whoever
+            // listens must not be able to break the scan.
+            if (onUnexpected is not null && exception is not OperationCanceledException && !context.Cancellation.IsCancellationRequested)
+            {
+                try
+                {
+                    onUnexpected(check.Definition.Id, exception);
+                }
+                catch (Exception)
+                {
+                    // The result below still says what happened to the check.
+                }
+            }
+
             return CheckOutcome.Error($"The check failed unexpectedly: {exception.GetType().Name}: {exception.Message}");
         }
     }
