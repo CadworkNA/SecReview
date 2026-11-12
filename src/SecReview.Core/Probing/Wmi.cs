@@ -52,5 +52,15 @@ public interface IWmiProbe
     /// <param name="wmiNamespace">For example <c>ROOT\CIMV2</c>.</param>
     /// <param name="className">For example <c>Win32_OperatingSystem</c>.</param>
     /// <param name="properties">The properties to read.</param>
-    ProbeResult<IReadOnlyList<WmiObject>> Query(string wmiNamespace, string className, IReadOnlyList<string> properties);
+    /// <param name="only">
+    /// Reads only the instances whose yes/no property has this value. Some classes are slow or
+    /// reach out to the network unless narrowed (local accounts versus every account of a domain).
+    /// </param>
+    ProbeResult<IReadOnlyList<WmiObject>> Query(
+        string wmiNamespace, string className, IReadOnlyList<string> properties, WmiFlagFilter? only = null);
 }
+
+/// <summary>Narrows a WMI query to the instances whose yes/no property has the given value.</summary>
+/// <param name="Property">The property's name.</param>
+/// <param name="Value">The value it must have.</param>
+public sealed record WmiFlagFilter(string Property, bool Value);

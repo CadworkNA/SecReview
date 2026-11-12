@@ -47,11 +47,12 @@ internal sealed class WindowsWmiProbe : IWmiProbe
     private const int CimArrayFlag = 0x2000;
 
     public unsafe ProbeResult<IReadOnlyList<WmiObject>> Query(
-        string wmiNamespace, string className, IReadOnlyList<string> properties)
+        string wmiNamespace, string className, IReadOnlyList<string> properties, WmiFlagFilter? only = null)
     {
         ArgumentNullException.ThrowIfNull(properties);
         if (!WmiNames.IsLocalNamespace(wmiNamespace) || !WmiNames.IsIdentifier(className) ||
-            properties.Count == 0 || !properties.All(WmiNames.IsIdentifier))
+            properties.Count == 0 || !properties.All(WmiNames.IsIdentifier) ||
+            (only is not null && !WmiNames.IsIdentifier(only.Property)))
         {
             // Names are put into the query text, and a namespace could otherwise name another
             // computer, so anything but a local namespace and plain identifiers is refused.
@@ -77,7 +78,8 @@ internal sealed class WindowsWmiProbe : IWmiProbe
 
             namespaceText = PInvoke.SysAllocString(wmiNamespace);
             language = PInvoke.SysAllocString("WQL");
-            query = PInvoke.SysAllocString($"SELECT {string.Join(",", properties)} FROM {className}");
+            string condition = only is null ? string.Empty : $" WHERE {only.Property} = {(only.Value ? "TRUE" : "FALSE")}";
+            query = PInvoke.SysAllocString($"SELECT {string.Join(",", properties)} FROM {className}{condition}");
 
             locator->ConnectServer(
                 namespaceText, default, default, default, ConnectUseMaxWait, default, null, &services);

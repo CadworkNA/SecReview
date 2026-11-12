@@ -41,7 +41,13 @@ public sealed class ProbeDiagnosticsTests
             LastSuccessfulSearch: new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero),
             LastSuccessfulInstall: null)),
         AuditPolicy = ProbeResult<AuditSetting>.Ok(AuditSetting.Success | AuditSetting.Failure),
+        Firmware = ProbeResult<FirmwareKind>.Ok(FirmwareKind.Uefi),
+        Tpm = ProbeResult<TpmVersion>.Ok(TpmVersion.Version20),
+        CodeIntegrity = ProbeResult<CodeIntegrityState>.Ok(
+            new CodeIntegrityState(TestSigning: false, KernelDebugging: false, MemoryIntegrity: true)),
+        Uptime = ProbeResult<TimeSpan>.Ok(TimeSpan.FromHours(36)),
     }
+    .WithFile(@"C:\Windows\win.ini", "; made up")
     .WithRegistryValue(RegistryRoot.LocalMachine, VersionKey, "CurrentBuild", RegistryValue.FromText("19045"))
     .WithService("EventLog", ServiceStartType.Automatic, isRunning: true)
     .WithWmiObjects(
@@ -56,8 +62,12 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(AllWorking());
 
         Assert.IsTrue(allFine);
-        Assert.AreEqual(12, lines.Count);
+        Assert.AreEqual(17, lines.Count);
         Assert.IsTrue(lines.Values.All(line => line.Contains(" ok ", StringComparison.Ordinal)));
+        StringAssert.Contains(lines["tpm"], "TPM 2.0");
+        StringAssert.Contains(lines["code integrity"], "test signing: off, kernel debugging: off, memory integrity: on");
+        StringAssert.Contains(lines["uptime"], "1.5 days");
+        StringAssert.Contains(lines["files"], "1 entries");
         StringAssert.Contains(lines["drive encryption"], "C: (system) On [1]; D: Off [2]");
         StringAssert.Contains(
             lines["windows update"],
@@ -123,7 +133,7 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(probes);
 
         Assert.IsFalse(allFine);
-        Assert.AreEqual(12, lines.Count);
+        Assert.AreEqual(17, lines.Count);
         StringAssert.Contains(lines["firewall"], "FAILED");
         StringAssert.Contains(lines["firewall"], "0x80004005");
         StringAssert.Contains(lines["account policy"], " ok ");
@@ -266,7 +276,7 @@ public sealed class ProbeDiagnosticsTests
     {
         FakeProbes probes = AllWorking();
         var never = new PowerSourceSettings(DisplayOff: null, Sleep: null, RequirePasswordOnWake: false);
-        probes.Power = ProbeResult<PowerSettings>.Ok(new PowerSettings(never, never, HasBattery: false));
+        probes.Power = ProbeResult<PowerSettings>.Ok(new PowerSettings(never, never, HasBattery: false, ModernStandby: false));
 
         (_, var lines) = Run(probes);
 

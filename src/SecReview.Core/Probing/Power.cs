@@ -10,7 +10,12 @@ public sealed record PowerSourceSettings(TimeSpan? DisplayOff, TimeSpan? Sleep, 
 /// <param name="PluggedIn">Settings while on mains power.</param>
 /// <param name="OnBattery">Settings while on battery.</param>
 /// <param name="HasBattery">False for a desktop PC, where the battery settings never apply.</param>
-public sealed record PowerSettings(PowerSourceSettings PluggedIn, PowerSourceSettings OnBattery, bool HasBattery);
+/// <param name="ModernStandby">
+/// True when the PC uses Modern Standby (S0 low power idle): it then goes into standby, and asks
+/// for sign-in afterwards, when the display turns off, not only when it sleeps.
+/// </param>
+public sealed record PowerSettings(
+    PowerSourceSettings PluggedIn, PowerSourceSettings OnBattery, bool HasBattery, bool ModernStandby);
 
 public interface IPowerProbe
 {

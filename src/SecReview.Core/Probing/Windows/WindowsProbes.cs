@@ -40,6 +40,9 @@ public static class WindowsProbes
             DriveEncryption: new WindowsDriveEncryptionProbe(),
             WindowsUpdate: new WindowsUpdateProbe(),
             AuditPolicy: new WindowsAuditPolicyProbe(),
-            UserRights: new WindowsUserRightsProbe());
+            UserRights: new WindowsUserRightsProbe(),
+            Files: new DiskFileProbe(),
+            Environment: new ProcessEnvironmentProbe(),
+            Platform: new WindowsPlatformProbe());
     }
 }

@@ -53,5 +53,47 @@
     "timeToFix": "10 min, then encrypts in the background",
     "settingsLink": "ms-settings:deviceencryption",
     "references": []
+  },
+  "ssh.keys.passphrase": {
+    "name": "SSH key passphrases",
+    "titlePass": "SSH keys have a passphrase",
+    "titleFail": "An SSH key has no passphrase",
+    "why": "An SSH key without a passphrase works for anyone who copies the file. Malware looks for these files first.",
+    "fix": [
+      "Open a terminal.",
+      "Run ssh-keygen -p -f followed by the path of the key file, and enter a new passphrase.",
+      "Or move the key into a password manager or SSH agent and delete the file."
+    ],
+    "timeToFix": "2 min per key",
+    "settingsLink": null,
+    "references": []
+  },
+  "ssh.keys.strength": {
+    "name": "SSH key strength",
+    "titlePass": "SSH keys are strong",
+    "titleFail": "An SSH key is weak",
+    "why": "Short RSA keys and DSA keys can be broken with enough computing power, and current servers refuse some of them.",
+    "fix": [
+      "Open a terminal and run ssh-keygen -t ed25519 to create a new key.",
+      "Add the new public key wherever the old one was used.",
+      "Remove the old key from those places, then delete its files."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "ssh.config": {
+    "name": "SSH client settings",
+    "titlePass": "SSH client settings are safe",
+    "titleFail": "SSH client settings are unsafe",
+    "why": "Forwarding your agent lets every server you connect to use your keys. Without host key checking, an impostor server goes unnoticed.",
+    "fix": [
+      "Open the file named under \"Found\" in a text editor.",
+      "Remove ForwardAgent from settings that apply to every host; use ProxyJump or set it for one host.",
+      "Remove \"StrictHostKeyChecking no\" and \"UserKnownHostsFile /dev/null\" from settings that apply to every host."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }

@@ -158,8 +158,12 @@ public sealed class ScanTests
     [TestMethod]
     public async Task Scanner_RunsTheCatalogue_AndPairsEachResultWithItsWording()
     {
-        // Nothing set up, and the registry unreadable too: every reading fails.
-        var probes = new FakeProbes { RegistryFailure = ProbeFailure.Failed("Reading the registry failed.") };
+        // Nothing set up, and the registry and files unreadable too: every reading fails.
+        var probes = new FakeProbes
+        {
+            RegistryFailure = ProbeFailure.Failed("Reading the registry failed."),
+            FilesFailure = ProbeFailure.Failed("Reading files failed."),
+        };
         var scanner = new Scanner(probes.Build(), TimeProvider.System);
 
         ScanResult scan = await scanner.RunAsync(CheckSelection.All, isElevated: false);

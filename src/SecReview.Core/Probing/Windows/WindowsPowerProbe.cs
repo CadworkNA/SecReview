@@ -57,8 +57,15 @@ internal sealed class WindowsPowerProbe : IPowerProbe
                 return WindowsError.FromWin32(Marshal.GetLastPInvokeError(), What);
             }
 
+            SYSTEM_POWER_CAPABILITIES capabilities;
+            if (!PInvoke.GetPwrCapabilities(&capabilities))
+            {
+                return WindowsError.FromWin32(Marshal.GetLastPInvokeError(), What);
+            }
+
             bool hasBattery = (status.BatteryFlag & NoSystemBattery) == 0;
-            return ProbeResult<PowerSettings>.Ok(new PowerSettings(pluggedIn.Value!, onBattery.Value!, hasBattery));
+            return ProbeResult<PowerSettings>.Ok(new PowerSettings(
+                pluggedIn.Value!, onBattery.Value!, hasBattery, ModernStandby: capabilities.AoAc));
         }
         catch (Exception exception)
         {

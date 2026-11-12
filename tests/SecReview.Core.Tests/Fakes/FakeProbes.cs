@@ -67,6 +67,69 @@ internal sealed class FakeProbes
         return this;
     }
 
+    /// <summary>The made-up user profile every fake path hangs under.</summary>
+    public const string UserProfile = @"C:\Users\tester";
+
+    private readonly Dictionary<string, ProbeResult<string>> _files = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, ProbeFailure> _folderFailures = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, string> _variables = new(StringComparer.OrdinalIgnoreCase);
+
+    public ProbeResult<FirmwareKind> Firmware { get; set; } = NotSetUp;
+
+    public ProbeResult<TpmVersion> Tpm { get; set; } = NotSetUp;
+
+    public ProbeResult<CodeIntegrityState> CodeIntegrity { get; set; } = NotSetUp;
+
+    /// <summary>How long Windows has been running.</summary>
+    public ProbeResult<TimeSpan> Uptime { get; set; } = NotSetUp;
+
+    /// <summary>When the fake files were last changed.</summary>
+    public DateTimeOffset FileTime { get; set; } = new(2026, 1, 10, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>When set, every file and folder read ends this way (for example access denied).</summary>
+    public ProbeFailure? FilesFailure { get; set; }
+
+    /// <summary>A text file. Its folders exist from then on.</summary>
+    public FakeProbes WithFile(string path, string text)
+    {
+        _files[path] = ProbeResult<string>.Ok(text);
+        return this;
+    }
+
+    /// <summary>A file that is there but cannot be read (access denied, too large, not text).</summary>
+    public FakeProbes WithFileFailure(string path, ProbeFailure failure)
+    {
+        _files[path] = failure;
+        return this;
+    }
+
+    /// <summary>A folder that cannot be listed.</summary>
+    public FakeProbes WithFolderFailure(string directory, ProbeFailure failure)
+    {
+        _folderFailures[directory.TrimEnd('\\')] = failure;
+        return this;
+    }
+
+    public FakeProbes WithVariable(string name, string value)
+    {
+        _variables[name] = value;
+        return this;
+    }
+
+    /// <summary>Where a known folder is on the fake PC.</summary>
+    public static string FolderPath(KnownFolder folder) => folder switch
+    {
+        KnownFolder.UserProfile => UserProfile,
+        KnownFolder.RoamingAppData => UserProfile + @"\AppData\Roaming",
+        KnownFolder.LocalAppData => UserProfile + @"\AppData\Local",
+        KnownFolder.ProgramData => @"C:\ProgramData",
+        KnownFolder.ProgramFiles => @"C:\Program Files",
+        KnownFolder.ProgramFilesX86 => @"C:\Program Files (x86)",
+        _ => @"C:\Windows",
+    };
+
     /// <summary>A WMI object with the given property values.</summary>
     public static WmiObject Wmi(params (string Name, object? Value)[] properties) =>
         new(properties.Select(p => new KeyValuePair<string, object?>(p.Name, p.Value)));
@@ -115,7 +178,10 @@ internal sealed class FakeProbes
         DriveEncryption: new DriveEncryptionProbe(this),
         WindowsUpdate: new WindowsUpdateProbe(this),
         AuditPolicy: new AuditPolicyProbe(this),
-        UserRights: new UserRightsProbe(this));
+        UserRights: new UserRightsProbe(this),
+        Files: new FileProbe(this),
+        Environment: new EnvironmentProbe(this),
+        Platform: new PlatformProbe(this));
 
     /// <summary>A firewall state with all three profiles set the same way.</summary>
     public static FirewallState FirewallAll(bool enabled, bool blocksInbound = true) => new(
@@ -136,13 +202,13 @@ internal sealed class FakeProbes
         LockoutObservationWindow: TimeSpan.FromMinutes(10));
 
     /// <summary>A laptop whose display turns off after the given minutes on either power source.</summary>
-    public static PowerSettings Laptop(int displayOffMinutes, bool requirePasswordOnWake = true)
+    public static PowerSettings Laptop(int displayOffMinutes, bool requirePasswordOnWake = true, bool modernStandby = false)
     {
         var source = new PowerSourceSettings(
             DisplayOff: TimeSpan.FromMinutes(displayOffMinutes),
             Sleep: TimeSpan.FromMinutes(30),
             RequirePasswordOnWake: requirePasswordOnWake);
-        return new PowerSettings(PluggedIn: source, OnBattery: source, HasBattery: true);
+        return new PowerSettings(PluggedIn: source, OnBattery: source, HasBattery: true, ModernStandby: modernStandby);
     }
 
     private static string RegistryPath(RegistryRoot root, string keyPath, string valueName) =>
@@ -244,8 +310,18 @@ internal sealed class FakeProbes
     private sealed class WmiProbe(FakeProbes owner) : IWmiProbe
     {
         public ProbeResult<IReadOnlyList<WmiObject>> Query(
-            string wmiNamespace, string className, IReadOnlyList<string> properties) =>
-            owner._wmiClasses.TryGetValue($"{wmiNamespace}:{className}", out var result) ? result : NotSetUp;
+            string wmiNamespace, string className, IReadOnlyList<string> properties, WmiFlagFilter? only = null)
+        {
+            if (!owner._wmiClasses.TryGetValue($"{wmiNamespace}:{className}", out var result))
+            {
+                return NotSetUp;
+            }
+
+            // As WMI does: only the instances whose flag has the asked-for value.
+            return only is null || !result.IsOk
+                ? result
+                : ProbeResult<IReadOnlyList<WmiObject>>.Ok([.. result.Value!.Where(o => o.Flag(only.Property) == only.Value)]);
+        }
     }
 
     private sealed class AuditPolicyProbe(FakeProbes owner) : IAuditPolicyProbe
@@ -267,5 +343,82 @@ internal sealed class FakeProbes
     {
         public ProbeResult<IReadOnlyList<AccountReference>> GetAccountsWithRight(string right) =>
             owner._userRights.TryGetValue(right, out var result) ? result : NotSetUp;
+    }
+
+    /// <summary>Files held in memory. A file or folder that was not added is "not found", as on disk.</summary>
+    private sealed class FileProbe(FakeProbes owner) : IFileProbe
+    {
+        public ProbeResult<string> ReadText(string path, int maximumBytes = IFileProbe.DefaultMaximumBytes)
+        {
+            if (owner.FilesFailure is { } everything)
+            {
+                return everything;
+            }
+
+            if (!owner._files.TryGetValue(path, out ProbeResult<string> file))
+            {
+                return ProbeFailure.NotFound();
+            }
+
+            return file.IsOk && file.Value!.Length > maximumBytes
+                ? ProbeFailure.Failed($"The file is larger than {maximumBytes / 1024} KB and was not read.")
+                : file;
+        }
+
+        public ProbeResult<IReadOnlyList<FileEntry>> List(string directory)
+        {
+            if (owner.FilesFailure is { } everything)
+            {
+                return everything;
+            }
+
+            string folder = directory.TrimEnd('\\');
+            if (owner._folderFailures.TryGetValue(folder, out ProbeFailure failure))
+            {
+                return failure;
+            }
+
+            string prefix = folder + "\\";
+            var entries = new SortedDictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach ((string path, ProbeResult<string> file) in owner._files)
+            {
+                if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string rest = path[prefix.Length..];
+                int separator = rest.IndexOf('\\', StringComparison.Ordinal);
+                string name = separator < 0 ? rest : rest[..separator];
+                entries[name] = new FileEntry(
+                    name,
+                    IsDirectory: separator >= 0,
+                    IsLink: false,
+                    Length: separator >= 0 ? 0 : file.IsOk ? file.Value!.Length : 100,
+                    LastWrite: owner.FileTime);
+            }
+
+            return entries.Count == 0
+                ? ProbeFailure.NotFound()
+                : ProbeResult<IReadOnlyList<FileEntry>>.Ok([.. entries.Values]);
+        }
+    }
+
+    private sealed class PlatformProbe(FakeProbes owner) : IPlatformProbe
+    {
+        public ProbeResult<FirmwareKind> GetFirmware() => owner.Firmware;
+
+        public ProbeResult<TpmVersion> GetTpm() => owner.Tpm;
+
+        public ProbeResult<CodeIntegrityState> GetCodeIntegrity() => owner.CodeIntegrity;
+    }
+
+    private sealed class EnvironmentProbe(FakeProbes owner) : IEnvironmentProbe
+    {
+        public ProbeResult<string> Folder(KnownFolder folder) => ProbeResult<string>.Ok(FolderPath(folder));
+
+        public string? Variable(string name) => owner._variables.GetValueOrDefault(name);
+
+        public ProbeResult<TimeSpan> Uptime() => owner.Uptime;
     }
 }
