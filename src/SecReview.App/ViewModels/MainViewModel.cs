@@ -305,16 +305,23 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         SettingsProblem = problem ?? string.Empty;
         ApplyErrorReports();
 
+        // A run nobody looks at (the build's smoke test, a screenshot) starts nothing else and
+        // asks no server: it shows the window and ends.
+        bool automated = _role.SmokeTest || _role.ScreenshotPath is not null;
+
         // An installed SecReview keeps its icon in the notification area when that is switched
         // on: after an update, or when the icon was quit, opening the window brings it back.
         // (A copy that is not installed never starts one by itself.)
-        if (_settings.RunInNotificationArea && _administratorUnavailable is null && !StartsIconLater)
+        if (!automated && _settings.RunInNotificationArea && _administratorUnavailable is null && !StartsIconLater)
         {
             StartTray();
         }
 
         // What is known about updates is shown at once; looking again, when it is time, goes on beside the scan.
-        _ = LookForUpdatesAsync(now: false);
+        if (!automated)
+        {
+            _ = LookForUpdatesAsync(now: false);
+        }
         if (_previousRunCrashed)
         {
             _reporter.ReportAbnormalEnd();
