@@ -3,22 +3,233 @@
     x:Class="SecReview.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:SecReview.App.ViewModels"
     Title="SecReview">
 
-    <Grid x:Name="Root" Padding="24" RowSpacing="8">
+    <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock
-            Grid.Row="0"
-            Style="{StaticResource TitleTextBlockStyle}"
-            Text="SecReview" />
-        <TextBlock
-            Grid.Row="1"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            Text="{x:Bind VersionText}" />
+        <!-- Headline: how the PC is doing, and the button to check again. -->
+        <Grid Grid.Row="0" Padding="24,24,24,16" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock
+                    x:Name="HeadlineText"
+                    AutomationProperties.HeadingLevel="Level1"
+                    AutomationProperties.LiveSetting="Polite"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Text="{x:Bind ViewModel.Headline, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.Detail, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <ProgressRing
+                    Width="20"
+                    Height="20"
+                    AutomationProperties.Name="Checking"
+                    IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                <Button
+                    x:Name="RunButton"
+                    Click="OnRunClicked"
+                    Content="Check again"
+                    IsEnabled="{x:Bind ViewModel.CanRun, Mode=OneWay}"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Padding="24,0,24,24">
+            <StackPanel Spacing="8">
+                <InfoBar
+                    Title="The checks could not run"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasFailed, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.Failure, Mode=OneWay}"
+                    Severity="Error" />
+
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Checks}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="8" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CheckItem">
+                            <Expander
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch"
+                                AutomationProperties.Name="{x:Bind Description}"
+                                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
+                                <Expander.Header>
+                                    <Grid Padding="0,12" ColumnSpacing="16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- One icon per outcome; exactly one is visible. -->
+                                        <Grid Grid.Column="0" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw">
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                Glyph="&#xE930;"
+                                                Visibility="{x:Bind IsPass}" />
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                Glyph="&#xE7BA;"
+                                                Visibility="{x:Bind IsFail}" />
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                                Glyph="&#xE946;"
+                                                Visibility="{x:Bind IsWorthKnowing}" />
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorAttentionBrush}"
+                                                Glyph="&#xE7EF;"
+                                                Visibility="{x:Bind IsNeedsAdmin}" />
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                                Glyph="&#xE9CE;"
+                                                Visibility="{x:Bind IsError}" />
+                                            <FontIcon
+                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                                Glyph="&#xE738;"
+                                                Visibility="{x:Bind IsNotApplicable}" />
+                                        </Grid>
+
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock
+                                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                Text="{x:Bind Title}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{x:Bind Summary}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Expander.Header>
+
+                                <StackPanel Padding="36,4,8,8" Spacing="16">
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind StatusText}" />
+
+                                    <!-- Found versus expected. -->
+                                    <StackPanel Spacing="6" Visibility="{x:Bind HasFindings}">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="Setting" />
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="Found" />
+                                            <TextBlock
+                                                Grid.Column="3"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="Expected" />
+                                        </Grid>
+                                        <ItemsRepeater ItemsSource="{x:Bind Findings}">
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout Spacing="6" />
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:FindingRow">
+                                                    <Grid AutomationProperties.Name="{x:Bind Description}" ColumnSpacing="12">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="24" />
+                                                            <ColumnDefinition Width="2*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Grid Grid.Column="0" AutomationProperties.AccessibilityView="Raw">
+                                                            <FontIcon
+                                                                FontSize="14"
+                                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                                Glyph="&#xE73E;"
+                                                                Visibility="{x:Bind IsOk}" />
+                                                            <FontIcon
+                                                                FontSize="14"
+                                                                Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                                Glyph="&#xE711;"
+                                                                Visibility="{x:Bind IsProblem}" />
+                                                            <FontIcon
+                                                                FontSize="14"
+                                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                                                Glyph="&#xE946;"
+                                                                Visibility="{x:Bind IsNote}" />
+                                                        </Grid>
+                                                        <TextBlock
+                                                            Grid.Column="1"
+                                                            IsTextSelectionEnabled="True"
+                                                            Text="{x:Bind Item}"
+                                                            TextWrapping="Wrap"
+                                                            ToolTipService.ToolTip="{x:Bind Source}" />
+                                                        <TextBlock
+                                                            Grid.Column="2"
+                                                            IsTextSelectionEnabled="True"
+                                                            Text="{x:Bind Found}"
+                                                            TextWrapping="Wrap" />
+                                                        <TextBlock
+                                                            Grid.Column="3"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            IsTextSelectionEnabled="True"
+                                                            Text="{x:Bind Expected}"
+                                                            TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                    </StackPanel>
+
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Why it matters" />
+                                        <TextBlock Text="{x:Bind Why}" TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <StackPanel Spacing="4" Visibility="{x:Bind ShowFix}">
+                                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind FixHeading}" />
+                                        <ItemsRepeater ItemsSource="{x:Bind FixSteps}">
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout Spacing="2" />
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="x:String">
+                                                    <TextBlock Text="{x:Bind}" TextWrapping="Wrap" />
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                    </StackPanel>
+
+                                    <Button
+                                        Click="OnOpenSettingsClicked"
+                                        Content="Open Settings"
+                                        Tag="{x:Bind SettingsLink}"
+                                        Visibility="{x:Bind ShowSettingsLink}" />
+                                </StackPanel>
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>

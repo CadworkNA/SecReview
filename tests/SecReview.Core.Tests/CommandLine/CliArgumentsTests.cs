@@ -33,9 +33,39 @@ public sealed class CliArgumentsTests
     }
 
     [TestMethod]
+    public void Report_TakesTheFileToWrite()
+    {
+        var command = Assert.IsInstanceOfType<ReportCommand>(CliArguments.Parse(["--report", @"C:\Temp\out.json"]));
+        Assert.AreEqual(@"C:\Temp\out.json", command.Path);
+    }
+
+    [TestMethod]
+    public void Report_WithoutAFile_IsInvalid()
+    {
+        var command = Assert.IsInstanceOfType<InvalidCommand>(CliArguments.Parse(["--report"]));
+        Assert.AreEqual("--report needs the file to write.", command.Message);
+    }
+
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("--diagnose")]
+    public void Report_WithABlankFileOrAnotherSwitchAsTheFile_IsInvalid(string file)
+    {
+        Assert.IsInstanceOfType<InvalidCommand>(CliArguments.Parse(["--report", file]));
+    }
+
+    [TestMethod]
+    public void Report_WithAnExtraArgument_IsInvalid()
+    {
+        var command = Assert.IsInstanceOfType<InvalidCommand>(CliArguments.Parse(["--report", "a.json", "b.json"]));
+        Assert.AreEqual("Unexpected argument 'b.json'.", command.Message);
+    }
+
+    [TestMethod]
     [DataRow("--Version")]
     [DataRow("version")]
-    [DataRow("--report")]
+    [DataRow("--reports")]
     [DataRow("")]
     public void UnknownCommand_IsInvalid(string argument)
     {
@@ -99,5 +129,6 @@ public sealed class CliArgumentsTests
         StringAssert.Contains(CliArguments.Usage, "--version");
         StringAssert.Contains(CliArguments.Usage, "--help");
         StringAssert.Contains(CliArguments.Usage, "--diagnose");
+        StringAssert.Contains(CliArguments.Usage, "--report <file>");
     }
 }

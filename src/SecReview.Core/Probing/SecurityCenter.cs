@@ -21,7 +21,15 @@ public enum SecurityProductState
 /// <param name="SignaturesUpToDate">
 /// Whether its definitions are current. Null for a firewall, which has no definitions.
 /// </param>
-public sealed record SecurityProduct(string Name, SecurityProductState State, bool? SignaturesUpToDate);
+/// <param name="IsBuiltIn">
+/// Whether the product is part of Windows itself (Microsoft Defender, Windows Firewall), told
+/// from where the product lives, not from its name, which is translated.
+/// </param>
+public sealed record SecurityProduct(
+    string Name,
+    SecurityProductState State,
+    bool? SignaturesUpToDate,
+    bool IsBuiltIn);
 
 public interface ISecurityCenterProbe
 {

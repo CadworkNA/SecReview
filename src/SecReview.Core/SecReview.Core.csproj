@@ -13,6 +13,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The wording of every check: data, embedded so it cannot go missing at run time.
+         WithCulture=false: the build would otherwise read "checks.en.json" as an English
+         satellite resource and move it out of this assembly. -->
+    <EmbeddedResource Include="Catalogue\*.json" WithCulture="false"
+                      LogicalName="SecReview.Catalogue.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />
   </ItemGroup>
 

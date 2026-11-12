@@ -25,7 +25,7 @@ public sealed class ProbeDiagnosticsTests
     {
         Firewall = ProbeResult<FirewallState>.Ok(FakeProbes.FirewallAll(enabled: true)),
         AntivirusProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok(
-            [new SecurityProduct("Example Antivirus", SecurityProductState.On, SignaturesUpToDate: true)]),
+            [new SecurityProduct("Example Antivirus", SecurityProductState.On, SignaturesUpToDate: true, IsBuiltIn: false)]),
         FirewallProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok([]),
         AccountPolicy = ProbeResult<AccountPolicy>.Ok(FakeProbes.DefaultAccountPolicy()),
         Power = ProbeResult<PowerSettings>.Ok(FakeProbes.Laptop(displayOffMinutes: 5)),
@@ -70,7 +70,7 @@ public sealed class ProbeDiagnosticsTests
         StringAssert.Contains(lines["power plan"], "display off 5 min, sleep 30 min, password on wake");
         StringAssert.Contains(lines["power plan"], "battery: yes");
         StringAssert.Contains(lines["firewall"], "Public: on, blocks inbound");
-        StringAssert.Contains(lines["antivirus products"], "Example Antivirus (On, definitions current)");
+        StringAssert.Contains(lines["antivirus products"], "Example Antivirus (On, definitions current, another vendor)");
         StringAssert.Contains(lines["firewall products"], "none registered");
         StringAssert.Contains(lines["account policy"], "minimum length 0");
     }
@@ -135,14 +135,14 @@ public sealed class ProbeDiagnosticsTests
         FakeProbes probes = AllWorking();
         probes.AntivirusProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok(
         [
-            new SecurityProduct("First", SecurityProductState.Snoozed, SignaturesUpToDate: false),
-            new SecurityProduct("Second", SecurityProductState.Off, SignaturesUpToDate: true),
+            new SecurityProduct("First", SecurityProductState.Snoozed, SignaturesUpToDate: false, IsBuiltIn: true),
+            new SecurityProduct("Second", SecurityProductState.Off, SignaturesUpToDate: true, IsBuiltIn: false),
         ]);
 
         (_, var lines) = Run(probes);
 
-        StringAssert.Contains(lines["antivirus products"], "First (Snoozed, definitions out of date)");
-        StringAssert.Contains(lines["antivirus products"], "Second (Off, definitions current)");
+        StringAssert.Contains(lines["antivirus products"], "First (Snoozed, definitions out of date, part of Windows)");
+        StringAssert.Contains(lines["antivirus products"], "Second (Off, definitions current, another vendor)");
     }
 
     [TestMethod]
@@ -220,11 +220,11 @@ public sealed class ProbeDiagnosticsTests
     {
         FakeProbes probes = AllWorking();
         probes.FirewallProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok(
-            [new SecurityProduct("Example Firewall", SecurityProductState.On, SignaturesUpToDate: null)]);
+            [new SecurityProduct("Example Firewall", SecurityProductState.On, SignaturesUpToDate: null, IsBuiltIn: false)]);
 
         (_, var lines) = Run(probes);
 
-        StringAssert.Contains(lines["firewall products"], "Example Firewall (On)");
+        StringAssert.Contains(lines["firewall products"], "Example Firewall (On, another vendor)");
         Assert.IsFalse(lines["firewall products"].Contains("definitions", StringComparison.Ordinal));
     }
 

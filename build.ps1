@@ -115,10 +115,23 @@ Invoke-Step 'Check staged output' {
     & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -Update:$UpdateStageList
 }
 
+# The app keeps its log (and later its results and settings) in the build output while it is
+# being smoke-tested, not in the profile of whoever runs the build. The variable is set for the
+# app only (see Invoke-App), so the shell that ran the build is left as it was.
+$appData = Join-Path $root 'artifacts\appdata'
+if (Test-Path $appData) { Remove-Item $appData -Recurse -Force }
+
+# What the app logged, for the message when a smoke test fails.
+function Get-AppLog {
+    $log = Join-Path $appData 'logs\SecReview.log'
+    if (Test-Path $log) { "`nThe app's log:`n" + ((Get-Content $log | Select-Object -First 30) -join "`n") } else { '' }
+}
+
 # Starts SecReview.exe with the given arguments. Returns its exit code, or 'timeout'.
-function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 60) {
+function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90) {
     $start = [System.Diagnostics.ProcessStartInfo]::new((Join-Path $stage 'SecReview.exe'))
     $start.UseShellExecute = $false
+    $start.Environment['SECREVIEW_DATA_DIR'] = $appData
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
 
     $process = [System.Diagnostics.Process]::Start($start)
@@ -157,14 +170,46 @@ Invoke-Step 'Smoke test' {
     }
     if ($diagnoseExit -ne 0) { throw "SecReviewCli --diagnose exited with $diagnoseExit, expected 0." }
 
+    # The checks must run from the compiled helper and produce a well-formed report. Whether
+    # this machine passes them is not the build's business.
+    $reportPath = Join-Path $root 'artifacts\smoke.report.json'
+    & $cli --report $reportPath | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "SecReviewCli --report exited with $LASTEXITCODE, expected 0." }
+    $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+    $counts = $report.counts
+    $total = $counts.pass + $counts.fail + $counts.needsAdmin + $counts.notApplicable + $counts.error
+    if ($report.schemaVersion -ne 1 -or $report.checks.Count -eq 0 -or $total -ne $report.checks.Count) {
+        throw "The report is malformed: schema $($report.schemaVersion), $($report.checks.Count) checks, counts add up to $total."
+    }
+    if ($report.version -ne $Version) { throw "The report says version '$($report.version)', expected '$Version'." }
+    foreach ($check in $report.checks) {
+        if (-not $check.id -or -not $check.title -or -not $check.summary) {
+            throw "A check in the report has no id, title or summary."
+        }
+        if ($env:CI -eq 'true') { Write-Host ("  {0,-20} {1,-14} {2}" -f $check.id, $check.status, $check.summary) }
+    }
+    Write-Host "Report: $($report.checks.Count) checks, well-formed."
+
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $exit = Invoke-App '--smoke-test'
     if ($exit -ne 0) {
-        throw "SecReview.exe --smoke-test ended with '$exit', expected 0."
+        throw "SecReview.exe --smoke-test ended with '$exit', expected 0.$(Get-AppLog)"
     }
-    Write-Host "SecReview.exe: window shown and closed in $($timer.ElapsedMilliseconds) ms."
+    Write-Host "SecReview.exe: this PC scanned, window shown and closed in $($timer.ElapsedMilliseconds) ms."
+
+    # A picture of the window with made-up results covering every kind of outcome: proof that
+    # the rows, tables and fix steps draw, and something to look at without any real PC's data.
+    $shots = Join-Path $root 'artifacts\screenshots'
+    if (Test-Path $shots) { Remove-Item $shots -Recurse -Force }
+    New-Item -ItemType Directory -Path $shots | Out-Null
+    $demo = Join-Path $shots 'demo.png'
+    $exit = Invoke-App '--demo', '--screenshot', $demo
+    if ($exit -ne 0 -or -not (Test-Path $demo) -or (Get-Item $demo).Length -lt 10KB) {
+        throw "SecReview.exe --demo --screenshot ended with '$exit' and no usable picture.$(Get-AppLog)"
+    }
+    Write-Host "Screenshot: artifacts\screenshots\demo.png ($([int]((Get-Item $demo).Length / 1KB)) KB)."
 
     $exit = Invoke-App '--no-such-argument'
     if ($exit -ne 2) { throw "SecReview.exe with an unknown argument exited with '$exit', expected 2." }
