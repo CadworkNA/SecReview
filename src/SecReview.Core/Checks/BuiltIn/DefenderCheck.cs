@@ -34,12 +34,15 @@ public sealed class DefenderCheck : ICheck
     public CheckDefinition Definition { get; } =
         new(Id, CheckCategory.SystemIntegrity, Severity.High, AdminNeed.ForFullDetail);
 
-    public CheckOutcome Run(CheckContext context)
+    /// <summary>
+    /// Microsoft Defender's status, when it is the antivirus in use. Otherwise the outcome for
+    /// every check about Defender: "does not apply" when it is absent or has stepped back for
+    /// another antivirus, "could not check" when its status cannot be read.
+    /// </summary>
+    internal static CheckOutcome? ReadStatus(SystemProbes probes, out WmiObject status)
     {
-        ArgumentNullException.ThrowIfNull(context);
-
-        ProbeResult<IReadOnlyList<WmiObject>> statusRead =
-            context.Probes.Wmi.Query(WmiNamespace, StatusClass, StatusProperties);
+        status = null!;
+        ProbeResult<IReadOnlyList<WmiObject>> statusRead = probes.Wmi.Query(WmiNamespace, StatusClass, StatusProperties);
         if (statusRead.Status == ProbeStatus.NotSupported)
         {
             return CheckOutcome.NotApplicable("Microsoft Defender Antivirus is not part of this Windows.");
@@ -55,13 +58,25 @@ public sealed class DefenderCheck : ICheck
             return CheckOutcome.Error("Microsoft Defender did not report its status.");
         }
 
-        WmiObject status = statusRead.Value[0];
+        status = statusRead.Value[0];
         string? mode = status.Text("AMRunningMode");
         if (status.Flag("AntivirusEnabled") == false ||
             (mode is not null && !mode.Equals("Normal", StringComparison.OrdinalIgnoreCase)))
         {
             return CheckOutcome.NotApplicable(
                 "Microsoft Defender is not the antivirus in use; the antivirus check covers the one that is.");
+        }
+
+        return null;
+    }
+
+    public CheckOutcome Run(CheckContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (ReadStatus(context.Probes, out WmiObject status) is { } notInUse)
+        {
+            return notInUse;
         }
 
         var findings = new List<Finding>(3);

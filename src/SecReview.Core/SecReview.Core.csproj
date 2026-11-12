@@ -18,6 +18,10 @@
          satellite resource and move it out of this assembly. -->
     <EmbeddedResource Include="Catalogue\*.json" WithCulture="false"
                       LogicalName="SecReview.Catalogue.%(Filename)%(Extension)" />
+
+    <!-- The checks written as data (rules\*.json at the top of the repository). -->
+    <EmbeddedResource Include="..\..\rules\*.json" WithCulture="false" Link="Rules\Data\%(Filename)%(Extension)"
+                      LogicalName="SecReview.Rules.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

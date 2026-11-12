@@ -1,6 +1,5 @@
 using SecReview.Catalogue;
 using SecReview.Checks;
-using SecReview.Checks.BuiltIn;
 using SecReview.Probing;
 
 namespace SecReview.Scanning;
@@ -30,7 +29,7 @@ public sealed class Scanner
     private readonly TimeProvider _clock;
 
     public Scanner(SystemProbes probes, TimeProvider clock)
-        : this(probes, clock, BuiltInChecks.All, CheckTexts.Load())
+        : this(probes, clock, CheckCatalogue.Checks, CheckCatalogue.Texts)
     {
     }
 
