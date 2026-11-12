@@ -17,8 +17,13 @@ public static class WindowsProbes
     public static SystemProbes Create() => new(
         Registry: new WindowsRegistryProbe(),
         Services: new WindowsServiceProbe(),
+        Wmi: new WindowsWmiProbe(),
         Firewall: new WindowsFirewallProbe(),
         SecurityCenter: new WindowsSecurityCenterProbe(),
         AccountPolicy: new WindowsAccountPolicyProbe(),
-        Power: new WindowsPowerProbe());
+        Power: new WindowsPowerProbe(),
+        DriveEncryption: new WindowsDriveEncryptionProbe(),
+        WindowsUpdate: new WindowsUpdateProbe(),
+        AuditPolicy: new WindowsAuditPolicyProbe(),
+        UserRights: new WindowsUserRightsProbe());
 }

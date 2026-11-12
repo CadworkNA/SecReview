@@ -14,6 +14,12 @@ public static class ProbeDiagnostics
     /// <summary>A service present on every Windows edition, to prove the service reading works.</summary>
     private const string SampleService = "EventLog";
 
+    /// <summary>The "Logon" audit subcategory, to prove the audit policy reading works.</summary>
+    private static readonly Guid LogonAuditSubcategory = new("0cce9215-69ae-11d9-bed3-505054503030");
+
+    /// <summary>The "Debug programs" user right, to prove the user rights reading works.</summary>
+    private const string DebugProgramsRight = "SeDebugPrivilege";
+
     /// <summary>Writes the report. Returns false if any probe failed outright.</summary>
     public static bool Run(SystemProbes probes, TextWriter output)
     {
@@ -35,6 +41,29 @@ public static class ProbeDiagnostics
         allFine &= Report(
             output, "firewall products", probes.SecurityCenter.GetProducts(SecurityProductKind.Firewall), Describe);
         allFine &= Report(output, "account policy", probes.AccountPolicy.GetPolicy(), Describe);
+        allFine &= Report(output, "drive encryption", probes.DriveEncryption.GetFixedDrives(), Describe);
+        allFine &= Report(output, "windows update", probes.WindowsUpdate.GetStatus(), Describe);
+        allFine &= Report(
+            output,
+            "wmi",
+            probes.Wmi.Query(@"ROOT\CIMV2", "Win32_OperatingSystem", ["Caption", "BuildNumber"]),
+            systems => systems.Count == 0
+                ? "no operating system object"
+                : $"{systems[0].Text("Caption")}, build {systems[0].Text("BuildNumber")}");
+
+        // These two need administrator rights: "needs administrator" is the expected answer
+        // for a normal user.
+        allFine &= Report(
+            output,
+            "audit policy",
+            probes.AuditPolicy.GetSubcategories([LogonAuditSubcategory]),
+            settings => $"Logon: {settings.GetValueOrDefault(LogonAuditSubcategory)}");
+        allFine &= Report(
+            output,
+            "user rights",
+            probes.UserRights.GetAccountsWithRight(DebugProgramsRight),
+            accounts => $"{DebugProgramsRight}: " +
+                (accounts.Count == 0 ? "nobody" : string.Join(", ", accounts.Select(a => a.Name ?? a.Sid))));
 
         return allFine;
     }
@@ -55,6 +84,21 @@ public static class ProbeDiagnostics
 
         return result.Status != ProbeStatus.Failed;
     }
+
+    private static string Describe(IReadOnlyList<DriveEncryption> drives) => drives.Count == 0
+        ? "no fixed drives"
+        : string.Join("; ", drives.Select(drive => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{drive.Drive}{(drive.IsSystemDrive ? " (system)" : string.Empty)} {drive.State}" +
+            $"{(drive.RawValue is int raw ? $" [{raw}]" : string.Empty)}")));
+
+    private static string Describe(WindowsUpdateStatus status) =>
+        $"automatic updates {(status.AutomaticUpdatesEnabled ? "on" : "off")}, " +
+        $"restart {(status.RebootRequired ? "pending" : "not pending")}, " +
+        $"last search {Date(status.LastSuccessfulSearch)}, last install {Date(status.LastSuccessfulInstall)}";
+
+    private static string Date(DateTimeOffset? value) =>
+        value is null ? "never" : value.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string Describe(ServiceInfo service) =>
         $"{service.Name}: {service.StartType}, {(service.IsRunning ? "running" : "stopped")}";

@@ -29,9 +29,25 @@ public sealed class ProbeDiagnosticsTests
         FirewallProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok([]),
         AccountPolicy = ProbeResult<AccountPolicy>.Ok(FakeProbes.DefaultAccountPolicy()),
         Power = ProbeResult<PowerSettings>.Ok(FakeProbes.Laptop(displayOffMinutes: 5)),
+        DriveEncryption = ProbeResult<IReadOnlyList<DriveEncryption>>.Ok(
+        [
+            new DriveEncryption("C:", IsSystemDrive: true, DriveEncryptionState.On, RawValue: 1),
+            new DriveEncryption("D:", IsSystemDrive: false, DriveEncryptionState.Off, RawValue: 2),
+        ]),
+        WindowsUpdate = ProbeResult<WindowsUpdateStatus>.Ok(new WindowsUpdateStatus(
+            AutomaticUpdatesEnabled: true,
+            RebootRequired: false,
+            LastSuccessfulSearch: new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero),
+            LastSuccessfulInstall: null)),
+        AuditPolicy = ProbeResult<AuditSetting>.Ok(AuditSetting.Success | AuditSetting.Failure),
     }
     .WithRegistryValue(RegistryRoot.LocalMachine, VersionKey, "CurrentBuild", RegistryValue.FromText("19045"))
-    .WithService("EventLog", ServiceStartType.Automatic, isRunning: true);
+    .WithService("EventLog", ServiceStartType.Automatic, isRunning: true)
+    .WithWmiObjects(
+        @"ROOT\CIMV2",
+        "Win32_OperatingSystem",
+        FakeProbes.Wmi(("Caption", "Example Windows"), ("BuildNumber", "19045")))
+    .WithUserRight("SeDebugPrivilege", new AccountReference("S-1-5-32-544", @"BUILTIN\Administrators"));
 
     [TestMethod]
     public void EveryProbeWorking_ReportsOkAndSucceeds()
@@ -39,8 +55,15 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(AllWorking());
 
         Assert.IsTrue(allFine);
-        Assert.AreEqual(7, lines.Count);
+        Assert.AreEqual(12, lines.Count);
         Assert.IsTrue(lines.Values.All(line => line.Contains(" ok ", StringComparison.Ordinal)));
+        StringAssert.Contains(lines["drive encryption"], "C: (system) On [1]; D: Off [2]");
+        StringAssert.Contains(
+            lines["windows update"],
+            "automatic updates on, restart not pending, last search 2026-01-15, last install never");
+        StringAssert.Contains(lines["wmi"], "Example Windows, build 19045");
+        StringAssert.Contains(lines["audit policy"], "Logon: Success, Failure");
+        StringAssert.Contains(lines["user rights"], @"SeDebugPrivilege: BUILTIN\Administrators");
         StringAssert.Contains(lines["registry"], "Windows build 19045");
         StringAssert.Contains(lines["services"], "EventLog: Automatic, running");
         StringAssert.Contains(lines["power plan"], "display off 5 min, sleep 30 min, password on wake");
@@ -79,14 +102,9 @@ public sealed class ProbeDiagnosticsTests
     [TestMethod]
     public void AMissingRegistryValueOrService_IsReportedAsNotFound_AndIsNotAFailure()
     {
-        var probes = new FakeProbes
-        {
-            Firewall = ProbeResult<FirewallState>.Ok(FakeProbes.FirewallAll(enabled: true)),
-            AntivirusProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok([]),
-            FirewallProducts = ProbeResult<IReadOnlyList<SecurityProduct>>.Ok([]),
-            AccountPolicy = ProbeResult<AccountPolicy>.Ok(FakeProbes.DefaultAccountPolicy()),
-            Power = ProbeResult<PowerSettings>.Ok(FakeProbes.Laptop(displayOffMinutes: 5)),
-        };
+        FakeProbes probes = AllWorking()
+            .WithoutRegistryValue(RegistryRoot.LocalMachine, VersionKey, "CurrentBuild")
+            .WithoutService("EventLog");
 
         (bool allFine, var lines) = Run(probes);
 
@@ -104,7 +122,7 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(probes);
 
         Assert.IsFalse(allFine);
-        Assert.AreEqual(7, lines.Count);
+        Assert.AreEqual(12, lines.Count);
         StringAssert.Contains(lines["firewall"], "FAILED");
         StringAssert.Contains(lines["firewall"], "0x80004005");
         StringAssert.Contains(lines["account policy"], " ok ");
@@ -124,6 +142,42 @@ public sealed class ProbeDiagnosticsTests
 
         StringAssert.Contains(lines["antivirus products"], "First (Snoozed, definitions out of date)");
         StringAssert.Contains(lines["antivirus products"], "Second (Off, definitions current)");
+    }
+
+    [TestMethod]
+    public void AdministratorOnlyReadings_ForANormalUser_SayNeedsAdministrator_AndAreNotFailures()
+    {
+        FakeProbes probes = AllWorking().WithUserRightFailure("SeDebugPrivilege", ProbeFailure.AccessDenied());
+        probes.AuditPolicy = ProbeFailure.AccessDenied();
+
+        (bool allFine, var lines) = Run(probes);
+
+        Assert.IsTrue(allFine);
+        StringAssert.Contains(lines["audit policy"], "needs administrator");
+        StringAssert.Contains(lines["user rights"], "needs administrator");
+    }
+
+    [TestMethod]
+    public void UserRightHeldByNobody_AndAnAccountWithoutAName_AreSpelledOut()
+    {
+        (_, var nobody) = Run(AllWorking().WithUserRight("SeDebugPrivilege"));
+        (_, var unnamed) = Run(AllWorking().WithUserRight(
+            "SeDebugPrivilege", new AccountReference("S-1-5-21-1-2-3-1001", Name: null)));
+
+        StringAssert.Contains(nobody["user rights"], "SeDebugPrivilege: nobody");
+        StringAssert.Contains(unnamed["user rights"], "SeDebugPrivilege: S-1-5-21-1-2-3-1001");
+    }
+
+    [TestMethod]
+    public void WmiClassMissingOnThisEdition_IsNotSupported_NotAFailure()
+    {
+        FakeProbes probes = AllWorking().WithWmiFailure(
+            @"ROOT\CIMV2", "Win32_OperatingSystem", ProbeFailure.NotSupported("Not provided here."));
+
+        (bool allFine, var lines) = Run(probes);
+
+        Assert.IsTrue(allFine);
+        StringAssert.Contains(lines["wmi"], "not supported");
     }
 
     [TestMethod]
