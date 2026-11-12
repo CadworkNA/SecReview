@@ -46,7 +46,23 @@ public sealed record ConfigScalar(string Text, ScalarKind Kind, int Line) : Conf
 /// <summary>A list of values.</summary>
 /// <param name="Items">The values, in file order.</param>
 /// <param name="Line">The line the list starts on.</param>
-public sealed record ConfigList(IReadOnlyList<ConfigNode> Items, int Line) : ConfigNode(Line);
+public sealed record ConfigList(IReadOnlyList<ConfigNode> Items, int Line) : ConfigNode(Line)
+{
+    /// <summary>A list a reader can keep adding to, so that a long list is not copied for every item.</summary>
+    internal static ConfigList Growable(ConfigNode first, int line) => new(new List<ConfigNode> { first }, line);
+
+    /// <summary>Adds an item to a list made with <see cref="Growable"/>; false, changing nothing, for any other list.</summary>
+    internal bool TryAppend(ConfigNode item)
+    {
+        if (Items is not List<ConfigNode> items)
+        {
+            return false;
+        }
+
+        items.Add(item);
+        return true;
+    }
+}
 
 /// <summary>Named values (a table, a mapping, a section).</summary>
 /// <param name="Line">The line it starts on.</param>
@@ -54,25 +70,14 @@ public sealed record ConfigMap(int Line) : ConfigNode(Line)
 {
     private readonly List<KeyValuePair<string, ConfigNode>> _entries = [];
 
+    /// <summary>Where each key is in <see cref="_entries"/>, so that a large file is not searched line by line for every key.</summary>
+    private readonly Dictionary<string, int> _index = new(StringComparer.Ordinal);
+
     /// <summary>The entries, in file order.</summary>
     public IReadOnlyList<KeyValuePair<string, ConfigNode>> Entries => _entries;
 
     /// <summary>The value of a key; null if there is none. Key names are matched exactly.</summary>
-    public ConfigNode? this[string key]
-    {
-        get
-        {
-            foreach ((string name, ConfigNode value) in _entries)
-            {
-                if (name == key)
-                {
-                    return value;
-                }
-            }
-
-            return null;
-        }
-    }
+    public ConfigNode? this[string key] => _index.TryGetValue(key, out int at) ? _entries[at].Value : null;
 
     /// <summary>The value at a path of keys, each inside the one before; null if any step is missing or is not a map.</summary>
     public ConfigNode? Find(params ReadOnlySpan<string> path)
@@ -93,7 +98,7 @@ public sealed record ConfigMap(int Line) : ConfigNode(Line)
     /// <summary>Adds an entry. Returns false, changing nothing, if the key is already there.</summary>
     internal bool TryAdd(string key, ConfigNode value)
     {
-        if (this[key] is not null)
+        if (!_index.TryAdd(key, _entries.Count))
         {
             return false;
         }
@@ -103,11 +108,34 @@ public sealed record ConfigMap(int Line) : ConfigNode(Line)
     }
 
     /// <summary>Replaces the value of a key that is already there.</summary>
-    internal void Replace(string key, ConfigNode value)
+    internal void Replace(string key, ConfigNode value) =>
+        _entries[_index[key]] = new KeyValuePair<string, ConfigNode>(key, value);
+}
+
+/// <summary>Ways to look at a setting that may be written once or several times.</summary>
+public static class ConfigValues
+{
+    /// <summary>
+    /// Every single value a setting holds: the value itself, or each item of a list. Used when
+    /// what the file contains matters whichever value is in force, as with a stored secret.
+    /// </summary>
+    public static IEnumerable<ConfigScalar> All(this ConfigNode? node) => node switch
     {
-        int index = _entries.FindIndex(e => e.Key == key);
-        _entries[index] = new KeyValuePair<string, ConfigNode>(key, value);
-    }
+        ConfigScalar scalar => [scalar],
+        ConfigList list => list.Items.OfType<ConfigScalar>(),
+        _ => [],
+    };
+
+    /// <summary>
+    /// The value in force: the value itself, or the last item when the setting was written more
+    /// than once (the later line wins). Null when there is none.
+    /// </summary>
+    public static ConfigScalar? InForce(this ConfigNode? node) => node switch
+    {
+        ConfigScalar scalar => scalar,
+        ConfigList { Items: [.., ConfigScalar last] } => last,
+        _ => null,
+    };
 }
 
 /// <summary>
@@ -140,6 +168,29 @@ public sealed class ConfigFile
     internal static ConfigFile Ok(ConfigMap root) => new(root, null, 0);
 
     internal static ConfigFile Failed(int line, string problem) => new(null, problem, line);
+
+    /// <summary>
+    /// Runs a reader and turns whatever happens into an answer. A reader stops at what it does
+    /// not understand with a <see cref="ConfigSyntaxException"/>; anything else it might trip
+    /// over on unexpected content ends the same way, as "not understood", never as a crash.
+    /// </summary>
+    internal static ConfigFile From(Func<ConfigMap> read)
+    {
+        try
+        {
+            return Ok(read());
+        }
+        catch (ConfigSyntaxException problem)
+        {
+            return Failed(problem.Line, problem.Message);
+        }
+#pragma warning disable CA1031 // A reader must answer for every possible file content.
+        catch (Exception unexpected)
+#pragma warning restore CA1031
+        {
+            return Failed(1, $"the file could not be read ({unexpected.GetType().Name})");
+        }
+    }
 }
 
 /// <summary>Thrown inside a reader to stop at the first thing it does not understand.</summary>

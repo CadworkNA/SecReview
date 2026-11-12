@@ -63,7 +63,7 @@ public sealed class ScoopCredentialsCheck : ICheck
             problems.Add(Finding.Problem("Sign-in headers for private hosts", "Stored as plain text", Expected, $"{scoop.ConfigPath} (private_hosts)"));
         }
 
-        if (PersistentEnvironment.Read(context.Probes.Registry, "SCOOP_GH_TOKEN", out string? token, out string? source) is { } unread)
+        if (PersistentEnvironment.Read(context.Probes, "SCOOP_GH_TOKEN", out string? token, out string? source) is { } unread)
         {
             return unread;
         }

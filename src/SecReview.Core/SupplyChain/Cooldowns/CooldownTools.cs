@@ -33,7 +33,7 @@ public sealed class NpmCooldownCheck : CooldownCheck
         state = null;
         IFileProbe files = probes.Files;
 
-        if (PersistentEnvironment.Read(probes.Registry, "NPM_CONFIG_USERCONFIG", out string? userConfig, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "NPM_CONFIG_USERCONFIG", out string? userConfig, out _) is { } failed)
         {
             return failed;
         }
@@ -98,8 +98,10 @@ public sealed class YarnCooldownCheck : CooldownCheck
         ? Durations.FromNumber(minutes, TimeSpan.FromMinutes(1))
         : Durations.ParseShort(value.Text, TimeSpan.FromMinutes(1));
 
-    private protected override (TimeSpan? Wait, string Words) WhenNotSet(ToolVersion? version) =>
-        (null, "Not set (Yarn 4.15 and later wait 1 day; earlier versions do not wait)");
+    private protected override (TimeSpan? Wait, string Words, string? Summary) WhenNotSet(ToolVersion? version) => (
+        null,
+        "Not set (Yarn 4.15 and later wait 1 day; earlier versions do not wait)",
+        "Yarn has no release wait set: Yarn 4.15 and later wait only 1 day, earlier versions not at all.");
 
     private protected override CheckOutcome? Locate(SystemProbes probes, UserFolders folders, out ToolState? state)
     {
@@ -164,7 +166,7 @@ public sealed class PipCooldownCheck : CooldownCheck
         state = null;
         IFileProbe files = probes.Files;
 
-        if (PersistentEnvironment.Read(probes.Registry, "PIP_CONFIG_FILE", out string? configFile, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "PIP_CONFIG_FILE", out string? configFile, out _) is { } failed)
         {
             return failed;
         }
@@ -176,7 +178,14 @@ public sealed class PipCooldownCheck : CooldownCheck
             $@"{folders.Profile}\pip\pip.ini",
             $@"{folders.ProgramData}\pip\pip.ini",
         ];
-        List<CooldownSource> sources = Existing(files, SettingsFormat.PythonIni, ["global", "uploaded-prior-to"], paths);
+
+        // pip takes a setting from the section of the command being run before [global], so a
+        // value under [install] decides what "pip install" does.
+        List<CooldownSource> sources =
+        [
+            .. Existing(files, SettingsFormat.PythonIni, ["install", "uploaded-prior-to"], paths),
+            .. Existing(files, SettingsFormat.PythonIni, ["global", "uploaded-prior-to"], paths),
+        ];
 
         // pip leaves its own folders behind once it has run: its cache, or its settings folder.
         // A Python merely being installed does not count: Pythons managed by uv never use pip.

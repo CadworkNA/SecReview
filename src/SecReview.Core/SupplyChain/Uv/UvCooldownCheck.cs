@@ -37,9 +37,15 @@ public sealed class UvCooldownCheck : ICheck
             return CheckOutcome.NotApplicable("uv is not installed.");
         }
 
-        if (PersistentEnvironment.Read(context.Probes.Registry, Variable, out string? fromVariable, out string? variableSource) is { } unread)
+        if (PersistentEnvironment.Read(context.Probes, Variable, out string? fromVariable, out string? variableSource) is { } unread)
         {
             return unread;
+        }
+
+        // A settings file that could not be read may set the wait, and would win over the files after it.
+        if (fromVariable is null && uv.BlockedBefore(Setting) is { } blocked)
+        {
+            return CheckOutcome.Error(blocked);
         }
 
         string? written;

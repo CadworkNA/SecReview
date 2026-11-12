@@ -48,7 +48,7 @@ internal static class PnpmLocator
             return CheckOutcome.Error("Windows did not say where your user folders are.");
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "XDG_CONFIG_HOME", out string? configHome, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "XDG_CONFIG_HOME", out string? configHome, out _) is { } failed)
         {
             return failed;
         }

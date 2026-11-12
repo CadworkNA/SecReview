@@ -63,17 +63,17 @@ internal static class ScoopLocator
             return CheckOutcome.Error("Windows did not say where your user folder is.");
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "SCOOP", out string? rootVariable, out _) is { } failed1)
+        if (PersistentEnvironment.Read(probes, "SCOOP", out string? rootVariable, out _) is { } failed1)
         {
             return failed1;
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "SCOOP_GLOBAL", out string? globalVariable, out _) is { } failed2)
+        if (PersistentEnvironment.Read(probes, "SCOOP_GLOBAL", out string? globalVariable, out _) is { } failed2)
         {
             return failed2;
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "XDG_CONFIG_HOME", out string? configHome, out _) is { } failed3)
+        if (PersistentEnvironment.Read(probes, "XDG_CONFIG_HOME", out string? configHome, out _) is { } failed3)
         {
             return failed3;
         }

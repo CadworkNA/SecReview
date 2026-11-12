@@ -39,7 +39,7 @@ public sealed class UvCredentialsCheck : ICheck
 
         var problems = new List<Finding>();
 
-        if (PersistentEnvironment.Read(probes.Registry, "UV_CREDENTIALS_DIR", out string? folder, out _) is { } unread)
+        if (PersistentEnvironment.Read(probes, "UV_CREDENTIALS_DIR", out string? folder, out _) is { } unread)
         {
             return unread;
         }

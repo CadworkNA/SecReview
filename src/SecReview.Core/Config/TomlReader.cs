@@ -34,14 +34,7 @@ public static partial class TomlReader
     public static ConfigFile Read(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        try
-        {
-            return ConfigFile.Ok(new Parser(text).ReadDocument());
-        }
-        catch (ConfigSyntaxException problem)
-        {
-            return ConfigFile.Failed(problem.Line, problem.Message);
-        }
+        return ConfigFile.From(() => new Parser(text).ReadDocument());
     }
 
     private sealed class Parser(string text)
@@ -175,11 +168,9 @@ public static partial class TomlReader
                 switch (existing)
                 {
                     case null:
-                        parent.TryAdd(name, new ConfigList([table], line));
+                        parent.TryAdd(name, ConfigList.Growable(table, line));
                         break;
-                    case ConfigList list when list.Items.All(i => i is ConfigMap) && !_closedLists.Contains(list):
-                        parent.Replace(name, new ConfigList([.. list.Items, table], list.Line));
-                        _closedLists.Remove(list);
+                    case ConfigList list when !_closedLists.Contains(list) && list.TryAppend(table):
                         break;
                     default:
                         throw new ConfigSyntaxException(line, $"\"{name}\" is defined twice");
@@ -637,14 +628,14 @@ public static partial class TomlReader
         private string ReadUnicode(int digits)
         {
             if (_position + digits > _text.Length ||
-                !int.TryParse(_text.AsSpan(_position, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int code) ||
+                !uint.TryParse(_text.AsSpan(_position, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint code) ||
                 code > 0x10FFFF || (code is >= 0xD800 and <= 0xDFFF))
             {
                 throw Fail("a string has an invalid character code");
             }
 
             _position += digits;
-            return char.ConvertFromUtf32(code);
+            return char.ConvertFromUtf32((int)code);
         }
 
         private string ReadLiteralString(bool multiLineAllowed)

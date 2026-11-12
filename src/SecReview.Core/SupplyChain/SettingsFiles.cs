@@ -21,10 +21,18 @@ internal enum SettingsFormat
 /// <param name="Path">The full path, for the "where this came from" of a finding.</param>
 /// <param name="Root">The contents; null when <paramref name="Problem"/> is set.</param>
 /// <param name="Problem">Why the file could not be used, in words fit for a result.</param>
-internal sealed record SettingsFile(string Path, ConfigMap? Root, string? Problem)
+/// <param name="Format">The format it was read as.</param>
+internal sealed record SettingsFile(string Path, ConfigMap? Root, string? Problem, SettingsFormat Format = SettingsFormat.Toml)
 {
     /// <summary>The file's name without its folder.</summary>
     public string Name => Path[(Path.LastIndexOf('\\') + 1)..];
+
+    /// <summary>
+    /// The one value a setting has in this file. In npm-style files a later line replaces an
+    /// earlier one, so the last counts; in every other format a setting is one value or it is
+    /// not a single value at all.
+    /// </summary>
+    public ConfigScalar? Single(ConfigNode? node) => Format == SettingsFormat.NpmIni ? node.InForce() : node as ConfigScalar;
 
     /// <summary>"path, line N", for a finding's source.</summary>
     public string At(ConfigNode node) => $"{Path}, line {node.Line}";
@@ -46,7 +54,7 @@ internal static class SettingsFiles
         if (!text.IsOk)
         {
             return new SettingsFile(
-                path, null, text.Status == ProbeStatus.AccessDenied ? $"{name} could not be read: access denied." : $"{name} could not be read: {text.Detail}");
+                path, null, text.Status == ProbeStatus.AccessDenied ? $"{name} could not be read: access denied." : $"{name} could not be read: {text.Detail}", format);
         }
 
         ConfigFile parsed = format switch
@@ -58,8 +66,8 @@ internal static class SettingsFiles
         };
 
         return parsed.IsOk
-            ? new SettingsFile(path, parsed.Root, null)
-            : new SettingsFile(path, null, $"{name}: {parsed.Describe()}");
+            ? new SettingsFile(path, parsed.Root, null, format)
+            : new SettingsFile(path, null, $"{name}: {parsed.Describe()}", format);
     }
 
     /// <summary>
@@ -119,10 +127,11 @@ internal static class PersistentEnvironment
     /// A variable's value and where it is set ("your environment variables" or "the PC's
     /// environment variables"); both null if it is not set. Returns the outcome for a failed read.
     /// </summary>
-    public static CheckOutcome? Read(IRegistryProbe registry, string name, out string? value, out string? source)
+    public static CheckOutcome? Read(SystemProbes probes, string name, out string? value, out string? source)
     {
         value = null;
         source = null;
+        IRegistryProbe registry = probes.Registry;
         if (RegistryReader.Text(registry, RegistryRoot.CurrentUser, UserKey, name, "your environment variables", out string? user) is { } failed)
         {
             return failed;
@@ -130,7 +139,7 @@ internal static class PersistentEnvironment
 
         if (user is not null)
         {
-            (value, source) = (user, $"your environment variables ({name})");
+            (value, source) = (Expand(user, probes.Environment), $"your environment variables ({name})");
             return null;
         }
 
@@ -141,10 +150,67 @@ internal static class PersistentEnvironment
 
         if (machine is not null)
         {
-            (value, source) = (machine, $"the PC's environment variables ({name})");
+            (value, source) = (Expand(machine, probes.Environment), $"the PC's environment variables ({name})");
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Replaces "%NAME%" references, as Windows does for a variable stored in that form
+    /// ("%USERPROFILE%\.config"). A name that is not set is left as written.
+    /// </summary>
+    internal static string Expand(string text, IEnvironmentProbe environment)
+    {
+        if (!text.Contains('%', StringComparison.Ordinal))
+        {
+            return text;
+        }
+
+        var expanded = new System.Text.StringBuilder(text.Length);
+        int position = 0;
+        while (position < text.Length)
+        {
+            int open = text.IndexOf('%', position);
+            int close = open < 0 ? -1 : text.IndexOf('%', open + 1);
+            if (close < 0)
+            {
+                expanded.Append(text, position, text.Length - position);
+                break;
+            }
+
+            expanded.Append(text, position, open - position);
+            string name = text[(open + 1)..close];
+            string? known = name.Length == 0 ? null : environment.Variable(name) ?? WellKnown(name, environment);
+            if (known is null)
+            {
+                // Not a variable: keep the first "%" and look again from the next one.
+                expanded.Append('%');
+                position = open + 1;
+            }
+            else
+            {
+                expanded.Append(known);
+                position = close + 1;
+            }
+        }
+
+        return expanded.ToString();
+    }
+
+    /// <summary>The folders Windows always defines, for when the process environment does not have them.</summary>
+    private static string? WellKnown(string name, IEnvironmentProbe environment)
+    {
+        KnownFolder? folder = name.ToUpperInvariant() switch
+        {
+            "USERPROFILE" => KnownFolder.UserProfile,
+            "APPDATA" => KnownFolder.RoamingAppData,
+            "LOCALAPPDATA" => KnownFolder.LocalAppData,
+            "PROGRAMDATA" or "ALLUSERSPROFILE" => KnownFolder.ProgramData,
+            "PROGRAMFILES" => KnownFolder.ProgramFiles,
+            _ => null,
+        };
+        return folder is { } known && environment.Folder(known) is { IsOk: true } path ? path.Value : null;
     }
 
     /// <summary>The names of every persistent variable, user and machine; a failed read gives the outcome.</summary>

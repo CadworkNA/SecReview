@@ -30,6 +30,29 @@ internal sealed record UvInstall(ToolVersion? Version, string? VersionSource, IR
         return null;
     }
 
+    /// <summary>
+    /// Why the value of a key is not known, if it is not: a settings file that could not be read
+    /// comes before the first file that sets the key (or no file sets it). Such a file may set
+    /// the key itself and would win. Null when the first file to set the key can be trusted to be it.
+    /// </summary>
+    public string? BlockedBefore(string key)
+    {
+        foreach (SettingsFile file in Files)
+        {
+            if (file.Root is null)
+            {
+                return file.Problem ?? $"{file.Name} could not be read.";
+            }
+
+            if (file.Root[key] is not null)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The first problem among the settings files; null when all were read in full.</summary>
     public string? Problem => Files.FirstOrDefault(f => f.Problem is not null)?.Problem;
 }
@@ -88,12 +111,12 @@ internal static class UvLocator
         }
 
         // UV_CONFIG_FILE replaces every settings file uv would otherwise find.
-        if (PersistentEnvironment.Read(probes.Registry, "UV_CONFIG_FILE", out string? configFile, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "UV_CONFIG_FILE", out string? configFile, out _) is { } failed)
         {
             return failed;
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "UV_NO_CONFIG", out string? noConfig, out _) is { } failedToo)
+        if (PersistentEnvironment.Read(probes, "UV_NO_CONFIG", out string? noConfig, out _) is { } failedToo)
         {
             return failedToo;
         }

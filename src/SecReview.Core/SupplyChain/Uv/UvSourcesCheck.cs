@@ -54,7 +54,7 @@ public sealed class UvSourcesCheck : ICheck
         var problems = new List<Finding>();
 
         // Index strategy: the variable wins over the files.
-        if (PersistentEnvironment.Read(context.Probes.Registry, "UV_INDEX_STRATEGY", out string? strategy, out string? strategySource) is { } unread)
+        if (PersistentEnvironment.Read(context.Probes, "UV_INDEX_STRATEGY", out string? strategy, out string? strategySource) is { } unread)
         {
             return unread;
         }
@@ -71,7 +71,7 @@ public sealed class UvSourcesCheck : ICheck
 
         foreach ((string name, string item) in UnsafeSwitches)
         {
-            if (PersistentEnvironment.Read(context.Probes.Registry, name, out string? value, out string? source) is { } unreadSwitch)
+            if (PersistentEnvironment.Read(context.Probes, name, out string? value, out string? source) is { } unreadSwitch)
             {
                 return unreadSwitch;
             }
@@ -84,7 +84,7 @@ public sealed class UvSourcesCheck : ICheck
 
         foreach ((string? setting, string variable, string item) in DownloadSources)
         {
-            if (PersistentEnvironment.Read(context.Probes.Registry, variable, out string? value, out string? source) is { } unreadSource)
+            if (PersistentEnvironment.Read(context.Probes, variable, out string? value, out string? source) is { } unreadSource)
             {
                 return unreadSource;
             }

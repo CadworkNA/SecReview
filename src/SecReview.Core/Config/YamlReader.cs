@@ -18,14 +18,7 @@ public static class YamlReader
     public static ConfigFile Read(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        try
-        {
-            return ConfigFile.Ok(new Parser(text).ReadDocument());
-        }
-        catch (ConfigSyntaxException problem)
-        {
-            return ConfigFile.Failed(problem.Line, problem.Message);
-        }
+        return ConfigFile.From(() => new Parser(text).ReadDocument());
     }
 
     /// <summary>One line that carries content: its indentation, its text without comment, and its number.</summary>
@@ -83,7 +76,7 @@ public static class YamlReader
                     throw new ConfigSyntaxException(number, "a tab is used for indentation");
                 }
 
-                _lines.Add(new Line(indent, StripComment(line[indent..], number).TrimEnd(), number));
+                _lines.Add(new Line(indent, StripComment(line[indent..]).TrimEnd(), number));
             }
         }
 
@@ -556,13 +549,13 @@ public static class YamlReader
                     case 'x' or 'u' or 'U':
                         int digits = body[i] switch { 'x' => 2, 'u' => 4, _ => 8 };
                         if (body.Length - i - 1 < digits ||
-                            !int.TryParse(body.AsSpan(i + 1, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int code) ||
+                            !uint.TryParse(body.AsSpan(i + 1, digits), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint code) ||
                             code > 0x10FFFF || (code is >= 0xD800 and <= 0xDFFF))
                         {
                             throw new ConfigSyntaxException(number, "a quoted value has an invalid character code");
                         }
 
-                        text.Append(char.ConvertFromUtf32(code));
+                        text.Append(char.ConvertFromUtf32((int)code));
                         i += digits;
                         break;
                     default:
@@ -574,7 +567,7 @@ public static class YamlReader
         }
 
         /// <summary>Removes a trailing comment: a "#" outside quotes that starts the text or follows a space.</summary>
-        private static string StripComment(string text, int number)
+        private static string StripComment(string text)
         {
             char quote = '\0';
             for (int i = 0; i < text.Length; i++)
@@ -598,10 +591,6 @@ public static class YamlReader
                 else if (c == '#' && (i == 0 || text[i - 1] == ' '))
                 {
                     return text[..i];
-                }
-                else if (c == '\t' && i > 0 && text[..i].Trim().Length == 0)
-                {
-                    throw new ConfigSyntaxException(number, "a tab is used for indentation");
                 }
             }
 

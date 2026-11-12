@@ -19,7 +19,7 @@ internal static class PipFiles
             return CheckOutcome.Error("Windows did not say where your user folders are.");
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "PIP_CONFIG_FILE", out string? configFile, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "PIP_CONFIG_FILE", out string? configFile, out _) is { } failed)
         {
             return failed;
         }
@@ -85,7 +85,7 @@ public sealed class PipSettingsCheck : ICheck
             ("PIP_EXTRA_INDEX_URL", "Extra package indexes", "Some", "None"),
         })
         {
-            if (PersistentEnvironment.Read(context.Probes.Registry, variable, out string? value, out string? source) is { } unread)
+            if (PersistentEnvironment.Read(context.Probes, variable, out string? value, out string? source) is { } unread)
             {
                 return unread;
             }

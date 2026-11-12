@@ -21,7 +21,7 @@ internal static class NpmFiles
             return CheckOutcome.Error("Windows did not say where your user folders are.");
         }
 
-        if (PersistentEnvironment.Read(probes.Registry, "NPM_CONFIG_USERCONFIG", out string? userConfig, out _) is { } failed)
+        if (PersistentEnvironment.Read(probes, "NPM_CONFIG_USERCONFIG", out string? userConfig, out _) is { } failed)
         {
             return failed;
         }

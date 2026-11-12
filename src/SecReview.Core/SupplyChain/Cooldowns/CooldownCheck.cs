@@ -58,9 +58,12 @@ public abstract class CooldownCheck : ICheck
     /// <summary>The length of time the environment variable's text stands for; by default read like a text value in a file.</summary>
     private protected virtual Cooldown ReadVariable(string text) => Read(new ConfigScalar(text, ScalarKind.Text, 0));
 
-    /// <summary>What the tool does when nothing is set: its built-in wait if it has one, and words for the finding.</summary>
-    private protected virtual (TimeSpan? Wait, string Words) WhenNotSet(ToolVersion? version) =>
-        (null, $"Not set ({Tool} does not wait by default)");
+    /// <summary>
+    /// What the tool does when nothing is set: its built-in wait if it has one, words for the
+    /// finding, and the summary when the usual sentence would not be true.
+    /// </summary>
+    private protected virtual (TimeSpan? Wait, string Words, string? Summary) WhenNotSet(ToolVersion? version) =>
+        (null, $"Not set ({Tool} does not wait by default)", null);
 
     public CheckOutcome Run(CheckContext context)
     {
@@ -94,7 +97,7 @@ public abstract class CooldownCheck : ICheck
         string? source = null;
         if (Variable is { } variable)
         {
-            if (PersistentEnvironment.Read(probes.Registry, variable, out string? text, out string? variableSource) is { } unread)
+            if (PersistentEnvironment.Read(probes, variable, out string? text, out string? variableSource) is { } unread)
             {
                 return unread;
             }
@@ -109,17 +112,25 @@ public abstract class CooldownCheck : ICheck
         {
             foreach (CooldownSource candidate in state.Sources)
             {
-                if (candidate.File.Root?.Find([.. candidate.KeyPath]) is not { } node)
+                // A file that could not be read may set the value, and it would win over the
+                // files after it: without it the answer is not known.
+                if (candidate.File.Root is not { } root)
+                {
+                    return CheckOutcome.Error(candidate.File.Problem ?? $"{candidate.File.Name} could not be read.");
+                }
+
+                if (root.Find([.. candidate.KeyPath]) is not { } node)
                 {
                     continue;
                 }
 
                 source = candidate.File.At(node);
-                if (node is not ConfigScalar scalar)
+                if (candidate.File.Single(node) is not { } scalar)
                 {
                     return CheckOutcome.Error($"{candidate.File.Name}: could not evaluate (line {node.Line}): the release wait is not a single value.");
                 }
 
+                source = candidate.File.At(scalar);
                 cooldown = Read(scalar);
                 break;
             }
@@ -128,19 +139,14 @@ public abstract class CooldownCheck : ICheck
         var findings = new List<Finding>();
         if (cooldown is not { } wait)
         {
-            // Nothing found. If a settings file could not be read, "not set" is not known.
-            if (state.Sources.FirstOrDefault(s => s.File.Problem is not null)?.File.Problem is { } problem)
-            {
-                return CheckOutcome.Error(problem);
-            }
-
-            (TimeSpan? builtIn, string words) = WhenNotSet(state.Version);
+            (TimeSpan? builtIn, string words, string? summary) = WhenNotSet(state.Version);
             findings.Add(Finding.Problem(Item, words, Expected));
             AddVersion(state, findings);
             return CheckOutcome.Fail(
-                builtIn is { } length
+                summary ??
+                (builtIn is { } length
                     ? $"{Tool} waits only its default of {Wording.Duration(length)} before installing a new release."
-                    : $"{Tool} installs new package versions the moment they are published.",
+                    : $"{Tool} installs new package versions the moment they are published."),
                 findings);
         }
 
