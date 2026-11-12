@@ -72,8 +72,18 @@ public sealed class CheckRunner
     }
 
     /// <summary>Runs the selected checks and returns one result each, in the order given.</summary>
+    public Task<IReadOnlyList<CheckResult>> RunAsync(IReadOnlyList<ICheck> checks, CancellationToken cancellation = default) =>
+        RunAsync(checks, onResult: null, cancellation);
+
+    /// <summary>Runs the selected checks and returns one result each, in the order given.</summary>
+    /// <param name="checks">The checks.</param>
+    /// <param name="onResult">
+    /// Called with each result as soon as it is there, from whichever thread finished it and in
+    /// whatever order the checks finish. It must not throw.
+    /// </param>
+    /// <param name="cancellation">Abandons the run.</param>
     public async Task<IReadOnlyList<CheckResult>> RunAsync(
-        IReadOnlyList<ICheck> checks, CancellationToken cancellation = default)
+        IReadOnlyList<ICheck> checks, Action<CheckResult>? onResult, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(checks);
 
@@ -97,6 +107,7 @@ public sealed class CheckRunner
             try
             {
                 results[slot] = await RunOneAsync(included[slot], cancellation).ConfigureAwait(false);
+                onResult?.Invoke(results[slot]);
             }
             finally
             {

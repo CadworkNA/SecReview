@@ -101,7 +101,7 @@ public sealed class ScanTests
 
         CollectionAssert.AreEqual(
             new[] { Standing.Passed, Standing.NeedsAttention, Standing.CouldNotCheck, Standing.NeedsAdmin, Standing.DoesNotApply },
-            scan.Checks.Select(ScanPresentation.StandingOf).ToArray());
+            scan.Checks.Select(check => ScanPresentation.StandingOf(check)).ToArray());
 
         // A slot nobody filled in, as it would be at run time.
         var unfilled = new Standing[1];

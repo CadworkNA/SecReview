@@ -52,17 +52,40 @@ public sealed class Scanner
     /// <param name="selection">Which checks to run.</param>
     /// <param name="isElevated">Whether this process has administrator rights.</param>
     /// <param name="cancellation">Abandons the scan.</param>
+    public Task<ScanResult> RunAsync(CheckSelection selection, bool isElevated, CancellationToken cancellation = default) =>
+        RunAsync(selection, isElevated, onResult: null, cancellation);
+
+    /// <param name="selection">Which checks to run.</param>
+    /// <param name="isElevated">Whether this process has administrator rights.</param>
+    /// <param name="onResult">
+    /// Called with each check as soon as it has answered, from another thread and in whatever
+    /// order the checks finish, so a window can fill in while the slow checks still run.
+    /// </param>
+    /// <param name="cancellation">Abandons the scan.</param>
     public async Task<ScanResult> RunAsync(
-        CheckSelection selection, bool isElevated, CancellationToken cancellation = default)
+        CheckSelection selection, bool isElevated, Action<ScannedCheck>? onResult, CancellationToken cancellation = default)
     {
         // Readings that several checks share are taken once per scan.
         var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, selection, isElevated);
-        IReadOnlyList<CheckResult> results = await runner.RunAsync(_checks, cancellation).ConfigureAwait(false);
-
         Dictionary<string, CheckDefinition> definitions = _checks.ToDictionary(c => c.Definition.Id, c => c.Definition);
-        return new ScanResult(
-            [.. results.Select(r => new ScannedCheck(definitions[r.CheckId], _texts[r.CheckId], r))],
-            _clock.GetUtcNow(),
-            isElevated);
+        ScannedCheck Scanned(CheckResult result) => new(definitions[result.CheckId], _texts[result.CheckId], result);
+
+        IReadOnlyList<CheckResult> results = await runner
+            .RunAsync(_checks, onResult is null ? null : result => onResult(Scanned(result)), cancellation)
+            .ConfigureAwait(false);
+
+        return new ScanResult([.. results.Select(Scanned)], _clock.GetUtcNow(), isElevated);
+    }
+
+    /// <summary>Runs one check again, with fresh readings ("Check again" on a row).</summary>
+    /// <exception cref="ArgumentException">No check has that identifier.</exception>
+    public async Task<ScannedCheck> RunOneAsync(string checkId, bool isElevated, CancellationToken cancellation = default)
+    {
+        ICheck check = _checks.FirstOrDefault(c => c.Definition.Id == checkId)
+            ?? throw new ArgumentException($"There is no check '{checkId}'.", nameof(checkId));
+
+        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, CheckSelection.All, isElevated);
+        CheckResult result = await runner.RunOneAsync(check, cancellation).ConfigureAwait(false);
+        return new ScannedCheck(check.Definition, _texts[checkId], result);
     }
 }
