@@ -157,6 +157,7 @@ $window = Start-Installed '--smoke-test'
 Assert ($window.WaitForExit(120000)) 'the installed window did not close.'
 Assert ($window.ExitCode -eq 0) "the installed SecReview --smoke-test ended with $($window.ExitCode)."
 Assert (Test-Path (Join-Path $data 'results.json')) "the installed window left no results in $data."
+Assert ((Get-Running).Count -eq 0) 'the window''s automated run left a SecReview process behind (it must not start the notification-area icon).'
 Write-Host "Installed programs: report with $($checks.Count) checks, window shown and closed, results kept in the user's profile."
 
 # --- 2. An upgrade while the notification-area icon is running, leaving out the sign-in entry.
