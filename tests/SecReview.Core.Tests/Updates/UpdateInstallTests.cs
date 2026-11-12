@@ -15,10 +15,11 @@ public sealed class UpdateInstallTests
     private const string SetupAddress = "https://github.com/made-up/secreview/releases/download/v1.4.0/SecReview-1.4.0-setup.exe";
     private const string Subject = "CN=Made Up Software Inc., O=Made Up Software Inc., L=Montreal, S=Quebec, C=CA";
     private const string Identity = "1.3.6.1.4.1.311.97.1.2.3.4";
+    private const string Root = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF";
 
     private static readonly DateTimeOffset Now = new(2026, 11, 11, 9, 0, 0, TimeSpan.Zero);
     private static readonly UpdateSource Source = new(ManifestAddress);
-    private static readonly PublisherIdentity Publisher = new(Subject, Identity);
+    private static readonly PublisherIdentity Publisher = new(Subject, Identity, Root);
     private static readonly byte[] Setup = Encoding.UTF8.GetBytes("made-up setup program " + new string('x', 5000));
 
     private string _folder = string.Empty;
@@ -39,7 +40,8 @@ public sealed class UpdateInstallTests
         }
     }
 
-    private static InstallerSignature Good(string version = "1.4.0.0") => new(true, true, Subject, ["1.3.6.1.5.5.7.3.3", Identity], version);
+    private static InstallerSignature Good(string version = "1.4.0.0", string product = "1.4.0") =>
+        new(true, true, Subject, ["1.3.6.1.5.5.7.3.3", Identity], Root, version, product);
 
     private static byte[] Manifest(string version = "1.4.0", byte[]? setup = null) => new UpdateManifest(
         version, new Uri(SetupAddress), Convert.ToHexStringLower(SHA256.HashData(setup ?? Setup)), Now.AddDays(-2), "Two new checks.").ToBytes();
@@ -76,7 +78,7 @@ public sealed class UpdateInstallTests
             seen.Select(step => step.Stage).Where(stage => stage != UpdateStage.Downloading).ToArray());
 
         (string path, IReadOnlyList<string> arguments) = host.Started.Single();
-        Assert.AreEqual(Path.Combine(_folder, "work", "SecReview-1.4.0-setup.exe"), path);
+        Assert.AreEqual(Path.Combine(_folder, "work", UpdateApplier.SetupFileName), path);
         CollectionAssert.AreEqual(new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/RELAUNCH=1" }, arguments.ToArray());
         CollectionAssert.AreEqual(Setup, File.ReadAllBytes(path), "what was checked is what was started");
         CollectionAssert.AreEqual(new[] { new Uri(ManifestAddress), new Uri(SetupAddress) }, downloader.Asked);
@@ -105,6 +107,7 @@ public sealed class UpdateInstallTests
         StringAssert.Contains(problem, "not the file the server announced");
         Assert.AreEqual(0, host.Started.Count);
         Assert.AreEqual(0, host.Inspected, "a file with the wrong checksum is not even looked at further");
+        Assert.IsFalse(File.Exists(Path.Combine(_folder, "work", UpdateApplier.SetupFileName)), "what was not installed does not stay");
     }
 
     [TestMethod]
@@ -112,7 +115,9 @@ public sealed class UpdateInstallTests
     [DataRow("no timestamp")]
     [DataRow("another publisher")]
     [DataRow("another identity")]
+    [DataRow("another root")]
     [DataRow("an older file")]
+    [DataRow("a pre-release passed off as the release")]
     [DataRow("another version")]
     public async Task ASetupProgramThatIsNotOursOrNotTheAnnouncedVersion_IsNotStarted(string what)
     {
@@ -122,8 +127,14 @@ public sealed class UpdateInstallTests
             "no timestamp" => Good() with { Timestamped = false },
             "another publisher" => Good() with { Subject = "CN=Somebody Else, O=Somebody Else, C=CA" },
             "another identity" => Good() with { KeyUsages = ["1.3.6.1.5.5.7.3.3", "1.3.6.1.4.1.311.97.9.9.9.9"] },
-            "an older file" => Good("1.2.0.0"),
-            _ => Good("1.5.0.0"),
+
+            // The right name and identifier, under a root somebody added to their own trusted roots.
+            "another root" => Good() with { RootSha256 = new string('A', 64) },
+            "an older file" => Good("1.2.0.0", "1.2.0"),
+
+            // Signed by us, same four numbers, but it is the beta.
+            "a pre-release passed off as the release" => Good("1.4.0.0", "1.4.0-beta.1"),
+            _ => Good("1.5.0.0", "1.5.0"),
         };
         var host = new Host(_folder) { Signature = signature };
 
@@ -132,6 +143,47 @@ public sealed class UpdateInstallTests
         Assert.AreEqual(UpdateInstallOutcome.Failed, outcome);
         StringAssert.Contains(problem, "Nothing was installed");
         Assert.AreEqual(0, host.Started.Count, what);
+        Assert.IsFalse(File.Exists(Path.Combine(_folder, "work", UpdateApplier.SetupFileName)), "what was not installed does not stay");
+    }
+
+    [TestMethod]
+    [DataRow("9.9.9+/../../../../ProgramData/made-up/a")]
+    [DataRow(@"9.9.9+\..\..\made-up")]
+    [DataRow("9.9.9+build")]
+    [DataRow("9.9.9:stream")]
+    [DataRow(" 9.9.9")]
+    [DataRow("9.9.9 ")]
+    [DataRow("V9.9.9")]
+    [DataRow("9.9.9-rc/1")]
+    [DataRow("9.9")]
+    public async Task AVersionThatIsNotPlainlyAVersion_IsRefused_AndNothingIsWrittenAnywhere(string version)
+    {
+        string json = $$"""{"version":{{System.Text.Json.JsonSerializer.Serialize(version)}},"url":"{{SetupAddress}}","sha256":"{{new string('a', 64)}}","published":"2026-11-01T10:00:00Z","notes":""}""";
+        var downloader = new Downloader { Manifest = Encoding.UTF8.GetBytes(json), Setup = Setup };
+
+        (UpdateInstallOutcome outcome, string? problem, _, Host host) = await Install(downloader);
+
+        Assert.AreEqual(UpdateInstallOutcome.Failed, outcome);
+        StringAssert.Contains(problem, "names no proper version");
+        Assert.AreEqual(1, downloader.Asked.Count, "the setup program was never fetched");
+        Assert.AreEqual(0, host.Started.Count);
+        Assert.IsFalse(Directory.Exists(Path.Combine(_folder, "work")), "no folder was even made");
+        Assert.IsFalse(UpdateRules.IsReleaseVersion(version));
+        Assert.IsFalse(UpdateRules.IsNewer(version, "1.3.0"));
+    }
+
+    [TestMethod]
+    public void AReleaseVersion_IsThreeNumbersAndPerhapsAPreReleasePart()
+    {
+        foreach (string good in new[] { "0.0.0", "1.4.0", "10.20.30", "1.4.0-rc.1", "0.0.0-ci.12", "0.0.0-dev", "1.0.0-beta-2" })
+        {
+            Assert.IsTrue(UpdateRules.IsReleaseVersion(good), good);
+        }
+
+        foreach (string? bad in new[] { null, "", "1", "1.4", "1.4.0.0", "01.4.0", "1.4.0-", "1.4.0\n", "1.4.0-rc 1", "v1.4.0", "1.4.0+1", new string('1', 70) + ".0.0" })
+        {
+            Assert.IsFalse(UpdateRules.IsReleaseVersion(bad), bad);
+        }
     }
 
     [TestMethod]
@@ -139,16 +191,20 @@ public sealed class UpdateInstallTests
     {
         Assert.IsNull(UpdateApplier.Refusal(Good(), Publisher, "1.4.0", "1.3.0"));
         Assert.IsNull(UpdateApplier.Refusal(Good() with { KeyUsages = [] }, Publisher with { IdentityOid = string.Empty }, "1.4.0", "1.3.0"), "a publisher without such an identifier");
+        Assert.IsNull(UpdateApplier.Refusal(Good() with { RootSha256 = Root.ToLowerInvariant() }, Publisher, "1.4.0", "1.3.0"), "a hash is the same in either case");
+        Assert.IsNotNull(UpdateApplier.Refusal(Good() with { RootSha256 = string.Empty }, Publisher, "1.4.0", "1.3.0"));
+        Assert.IsNotNull(UpdateApplier.Refusal(Good(), Publisher with { RootSha256 = string.Empty }, "1.4.0", "1.3.0"), "a build that names no root installs nothing");
 
         Assert.IsNotNull(UpdateApplier.Refusal(Good() with { Subject = Subject.ToUpperInvariant() }, Publisher, "1.4.0", "1.3.0"));
         Assert.IsNotNull(UpdateApplier.Refusal(Good() with { Subject = Subject + ", OU=Extra" }, Publisher, "1.4.0", "1.3.0"));
         Assert.IsNotNull(UpdateApplier.Refusal(Good() with { KeyUsages = [] }, Publisher, "1.4.0", "1.3.0"));
-        Assert.IsNotNull(UpdateApplier.Refusal(Good(), new PublisherIdentity(string.Empty, string.Empty), "1.4.0", "1.3.0"), "a build that names no publisher installs nothing");
+        Assert.IsNotNull(UpdateApplier.Refusal(Good(), new PublisherIdentity(string.Empty, string.Empty, string.Empty), "1.4.0", "1.3.0"), "a build that names no publisher installs nothing");
 
         // The same version again, or an older one, even when properly signed.
-        Assert.IsNotNull(UpdateApplier.Refusal(Good("1.3.0.0"), Publisher, "1.3.0", "1.3.0"));
-        Assert.IsNotNull(UpdateApplier.Refusal(Good("1.2.0.0"), Publisher, "1.2.0", "1.3.0"));
-        Assert.IsNull(UpdateApplier.Refusal(Good("1.4.0.0"), Publisher, "1.4.0-rc.2", "1.4.0-rc.1"));
+        Assert.IsNotNull(UpdateApplier.Refusal(Good("1.3.0.0", "1.3.0"), Publisher, "1.3.0", "1.3.0"));
+        Assert.IsNotNull(UpdateApplier.Refusal(Good("1.2.0.0", "1.2.0"), Publisher, "1.2.0", "1.3.0"));
+        Assert.IsNull(UpdateApplier.Refusal(Good("1.4.0.0", "1.4.0-rc.2"), Publisher, "1.4.0-rc.2", "1.4.0-rc.1"));
+        Assert.IsNotNull(UpdateApplier.Refusal(Good("1.4.0.0", "1.4.0-rc.1"), Publisher, "1.4.0-rc.2", "1.4.0-rc.1"), "rc.1 again, announced as rc.2");
     }
 
     [TestMethod]
@@ -162,7 +218,7 @@ public sealed class UpdateInstallTests
 
         foreach ((string reason, Func<Downloader, Task<(UpdateInstallOutcome, string?, List<UpdateProgress>, Host)>> run) in new (string, Func<Downloader, Task<(UpdateInstallOutcome, string?, List<UpdateProgress>, Host)>>)[]
         {
-            ("does not install updates", d => Install(d, publisher: new PublisherIdentity(string.Empty, string.Empty))),
+            ("does not install updates", d => Install(d, publisher: new PublisherIdentity(string.Empty, string.Empty, string.Empty))),
             ("does not install updates", d => Install(d, source: new UpdateSource(null))),
             ("organisation", d => Install(d, policy: new UpdatePolicy(NoUpdateCheck: false, NoSelfUpdate: true))),
             ("organisation", d => Install(d, policy: new UpdatePolicy(NoUpdateCheck: true, NoSelfUpdate: false))),
@@ -284,6 +340,8 @@ public sealed class UpdateInstallTests
         Assert.IsTrue(signed.Timestamped);
         StringAssert.Contains(signed.Subject, "O=Microsoft Corporation");
         Assert.IsTrue(signed.KeyUsages.Contains("1.3.6.1.5.5.7.3.3"), "signed for code signing");
+        Assert.AreEqual(64, signed.RootSha256.Length, "the root Windows chained it to");
+        Assert.IsTrue(signed.ProductVersion.Length > 0);
         StringAssert.Matches(signed.FileVersion, new System.Text.RegularExpressions.Regex(@"^\d+\.\d+\.\d+\.\d+$"));
 
         // Not ours to install: Microsoft is not SecReview's publisher.

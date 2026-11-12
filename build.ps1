@@ -492,6 +492,11 @@ if ($Installer) {
         if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
             throw "The setup program is not validly signed and timestamped ($($signature.Status))."
         }
+        # By the publisher installed copies accept updates from, or they would refuse this one.
+        $expected = ([xml] (Get-Content (Join-Path $root 'signing\Publisher.props') -Raw)).Project.PropertyGroup.PublisherSubject
+        if ($signature.SignerCertificate.Subject -cne $expected) {
+            throw "The setup program is signed by '$($signature.SignerCertificate.Subject)', not by the publisher in signing\Publisher.props."
+        }
     }
     'Setup: {0}, {1:N1} MB, SHA-256 {2}' -f $setup.Name, ($setup.Length / 1MB), (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 }

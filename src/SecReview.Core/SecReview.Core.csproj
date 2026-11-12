@@ -50,6 +50,7 @@
   <ItemGroup Condition="'$(PublisherSubject)' != ''">
     <AssemblyMetadata Include="PublisherSubject" Value="$(PublisherSubject)" />
     <AssemblyMetadata Include="PublisherIdentityOid" Value="$(PublisherIdentityOid)" />
+    <AssemblyMetadata Include="PublisherRootSha256" Value="$(PublisherRootSha256)" />
   </ItemGroup>
 
   <ItemGroup>

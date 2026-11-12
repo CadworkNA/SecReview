@@ -19,15 +19,23 @@ namespace SecReview.Updates;
 /// "enhanced key usage" that stays the same while the certificates themselves change every
 /// few days); empty when the publisher's certificates have none.
 /// </param>
-public sealed record PublisherIdentity(string Subject, string IdentityOid)
+/// <param name="RootSha256">
+/// The SHA-256 of the root certificate the publisher's certificates chain to. Without it,
+/// "signed by this publisher" would mean "by anyone with a certificate of that name under any
+/// root this PC or this user trusts", and a user's own trusted roots can be added to without
+/// administrator rights.
+/// </param>
+public sealed record PublisherIdentity(string Subject, string IdentityOid, string RootSha256)
 {
     public const string SubjectKey = "PublisherSubject";
     public const string IdentityKey = "PublisherIdentityOid";
+    public const string RootKey = "PublisherRootSha256";
 
     /// <summary>The publisher compiled into this build.</summary>
-    public static PublisherIdentity Compiled { get; } = new(Metadata(SubjectKey), Metadata(IdentityKey));
+    public static PublisherIdentity Compiled { get; } = new(Metadata(SubjectKey), Metadata(IdentityKey), Metadata(RootKey));
 
-    public bool IsConfigured => Subject.Length > 0;
+    /// <summary>Whether this build names a publisher: the subject and the root, both.</summary>
+    public bool IsConfigured => Subject.Length > 0 && RootSha256.Length == 64;
 
     private static string Metadata(string key) =>
         typeof(PublisherIdentity).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value?.Trim() ?? string.Empty;
@@ -38,9 +46,12 @@ public sealed record PublisherIdentity(string Subject, string IdentityOid)
 /// <param name="Timestamped">The signature carries the time it was made, so it outlives its certificate.</param>
 /// <param name="Subject">The signer's subject.</param>
 /// <param name="KeyUsages">The signer certificate's enhanced key usages.</param>
+/// <param name="RootSha256">The SHA-256 of the root certificate the signer's chain ends in, as Windows built it.</param>
 /// <param name="FileVersion">The version in the file's own version information ("1.4.0.0"); empty when it has none.</param>
+/// <param name="ProductVersion">The product version in the same information ("1.4.0" or "1.4.0-rc.1"): the version in full.</param>
 /// <param name="Problem">Why it is not valid, in words fit to show; null when it is.</param>
-public sealed record InstallerSignature(bool Valid, bool Timestamped, string Subject, IReadOnlyList<string> KeyUsages, string FileVersion, string? Problem = null);
+public sealed record InstallerSignature(
+    bool Valid, bool Timestamped, string Subject, IReadOnlyList<string> KeyUsages, string RootSha256, string FileVersion, string ProductVersion, string? Problem = null);
 
 /// <summary>The parts of installing an update that touch Windows; the rules are in <see cref="UpdateApplier"/>.</summary>
 public interface IUpdateHost
@@ -126,9 +137,9 @@ public sealed record UpdateProgress(UpdateStage Stage, long Done = 0, long Total
 /// An update is installed only when all of this holds: the build has an update address and a
 /// publisher compiled in; the organisation allows it; the server's newest version is higher
 /// than the one running; the downloaded file has the SHA-256 the server names; Windows
-/// accepts its signature, which is timestamped; it is signed by the compiled-in publisher; and
-/// the file's own version is that higher version. Anything else ends with a reason and
-/// nothing installed.
+/// accepts its signature, which is timestamped; it is signed by the compiled-in publisher,
+/// under the compiled-in root; and the file's own version is exactly that higher version.
+/// Anything else ends with a reason and nothing installed.
 /// </summary>
 public static class UpdateApplier
 {
@@ -256,8 +267,41 @@ public static class UpdateApplier
             return $"SecReview {installed} is the newest version already.";
         }
 
-        // Into a folder only administrators can touch, under a name of our own choosing.
-        string setup = Path.Combine(host.CreateWorkFolder(), $"SecReview-{manifest.Version}-setup.exe");
+        // Into a folder only administrators can touch, under a fixed name: nothing the server
+        // says takes part in where the file goes.
+        string folder = host.CreateWorkFolder();
+        string setup = Path.Combine(folder, SetupFileName);
+        string? refused = await DownloadAndCheckAsync(setup, manifest, say, publisher, installed, downloader, host, pipe, cancellation).ConfigureAwait(false);
+        if (refused is not null)
+        {
+            // What was not installed does not stay on the PC.
+            try
+            {
+                File.Delete(setup);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Removed with the folder at the next update.
+            }
+        }
+
+        return refused;
+    }
+
+    /// <summary>The name the downloaded setup program is saved under.</summary>
+    public const string SetupFileName = "SecReview-setup.exe";
+
+    private static async Task<string?> DownloadAndCheckAsync(
+        string setup,
+        UpdateManifest manifest,
+        Func<UpdateProgress, Task> say,
+        PublisherIdentity publisher,
+        string installed,
+        IUpdateDownloader downloader,
+        IUpdateHost host,
+        NamedPipeClientStream pipe,
+        CancellationToken cancellation)
+    {
         await using (var file = new FileStream(setup, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
             long lastSaid = -1;
@@ -328,15 +372,17 @@ public static class UpdateApplier
         }
 
         if (!string.Equals(signature.Subject, publisher.Subject, StringComparison.Ordinal) ||
+            !string.Equals(signature.RootSha256, publisher.RootSha256, StringComparison.OrdinalIgnoreCase) ||
             (publisher.IdentityOid.Length > 0 && !signature.KeyUsages.Contains(publisher.IdentityOid, StringComparer.Ordinal)))
         {
             return $"The downloaded update is not signed by SecReview's publisher.{Nothing}";
         }
 
-        // The file's own version: the announced one, and higher than what runs. A signed but
-        // older setup program must not be installed over a newer SecReview.
+        // The file's own version, which the signature covers: exactly the announced one, and
+        // higher than what runs. A signed but older setup program must not be installed over
+        // a newer SecReview, and a signed pre-release must not pass for the release.
         string numbers = offered.Split('-', 2)[0];
-        if (signature.FileVersion != numbers + ".0" || !UpdateRules.IsNewer(offered, installed))
+        if (signature.ProductVersion != offered || signature.FileVersion != numbers + ".0" || !UpdateRules.IsNewer(offered, installed))
         {
             return $"The downloaded update is not the announced version.{Nothing}";
         }
@@ -371,6 +417,9 @@ public static class UpdateInstall
 
     private const int MaximumBytes = 64 * 1024;
 
+    /// <summary>How long the window waits for the helper to connect once Windows has started it.</summary>
+    internal static TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
     public static Task<(UpdateInstallOutcome Outcome, string? Problem)> RunAsync(
         IElevatedLauncher launcher, Action<UpdateProgress> onProgress, CancellationToken cancellation = default) =>
         RunAsync(launcher, onProgress, alsoThisUser: false, cancellation);
@@ -391,9 +440,23 @@ public static class UpdateInstall
                 return (UpdateInstallOutcome.Cancelled, null);
             }
 
+            // The helper connects as soon as it starts; one that has not after half a minute
+            // never will (it could not start, or was ended).
+            using (var connect = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
+            {
+                connect.CancelAfter(ConnectTimeout);
+                try
+                {
+                    await AdministratorScan.WaitForHelperAsync(pipe, helper.ProcessId, connect.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+                {
+                    return (UpdateInstallOutcome.Failed, "The update helper did not start. Nothing was installed.");
+                }
+            }
+
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             limit.CancelAfter(UpdateApplier.Lifetime + TimeSpan.FromSeconds(30));
-            await AdministratorScan.WaitForHelperAsync(pipe, helper.ProcessId, limit.Token).ConfigureAwait(false);
 
             UpdateProgress? last = null;
             long total = 0;

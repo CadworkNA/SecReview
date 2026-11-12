@@ -64,7 +64,7 @@ public sealed record UpdateState
         }
 
         // "Available" must still be newer than what runs now, and well-formed.
-        if (Outcome == UpdateOutcome.Available && (Available is null || !UpdateRules.IsNewer(Available, installed)))
+        if (Outcome == UpdateOutcome.Available && (!UpdateRules.IsReleaseVersion(Available) || !UpdateRules.IsNewer(Available, installed)))
         {
             return new UpdateState();
         }

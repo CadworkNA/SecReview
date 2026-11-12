@@ -18,6 +18,13 @@ public sealed class UpdateService
     private readonly Func<UpdatePolicy> _policy;
     private readonly double _spread;
     private int _looking;
+    private long? _lastLook;
+
+    /// <summary>
+    /// However the kept answer reads (or cannot be written), one process asks the server at
+    /// most this often by itself.
+    /// </summary>
+    public static readonly TimeSpan MinimumGap = TimeSpan.FromMinutes(30);
 
     /// <param name="source">Where this build looks.</param>
     /// <param name="store">Where what was found is kept.</param>
@@ -81,6 +88,11 @@ public sealed class UpdateService
             return known;
         }
 
+        if (!now && _lastLook is { } last && _clock.GetElapsedTime(last) < MinimumGap)
+        {
+            return known;
+        }
+
         if (Interlocked.Exchange(ref _looking, 1) != 0)
         {
             return known;
@@ -88,6 +100,7 @@ public sealed class UpdateService
 
         try
         {
+            _lastLook = _clock.GetTimestamp();
             IUpdateTransport transport = _transport();
             try
             {

@@ -56,6 +56,8 @@ switch (CliArguments.Parse(args))
 
         // Nothing is printed, as above. Everything it works with is compiled in or read from
         // the PC by this process: the update address, the publisher, the organisation's policy.
+        // Not even the folder it was started in is kept.
+        Environment.CurrentDirectory = Environment.SystemDirectory;
         using (var downloader = new HttpUpdateTransport(UpdateSource.Compiled, timeout: TimeSpan.FromMinutes(10)))
         {
             return await UpdateApplier.RunAsync(

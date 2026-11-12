@@ -186,7 +186,8 @@ silent updater.
   A look that fails is shown as such, with the reason, and never reads as "up to date".
 - **`latest.json`** is written by the release workflow and attached to the release:
   version, the setup program's address and SHA-256, the date, what is new. Anything not
-  wholly right makes the manifest unusable.
+  wholly right makes the manifest unusable. A version is three numbers and, optionally, a
+  pre-release part, and nothing else; no text from the server takes part in a file name.
 - **"Update now"** starts `SecReviewCli.exe --apply-update --pipe <name>` through the Windows
   prompt. The helper takes only the pipe to report on. It reads the manifest again itself,
   downloads the setup program into a folder only administrators can touch, holds the file
@@ -194,11 +195,17 @@ silent updater.
   - the server's version is higher than the one running;
   - the file has the SHA-256 the manifest names;
   - Windows accepts its signature, with revocation checked, and it is timestamped;
-  - it is signed by the publisher in `signing\Publisher.props` (subject and the signing
-    service's identifier for this publisher), which is compiled into signed builds only;
-  - the file's own version is the announced one.
-  Then setup runs silently, closes SecReview, and opens the window again for the user who
-  asked. With another account's administrator rights the user opens it again themselves.
+  - it is signed by the publisher in `signing\Publisher.props`, which is compiled into
+    signed builds only: the certificate's subject, the signing service's identifier for
+    this publisher, and the root certificate the chain ends in. The root matters because
+    the helper runs as the user who asked, and a user's own trusted roots can be added to
+    without administrator rights;
+  - the file's own version, which the signature covers, is exactly the announced one (so a
+    signed pre-release cannot pass for the release).
+  A file that fails any of this is deleted.
+  Then setup runs silently, with the administrators-only folder as its temporary folder,
+  closes SecReview, and opens the window again for the user who asked. With another
+  account's administrator rights the user opens it again themselves.
 - **The organisation decides** (`HKLM\Software\Policies\SecReview`): `NoUpdateCheck`
   switches looking off; `NoSelfUpdate` leaves the notice and takes away "Update now". A
   policy that cannot be read counts as set.

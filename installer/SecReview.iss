@@ -104,7 +104,7 @@ Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Description: 
 ; After an update that SecReview installed itself (silent, with /RELAUNCH=1): the window opens
 ; again, the same way. SecReview's helper asks for this only when the user who asked for the
 ; update is the one whose administrator rights are used.
-Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Flags: nowait; Check: RelaunchAsked
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Flags: nowait runasoriginaluser; Check: RelaunchAsked
 
 [UninstallDelete]
 ; Where SecReview's own updates are downloaded to (administrators only): what the last one left.

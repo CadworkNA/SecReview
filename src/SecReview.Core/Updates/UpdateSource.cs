@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using SecReview.Malware;
 using SecReview.Probing;
 
@@ -88,8 +89,20 @@ public readonly record struct UpdatePolicy(bool NoUpdateCheck, bool NoSelfUpdate
 }
 
 /// <summary>The rules of updating that need no network and no Windows.</summary>
-public static class UpdateRules
+public static partial class UpdateRules
 {
+    /// <summary>
+    /// Whether a text is a version as SecReview's releases write it: three numbers and,
+    /// optionally, a pre-release part of letters, digits, dots and dashes. Nothing else: no
+    /// leading "v", no "+build", no spaces, nothing that could mean something in a file name
+    /// or a sentence. A version from a server or a file is used only when it has this form.
+    /// </summary>
+    public static bool IsReleaseVersion([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? text) =>
+        text is { Length: > 0 and <= 64 } && ReleaseVersion().IsMatch(text);
+
+    [GeneratedRegex(@"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ReleaseVersion();
+
     /// <summary>SecReview looks for updates this often.</summary>
     public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
 
@@ -106,7 +119,8 @@ public static class UpdateRules
         ArgumentNullException.ThrowIfNull(offered);
         ArgumentNullException.ThrowIfNull(installed);
 
-        if (PackageVersions.Compare(PackageEcosystem.Npm, offered, installed) is not > 0)
+        if (!IsReleaseVersion(offered) || !IsReleaseVersion(installed) ||
+            PackageVersions.Compare(PackageEcosystem.Npm, offered, installed) is not > 0)
         {
             return false;
         }

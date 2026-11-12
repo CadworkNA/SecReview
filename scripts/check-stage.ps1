@@ -146,10 +146,24 @@ if ($OursSigned) {
         $usages = @($certificate.Extensions |
             Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] } |
             ForEach-Object { $_.EnhancedKeyUsages } | ForEach-Object { $_.Value })
+        # The root the certificate chains to, as Windows builds the chain.
+        $rootHash = ''
+        $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+        try {
+            $chain.ChainPolicy.RevocationMode = 'NoCheck'
+            $chain.ChainPolicy.VerificationFlags = 'IgnoreNotTimeValid'
+            if ($chain.Build($certificate)) {
+                $rootHash = $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256)
+            }
+        } finally {
+            $chain.Dispose()
+        }
         if ($certificate.Subject -cne $publisher.PublisherSubject) {
             $problems.Add("${name}: signed by '$($certificate.Subject)', not by the publisher in signing\Publisher.props")
         } elseif ($publisher.PublisherIdentityOid -and $publisher.PublisherIdentityOid -notin $usages) {
             $problems.Add("${name}: the signing certificate does not carry the publisher's identifier from signing\Publisher.props")
+        } elseif ($rootHash -ne $publisher.PublisherRootSha256) {
+            $problems.Add("${name}: the signing certificate chains to root '$rootHash', not to the one in signing\Publisher.props")
         } else {
             Write-Host "${name}: signed by $($certificate.GetNameInfo('SimpleName', $false)), the publisher in signing\Publisher.props."
         }

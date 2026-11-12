@@ -146,8 +146,22 @@ public sealed class HttpUpdateTransport : IUpdateDownloader, IDisposable
         _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(ProductInfo.Name, ProductInfo.Version.Replace('+', '.')));
     }
 
-    public Task<byte[]> GetAsync(Uri url, int maximumBytes, CancellationToken cancellation) =>
-        ReadAsync(url, maximumBytes, destination: null, progress: null, cancellation);
+    /// <summary>A small file (the list of versions) arrives within this time, headers and body, or not at all.</summary>
+    public static readonly TimeSpan SmallFileLimit = TimeSpan.FromSeconds(60);
+
+    public async Task<byte[]> GetAsync(Uri url, int maximumBytes, CancellationToken cancellation)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        limit.CancelAfter(SmallFileLimit);
+        try
+        {
+            return await ReadAsync(url, maximumBytes, destination: null, progress: null, limit.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            throw new UpdateTransportException("the server took too long to answer");
+        }
+    }
 
     /// <summary>
     /// Fetches a file into a stream (the setup program, into a file). Throws
@@ -191,7 +205,12 @@ public sealed class HttpUpdateTransport : IUpdateDownloader, IDisposable
                         throw new UpdateTransportException("the server sent SecReview on without saying where");
                     }
 
-                    current = location.IsAbsoluteUri ? location : new Uri(current, location);
+                    if (!location.IsAbsoluteUri && !Uri.TryCreate(current, location, out location!))
+                    {
+                        throw new UpdateTransportException("the server sent SecReview on to something that is no address");
+                    }
+
+                    current = location;
                     continue;
                 }
 

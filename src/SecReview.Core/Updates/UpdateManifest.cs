@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using SecReview.Malware;
 
 namespace SecReview.Updates;
 
@@ -61,7 +60,7 @@ public sealed record UpdateManifest(string Version, Uri Url, string Sha256, Date
             return null;
         }
 
-        if (stored.Version.Length > 64 || !PackageVersions.IsVersion(PackageEcosystem.Npm, stored.Version) || stored.Version.StartsWith('v'))
+        if (!UpdateRules.IsReleaseVersion(stored.Version))
         {
             problem = "the list of versions names no proper version";
             return null;

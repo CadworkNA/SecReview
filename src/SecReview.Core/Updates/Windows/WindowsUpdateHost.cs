@@ -60,6 +60,9 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
                 throw new IOException("The folder for updates is not an ordinary folder.");
             }
 
+            // Whoever made it, from now on it is SYSTEM's and administrators' only.
+            parentFolder.SetAccessControl(security);
+
             foreach (FileSystemInfo old in parentFolder.EnumerateFileSystemInfos())
             {
                 try
@@ -92,10 +95,6 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
     public InstallerSignature Inspect(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        string version = FileVersionInfo.GetVersionInfo(path) is { FileVersion: not null } info
-            ? $"{info.FileMajorPart}.{info.FileMinorPart}.{info.FileBuildPart}.{info.FilePrivatePart}"
-            : string.Empty;
-
         fixed (char* file = path)
         {
             var fileInfo = new WINTRUST_FILE_INFO { cbStruct = (uint)sizeof(WINTRUST_FILE_INFO), pcwszFilePath = file };
@@ -119,16 +118,32 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
             {
                 if (result != 0)
                 {
-                    return new InstallerSignature(false, false, string.Empty, [], version, $"Windows answered 0x{result:X8}");
+                    return Invalid($"Windows answered 0x{result:X8}");
                 }
 
                 CRYPT_PROVIDER_DATA* provider = PInvoke.WTHelperProvDataFromStateData(data.hWVTStateData);
                 CRYPT_PROVIDER_SGNR* signer = provider is null ? null : PInvoke.WTHelperGetProvSignerFromChain(provider, 0, false, 0);
                 CRYPT_PROVIDER_CERT* signerCertificate = signer is null ? null : PInvoke.WTHelperGetProvCertFromChain(signer, 0);
-                if (signerCertificate is null || signerCertificate->pCert is null)
+                if (signerCertificate is null || signerCertificate->pCert is null || signer->csCertChain == 0)
                 {
-                    return new InstallerSignature(false, false, string.Empty, [], version, "Windows does not say who signed it");
+                    return Invalid("Windows does not say who signed it");
                 }
+
+                // The far end of the chain Windows built and accepted: the root.
+                CRYPT_PROVIDER_CERT* rootCertificate = PInvoke.WTHelperGetProvCertFromChain(signer, signer->csCertChain - 1);
+                if (rootCertificate is null || rootCertificate->pCert is null)
+                {
+                    return Invalid("Windows does not say which root the signature chains to");
+                }
+
+                using var root = new X509Certificate2((nint)rootCertificate->pCert);
+                string rootHash = root.GetCertHashString(HashAlgorithmName.SHA256);
+
+                // Read only now that the file is known to be unchanged since it was signed:
+                // the version information is part of what the signature covers.
+                FileVersionInfo info = FileVersionInfo.GetVersionInfo(path);
+                string version = info.FileVersion is null ? string.Empty : $"{info.FileMajorPart}.{info.FileMinorPart}.{info.FileBuildPart}.{info.FilePrivatePart}";
+                string product = info.ProductVersion?.Trim() ?? string.Empty;
 
                 // A copy of the certificate Windows just verified; freed with the object.
                 using var certificate = new X509Certificate2((nint)signerCertificate->pCert);
@@ -140,7 +155,7 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
                 ];
 
                 // A timestamp shows as a counter-signature on the signer.
-                return new InstallerSignature(true, signer->csCounterSigners > 0, certificate.Subject, usages, version);
+                return new InstallerSignature(true, signer->csCounterSigners > 0, certificate.Subject, usages, rootHash, version, product);
             }
             finally
             {
@@ -150,6 +165,8 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
             }
         }
     }
+
+    private static InstallerSignature Invalid(string problem) => new(false, false, string.Empty, [], string.Empty, string.Empty, string.Empty, problem);
 
     public void Start(string path, IReadOnlyList<string> arguments)
     {
@@ -161,6 +178,13 @@ public sealed unsafe class WindowsUpdateHost(bool checkRevocation = true) : IUpd
             CreateNoWindow = true,
             WorkingDirectory = Environment.SystemDirectory,
         };
+
+        // Setup unpacks itself into the temporary folder before it runs. Inherited from the
+        // user who asked, that would be a folder the user can write to; this one only
+        // administrators can.
+        string temporary = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        start.Environment["TEMP"] = temporary;
+        start.Environment["TMP"] = temporary;
         foreach (string argument in arguments)
         {
             start.ArgumentList.Add(argument);
