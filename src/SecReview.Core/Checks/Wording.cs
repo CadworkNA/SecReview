@@ -21,4 +21,29 @@ public static class Wording
 
     /// <summary>"" for one, "s" for several.</summary>
     public static string Plural(int count) => count == 1 ? string.Empty : "s";
+
+    /// <summary>A length of time in the largest unit that fits: "45 s", "15 min", "2 h", "3 days".</summary>
+    public static string Duration(TimeSpan time)
+    {
+        if (time < TimeSpan.FromMinutes(1))
+        {
+            return $"{(long)time.TotalSeconds} s";
+        }
+
+        if (time < TimeSpan.FromHours(2))
+        {
+            return $"{(long)Math.Round(time.TotalMinutes)} min";
+        }
+
+        if (time < TimeSpan.FromDays(2))
+        {
+            return $"{(long)Math.Round(time.TotalHours)} h";
+        }
+
+        return $"{(long)Math.Floor(time.TotalDays)} days";
+    }
+
+    /// <summary>A date the same way everywhere: "12 October 2027".</summary>
+    public static string Date(DateOnly date) =>
+        date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
 }

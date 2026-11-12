@@ -107,14 +107,20 @@ internal static class SshKeyFile
             var reader = new SshReader(data);
             if (!reader.TrySkip(OpenSshMagic) ||
                 !reader.TryReadString(out ReadOnlySpan<byte> cipher) ||
-                !reader.TryReadString(out _) || // key derivation name
+                !reader.TryReadString(out ReadOnlySpan<byte> derivation) ||
                 !reader.TryReadString(out _) || // key derivation options
                 !reader.TryReadUInt32(out uint keys))
             {
                 return new SshKeyInfo(SshKeyKind.Unknown, null, null);
             }
 
-            bool hasPassphrase = !cipher.SequenceEqual("none"u8);
+            // "none" with no key derivation is an unprotected key; a cipher OpenSSH knows, with
+            // its key derivation, is a protected one. Anything else is not a key OpenSSH would
+            // accept, and nothing is concluded from it.
+            bool? hasPassphrase =
+                cipher.SequenceEqual("none"u8) && derivation.SequenceEqual("none"u8) ? false
+                : IsKnownCipher(cipher) && derivation.SequenceEqual("bcrypt"u8) ? true
+                : null;
             if (keys < 1 || !reader.TryReadString(out ReadOnlySpan<byte> publicBlob) ||
                 ParsePublicBlob(publicBlob) is not { } key)
             {
@@ -129,6 +135,14 @@ internal static class SshKeyFile
             CryptographicOperations.ZeroMemory(data);
         }
     }
+
+    /// <summary>The ciphers OpenSSH can protect a private key file with.</summary>
+    private static bool IsKnownCipher(ReadOnlySpan<byte> name) =>
+        name.SequenceEqual("aes256-ctr"u8) || name.SequenceEqual("aes192-ctr"u8) || name.SequenceEqual("aes128-ctr"u8) ||
+        name.SequenceEqual("aes256-cbc"u8) || name.SequenceEqual("aes192-cbc"u8) || name.SequenceEqual("aes128-cbc"u8) ||
+        name.SequenceEqual("3des-cbc"u8) ||
+        name.SequenceEqual("aes256-gcm@openssh.com"u8) || name.SequenceEqual("aes128-gcm@openssh.com"u8) ||
+        name.SequenceEqual("chacha20-poly1305@openssh.com"u8);
 
     /// <summary>
     /// The older PEM formats. "RSA", "DSA" and "EC" files name their algorithm in the first line
@@ -188,9 +202,15 @@ internal static class SshKeyFile
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i].Trim();
-            if (line.StartsWith("Encryption:", StringComparison.Ordinal))
+            if (line.StartsWith("Encryption:", StringComparison.Ordinal) && hasPassphrase is null)
             {
-                hasPassphrase = !line["Encryption:".Length..].Trim().Equals("none", StringComparison.Ordinal);
+                // PuTTY writes exactly one of these two; anything else is not a file it would read.
+                hasPassphrase = line["Encryption:".Length..].Trim() switch
+                {
+                    "none" => false,
+                    "aes256-cbc" => true,
+                    _ => null,
+                };
             }
             else if (line.StartsWith("Public-Lines:", StringComparison.Ordinal) &&
                 int.TryParse(line["Public-Lines:".Length..].Trim(), out int count) &&

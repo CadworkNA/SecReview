@@ -88,6 +88,9 @@ internal sealed class FakeProbes
     /// <summary>When the fake files were last changed.</summary>
     public DateTimeOffset FileTime { get; set; } = new(2026, 1, 10, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>When set, every service read ends this way.</summary>
+    public ProbeFailure? ServicesFailure { get; set; }
+
     /// <summary>When set, every file and folder read ends this way (for example access denied).</summary>
     public ProbeFailure? FilesFailure { get; set; }
 
@@ -273,7 +276,9 @@ internal sealed class FakeProbes
     private sealed class ServiceProbe(FakeProbes owner) : IServiceProbe
     {
         public ProbeResult<ServiceInfo> GetService(string name) =>
-            owner._services.TryGetValue(name, out var service) ? service : ProbeFailure.NotFound();
+            owner.ServicesFailure is { } failure ? failure
+            : owner._services.TryGetValue(name, out var service) ? service
+            : ProbeFailure.NotFound();
     }
 
     private sealed class FirewallProbe(FakeProbes owner) : IFirewallProbe

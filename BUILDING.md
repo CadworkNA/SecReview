@@ -35,7 +35,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 |------|----------|
 | `src/SecReview.Core` | Everything without UI: checks, rules, readers, command-line parsing. All logic lives here and is unit-tested |
 | `src/SecReview.Core/Checks` | The check model (`ICheck`, outcomes, findings), the runner (time limit and isolation per check) and, under `BuiltIn/`, the checks written in code |
-| `src/SecReview.Core/Catalogue` | The wording of every check (`checks.en.json`: titles, why, fix steps, Settings link), embedded as data. Tests enforce completeness and length limits |
+| `src/SecReview.Core/Catalogue` | The wording of every check (`checks.en.json`: titles, why, fix steps, Settings link), embedded as data. Tests enforce completeness and length limits. Also the lists some checks compare against, each with the date it was verified: `windows-servicing.json` (end of security updates per Windows release) and `password-managers.json` (app names and browser-extension identifiers) |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording; the display order and headline; the made-up results behind `--demo` |
 | `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
 | `src/SecReview.Core/Diagnostics` | `--diagnose`, the local error log (size-capped, names removed) and where SecReview keeps its files |
