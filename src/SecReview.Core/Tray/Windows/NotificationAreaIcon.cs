@@ -260,7 +260,9 @@ public sealed unsafe class NotificationAreaIcon : ITrayIcon, IDisposable
         }
     }
 
-    private void ShowMenu()
+    /// <param name="x">Where the icon was clicked, or where it is when the keyboard asked.</param>
+    /// <param name="y">The same, down the screen.</param>
+    private void ShowMenu(int x, int y)
     {
         HMENU menu = PInvoke.CreatePopupMenu();
         if (menu.IsNull)
@@ -286,16 +288,13 @@ public sealed unsafe class NotificationAreaIcon : ITrayIcon, IDisposable
             PInvoke.AppendMenu(menu, MENU_ITEM_FLAGS.MF_SEPARATOR, 0, (PCWSTR)null);
             Add(menu, MenuQuit, "Quit", enabled: true);
 
-            System.Drawing.Point cursor;
-            PInvoke.GetCursorPos(&cursor);
-
             // Windows only closes a menu on a click elsewhere when its window is in front.
             PInvoke.SetForegroundWindow(_window);
             uint chosen = (uint)PInvoke.TrackPopupMenuEx(
                 menu,
                 (uint)(TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD | TRACK_POPUP_MENU_FLAGS.TPM_NONOTIFY | TRACK_POPUP_MENU_FLAGS.TPM_RIGHTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_BOTTOMALIGN),
-                cursor.X,
-                cursor.Y,
+                x,
+                y,
                 _window,
                 null).Value;
             PInvoke.PostMessage(_window, PInvoke.WM_NULL, 0, 0);
@@ -338,7 +337,8 @@ public sealed unsafe class NotificationAreaIcon : ITrayIcon, IDisposable
                 switch ((uint)(lParam.Value & 0xFFFF))
                 {
                     case PInvoke.WM_CONTEXTMENU:
-                        ShowMenu();
+                        // With version 4, wParam carries the place on screen (two signed 16-bit numbers).
+                        ShowMenu((short)(wParam.Value & 0xFFFF), (short)((wParam.Value >> 16) & 0xFFFF));
                         break;
                     case PInvoke.NIN_SELECT or PInvoke.NIN_SELECT + 1: // a click, or Enter from the keyboard
                         _onCommand(TrayCommand.Open);

@@ -316,7 +316,7 @@ public sealed class TraySession
         IReadOnlySet<string> ignored = _settings.IgnoredIds();
         bool snoozed = TrayLogic.IsSnoozed(_settings, now);
         (TrayState, bool, string, bool, bool) wanted = (
-            TrayLogic.State(_last, ignored, snoozed),
+            TrayLogic.State(_last, ignored, snoozed, stale: _last is not null && TrayLogic.IsStale(_last, _settings, now)),
             _environment.DarkTaskbar(),
             TrayLogic.Tooltip(_last, ignored, _settings, now, _scanning),
             snoozed,

@@ -75,8 +75,25 @@ public static class TrayLogic
         return IsSnoozed(settings, now) && settings.SnoozedUntil!.Value > due ? settings.SnoozedUntil.Value : due;
     }
 
+    /// <summary>
+    /// Whether the last scan is too old to vouch for the PC as it is now: older than two
+    /// intervals, and than a day. The checks then did not run when they were due (they keep
+    /// failing to run, or the PC was off), and "in order" would be a guess.
+    /// </summary>
+    public static bool IsStale(ScanResult scan, AppSettings settings, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(scan);
+        ArgumentNullException.ThrowIfNull(settings);
+        int hours = AppSettings.RecheckChoices.Contains(settings.RecheckHours) ? settings.RecheckHours : AppSettings.DefaultRecheckHours;
+        return now - scan.FinishedAt > TimeSpan.FromHours(Math.Max(2 * hours, 24));
+    }
+
     /// <summary>What the icon shows for the last scan.</summary>
-    public static TrayState State(ScanResult? scan, IReadOnlySet<string>? ignored, bool snoozed)
+    /// <param name="scan">The last scan; null when there is none.</param>
+    /// <param name="ignored">The checks the user ignores.</param>
+    /// <param name="snoozed">Whether the checks are paused.</param>
+    /// <param name="stale">Whether the scan is too old to call the PC in order (<see cref="IsStale"/>).</param>
+    public static TrayState State(ScanResult? scan, IReadOnlySet<string>? ignored, bool snoozed, bool stale = false)
     {
         if (snoozed)
         {
@@ -93,7 +110,8 @@ public static class TrayLogic
             return TrayState.NeedsAttention;
         }
 
-        return scan.Checks.Any(check => ScanPresentation.StandingOf(check, ignored) == Standing.CouldNotCheck) ? TrayState.Unknown : TrayState.Fine;
+        // Green is a claim about now. What needed attention when last checked is still worth saying.
+        return stale || scan.Checks.Any(check => ScanPresentation.StandingOf(check, ignored) == Standing.CouldNotCheck) ? TrayState.Unknown : TrayState.Fine;
     }
 
     /// <summary>The icon's tooltip: the headline and how old it is, within what Windows shows.</summary>

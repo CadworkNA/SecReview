@@ -88,6 +88,23 @@ public sealed class TrayLogicTests
     }
 
     [TestMethod]
+    public void AScanTooOldToVouchForNow_IsNotGreen_ButStillSaysWhatNeededAttention()
+    {
+        ScanResult fine = Scan(Now.AddHours(-30), Check("a", CheckOutcome.Pass("x")));
+        ScanResult failing = Scan(Now.AddHours(-30), Check("a", CheckOutcome.Fail("x")));
+
+        Assert.IsFalse(TrayLogic.IsStale(Scan(Now.AddHours(-23), Check("a", CheckOutcome.Pass("x"))), Defaults, Now), "a night off is not stale");
+        Assert.IsTrue(TrayLogic.IsStale(fine, Defaults, Now));
+        Assert.IsFalse(TrayLogic.IsStale(fine, Defaults with { RecheckHours = 24 }, Now), "two intervals when checking once a day");
+        Assert.IsTrue(TrayLogic.IsStale(Scan(Now.AddHours(-49), Check("a", CheckOutcome.Pass("x"))), Defaults with { RecheckHours = 24 }, Now));
+        Assert.IsFalse(TrayLogic.IsStale(Scan(Now.AddDays(3), Check("a", CheckOutcome.Pass("x"))), Defaults, Now), "dated after now: the schedule deals with it");
+
+        Assert.AreEqual(TrayState.Unknown, TrayLogic.State(fine, null, snoozed: false, stale: true));
+        Assert.AreEqual(TrayState.NeedsAttention, TrayLogic.State(failing, null, snoozed: false, stale: true));
+        Assert.AreEqual(TrayState.Snoozed, TrayLogic.State(fine, null, snoozed: true, stale: true));
+    }
+
+    [TestMethod]
     public void TheTooltip_SaysHowThePcIsDoing_AndFitsWhatWindowsShows()
     {
         ScanResult scan = Scan(Now.AddMinutes(-5), Check("a", CheckOutcome.Pass("x")), Check("b", CheckOutcome.Fail("x")));

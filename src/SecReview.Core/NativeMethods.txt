@@ -107,7 +107,6 @@ AppendMenu
 TrackPopupMenuEx
 DestroyMenu
 SetForegroundWindow
-GetCursorPos
 GetSystemMetrics
 CreateIconIndirect
 CreateDIBSection

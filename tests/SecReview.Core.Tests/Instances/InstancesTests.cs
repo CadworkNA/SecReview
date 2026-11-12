@@ -60,7 +60,8 @@ public sealed class InstancesTests
             Assert.IsTrue(woken.Wait(Soon), "it keeps listening");
         }
 
-        Assert.IsFalse(WakeSignal.Send(name), "gone with its listener");
+        // Windows lets go of the signal a moment after its last user has.
+        Assert.IsTrue(SpinWait.SpinUntil(() => !WakeSignal.Send(name), Soon), "gone with its listener");
     }
 
     [TestMethod]

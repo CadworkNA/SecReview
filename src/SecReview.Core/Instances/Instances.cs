@@ -141,7 +141,17 @@ public sealed class WakeSignal : IDisposable
 
     public void Dispose()
     {
-        _wait.Unregister(null);
+        // Wait until the listening has really stopped, so that no call arrives after this
+        // returns and the signal is gone for senders. Not forever: a call that is itself
+        // disposing the listener must not wait for itself.
+        using (var stopped = new ManualResetEvent(false))
+        {
+            if (_wait.Unregister(stopped))
+            {
+                stopped.WaitOne(TimeSpan.FromSeconds(2));
+            }
+        }
+
         _event.Dispose();
     }
 }

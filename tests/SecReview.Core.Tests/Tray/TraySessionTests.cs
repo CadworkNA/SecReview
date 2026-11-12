@@ -301,6 +301,27 @@ public sealed class TraySessionTests
     }
 
     [TestMethod]
+    public async Task WhenTheChecksKeepFailingToRun_GreenDoesNotStandForDays()
+    {
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        ScansAnswer();
+        await Tick(session);
+        Assert.AreEqual(TrayState.Fine, _icon.State);
+
+        _scan = () => throw new InvalidOperationException("made up");
+        _clock.Advance(TimeSpan.FromHours(20));
+        await Tick(session);
+        Assert.AreEqual(TrayState.Fine, _icon.State, "yesterday's answer still stands for a while");
+
+        _clock.Advance(TimeSpan.FromHours(5));
+        await Tick(session);
+        Assert.AreEqual(TrayState.Unknown, _icon.State, "a day later nobody knows");
+        StringAssert.Contains(_icon.Tooltip, "checked 1 day ago");
+    }
+
+    [TestMethod]
     public async Task WhileAScanRuns_TheIconSaysSo_AndASecondOneDoesNotStart()
     {
         var gate = new TaskCompletionSource<ScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
