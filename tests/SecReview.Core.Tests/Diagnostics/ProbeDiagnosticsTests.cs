@@ -35,7 +35,8 @@ public sealed class ProbeDiagnosticsTests
             new DriveEncryption("D:", IsSystemDrive: false, DriveEncryptionState.Off, RawValue: 2),
         ]),
         WindowsUpdate = ProbeResult<WindowsUpdateStatus>.Ok(new WindowsUpdateStatus(
-            AutomaticUpdatesEnabled: true,
+            Mode: AutomaticUpdateMode.Scheduled,
+            ServiceAvailable: true,
             RebootRequired: false,
             LastSuccessfulSearch: new DateTimeOffset(2026, 1, 15, 8, 0, 0, TimeSpan.Zero),
             LastSuccessfulInstall: null)),
@@ -60,7 +61,7 @@ public sealed class ProbeDiagnosticsTests
         StringAssert.Contains(lines["drive encryption"], "C: (system) On [1]; D: Off [2]");
         StringAssert.Contains(
             lines["windows update"],
-            "automatic updates on, restart not pending, last search 2026-01-15, last install never");
+            "updates: Scheduled, service available, restart not pending, last search 2026-01-15, last install never");
         StringAssert.Contains(lines["wmi"], "Example Windows, build 19045");
         StringAssert.Contains(lines["audit policy"], "Logon: Success, Failure");
         StringAssert.Contains(lines["user rights"], @"SeDebugPrivilege: BUILTIN\Administrators");
@@ -155,6 +156,40 @@ public sealed class ProbeDiagnosticsTests
         Assert.IsTrue(allFine);
         StringAssert.Contains(lines["audit policy"], "needs administrator");
         StringAssert.Contains(lines["user rights"], "needs administrator");
+    }
+
+    [TestMethod]
+    public void UpdatesTurnedOff_AreShownAsDisabled_EvenWhenTheServiceIsAvailable()
+    {
+        FakeProbes probes = AllWorking();
+        probes.WindowsUpdate = ProbeResult<WindowsUpdateStatus>.Ok(new WindowsUpdateStatus(
+            AutomaticUpdateMode.Disabled,
+            ServiceAvailable: true,
+            RebootRequired: true,
+            LastSuccessfulSearch: null,
+            LastSuccessfulInstall: null));
+
+        (_, var lines) = Run(probes);
+
+        StringAssert.Contains(lines["windows update"], "updates: Disabled, service available, restart pending");
+    }
+
+    [TestMethod]
+    public void ADriveThatCannotBeRead_IsListedWithTheReason_AndTheOthersAreStillShown()
+    {
+        FakeProbes probes = AllWorking();
+        probes.DriveEncryption = ProbeResult<IReadOnlyList<DriveEncryption>>.Ok(
+        [
+            new DriveEncryption("C:", IsSystemDrive: true, DriveEncryptionState.On, RawValue: 1),
+            new DriveEncryption(
+                "E:", IsSystemDrive: false, DriveEncryptionState.Unreadable, RawValue: null, Detail: "The drive is locked."),
+        ]);
+
+        (bool allFine, var lines) = Run(probes);
+
+        Assert.IsTrue(allFine);
+        StringAssert.Contains(lines["drive encryption"], "C: (system) On [1]");
+        StringAssert.Contains(lines["drive encryption"], "E: Unreadable (The drive is locked.)");
     }
 
     [TestMethod]

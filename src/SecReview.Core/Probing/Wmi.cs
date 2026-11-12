@@ -30,6 +30,9 @@ public sealed class WmiObject
     /// <summary>The property as true/false; null if absent or not a boolean.</summary>
     public bool? Flag(string name) => Value(name) as bool?;
 
+    /// <summary>The property as a real number; null if absent or not one.</summary>
+    public double? Real(string name) => Value(name) as double?;
+
     /// <summary>The property as a list of numbers; empty if absent or not such a list.</summary>
     public IReadOnlyList<long> Numbers(string name) => Value(name) as IReadOnlyList<long> ?? [];
 

@@ -6,6 +6,12 @@ namespace SecReview.Probing;
 /// </summary>
 public enum DriveEncryptionState
 {
+    /// <summary>
+    /// The state of this drive could not be read; <see cref="DriveEncryption.Detail"/> says why.
+    /// The zero value, so an unfilled state never reads as protected.
+    /// </summary>
+    Unreadable = 0,
+
     /// <summary>BitLocker protection is on.</summary>
     On,
 
@@ -28,7 +34,13 @@ public enum DriveEncryptionState
 /// <param name="IsSystemDrive">Whether Windows is installed on it.</param>
 /// <param name="State">The interpreted state.</param>
 /// <param name="RawValue">The value Windows reported, for diagnostics; null if none.</param>
-public sealed record DriveEncryption(string Drive, bool IsSystemDrive, DriveEncryptionState State, int? RawValue)
+/// <param name="Detail">Why the state is <see cref="DriveEncryptionState.Unreadable"/>.</param>
+public sealed record DriveEncryption(
+    string Drive,
+    bool IsSystemDrive,
+    DriveEncryptionState State,
+    int? RawValue,
+    string? Detail = null)
 {
     /// <summary>
     /// Interprets the shell's <c>System.Volume.BitLockerProtection</c> value. Only 1 (on) and
@@ -45,6 +57,9 @@ public sealed record DriveEncryption(string Drive, bool IsSystemDrive, DriveEncr
 
 public interface IDriveEncryptionProbe
 {
-    /// <summary>Every fixed drive with its BitLocker state.</summary>
+    /// <summary>
+    /// Every fixed drive with its BitLocker state. A drive whose state cannot be read is listed
+    /// as <see cref="DriveEncryptionState.Unreadable"/>; it does not hide the other drives.
+    /// </summary>
     ProbeResult<IReadOnlyList<DriveEncryption>> GetFixedDrives();
 }

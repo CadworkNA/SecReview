@@ -7,9 +7,9 @@ using Windows.Win32.System.Variant;
 namespace SecReview.Probing.Windows;
 
 /// <summary>
-/// Asks the Windows Update agent (its COM interface) whether automatic updates are enabled,
-/// when it last searched and installed, and whether a restart is pending. No update search is
-/// started and nothing is changed.
+/// Asks the Windows Update agent (its COM interface) how updates are handled, when it last
+/// searched and installed, and whether a restart is pending. No update search is started and
+/// nothing is changed.
 /// </summary>
 [SupportedOSPlatform(MinimumWindows.Platform)]
 internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
@@ -21,6 +21,7 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
         using ComScope com = ComScope.Enter();
 
         IAutomaticUpdates2* updates = null;
+        IAutomaticUpdatesSettings* settings = null;
         IAutomaticUpdatesResults* results = null;
         ISystemInformation* system = null;
         try
@@ -37,15 +38,33 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
                 return WindowsError.FromHResult(created.Value, What);
             }
 
-            bool enabled = updates->ServiceEnabled != VARIANT_BOOL.VARIANT_FALSE;
+            // ServiceEnabled only says the update components are usable. Whether updating is
+            // turned on is the notification level.
+            bool serviceAvailable = updates->ServiceEnabled != VARIANT_BOOL.VARIANT_FALSE;
+            settings = updates->Settings;
+            AutomaticUpdateMode? mode = ToMode(settings->NotificationLevel);
+            if (mode is null)
+            {
+                return ProbeFailure.Failed($"{What} failed: unknown update setting.");
+            }
+
             bool rebootRequired = system->RebootRequired != VARIANT_BOOL.VARIANT_FALSE;
 
             results = updates->Results;
-            DateTimeOffset? lastSearch = TakeDate(results->LastSearchSuccessDate);
-            DateTimeOffset? lastInstall = TakeDate(results->LastInstallationSuccessDate);
+            ProbeResult<DateTimeOffset?> lastSearch = TakeDate(results->LastSearchSuccessDate);
+            if (!lastSearch.IsOk)
+            {
+                return lastSearch.ToFailure();
+            }
 
-            return ProbeResult<WindowsUpdateStatus>.Ok(
-                new WindowsUpdateStatus(enabled, rebootRequired, lastSearch, lastInstall));
+            ProbeResult<DateTimeOffset?> lastInstall = TakeDate(results->LastInstallationSuccessDate);
+            if (!lastInstall.IsOk)
+            {
+                return lastInstall.ToFailure();
+            }
+
+            return ProbeResult<WindowsUpdateStatus>.Ok(new WindowsUpdateStatus(
+                mode.Value, serviceAvailable, rebootRequired, lastSearch.Value, lastInstall.Value));
         }
         catch (Exception exception)
         {
@@ -56,6 +75,11 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
             if (results is not null)
             {
                 results->Release();
+            }
+
+            if (settings is not null)
+            {
+                settings->Release();
             }
 
             if (system is not null)
@@ -70,23 +94,48 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
         }
     }
 
-    /// <summary>The agent returns dates in UTC, or an empty value when there is none.</summary>
-    private static DateTimeOffset? TakeDate(VARIANT value)
+    private static AutomaticUpdateMode? ToMode(AutomaticUpdatesNotificationLevel level) => level switch
+    {
+        AutomaticUpdatesNotificationLevel.aunlNotConfigured => AutomaticUpdateMode.NotConfigured,
+        AutomaticUpdatesNotificationLevel.aunlDisabled => AutomaticUpdateMode.Disabled,
+        AutomaticUpdatesNotificationLevel.aunlNotifyBeforeDownload => AutomaticUpdateMode.NotifyBeforeDownload,
+        AutomaticUpdatesNotificationLevel.aunlNotifyBeforeInstallation => AutomaticUpdateMode.NotifyBeforeInstall,
+        AutomaticUpdatesNotificationLevel.aunlScheduledInstallation => AutomaticUpdateMode.Scheduled,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The agent returns a UTC date, or an empty value when there has been none. Only an empty
+    /// value means "never": anything else that is not a valid date is a failed reading.
+    /// </summary>
+    private static ProbeResult<DateTimeOffset?> TakeDate(VARIANT value)
     {
         try
         {
-            if (value.Anonymous.Anonymous.vt != VARENUM.VT_DATE)
+            VARENUM type = value.Anonymous.Anonymous.vt;
+            if (type is VARENUM.VT_EMPTY or VARENUM.VT_NULL)
             {
-                return null;
+                return ProbeResult<DateTimeOffset?>.Ok(null);
+            }
+
+            if (type != VARENUM.VT_DATE)
+            {
+                return ProbeFailure.Failed($"{What} failed: a date came back as type {(int)type}.");
             }
 
             double automationDate = value.Anonymous.Anonymous.Anonymous.date;
-            return new DateTimeOffset(DateTime.FromOADate(automationDate), TimeSpan.Zero);
+            if (automationDate == 0)
+            {
+                // The automation "zero date" (1899-12-30) is how the agent says "never".
+                return ProbeResult<DateTimeOffset?>.Ok(null);
+            }
+
+            return ProbeResult<DateTimeOffset?>.Ok(
+                new DateTimeOffset(DateTime.FromOADate(automationDate), TimeSpan.Zero));
         }
         catch (ArgumentException)
         {
-            // Not a valid automation date: treat as "no date".
-            return null;
+            return ProbeFailure.Failed($"{What} failed: a date was not valid.");
         }
         finally
         {

@@ -75,5 +75,4 @@ VariantClear
 SafeArrayGetLBound
 SafeArrayGetUBound
 SafeArrayGetElement
-SafeArrayGetVartype
 SysAllocString

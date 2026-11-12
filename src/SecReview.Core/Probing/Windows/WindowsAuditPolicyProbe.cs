@@ -51,6 +51,16 @@ internal sealed class WindowsAuditPolicyProbe : IAuditPolicyProbe
                 settings[policy[index].AuditSubCategoryGuid] = setting;
             }
 
+            // The result is keyed by what Windows answered about. If that is not exactly what
+            // was asked, a missing entry would later read as "not audited".
+            foreach (Guid id in ids)
+            {
+                if (!settings.ContainsKey(id))
+                {
+                    return ProbeFailure.Failed($"{What} failed: no answer for subcategory {id}.");
+                }
+            }
+
             return ProbeResult<IReadOnlyDictionary<Guid, AuditSetting>>.Ok(settings);
         }
         catch (Exception exception)

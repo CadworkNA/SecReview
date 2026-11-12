@@ -82,19 +82,27 @@ internal sealed class WindowsUserRightsProbe : IUserRightsProbe
         }
     }
 
+    /// <summary>
+    /// The name of a built-in account or group ("BUILTIN\Administrators", "NT AUTHORITY\SYSTEM").
+    /// Only identifiers without a domain part are looked up: those resolve on this PC at once,
+    /// while a domain account can make Windows wait on a domain controller that a laptop away
+    /// from the office cannot reach. Other accounts are shown by identifier.
+    /// </summary>
     private static string? NameOf(SecurityIdentifier sid)
     {
+        if (sid.AccountDomainSid is not null)
+        {
+            return null;
+        }
+
         try
         {
             return sid.Translate(typeof(NTAccount)).Value;
         }
-        catch (IdentityNotMappedException)
-        {
-            // A deleted account, or one from a domain that cannot be reached.
-            return null;
-        }
         catch (SystemException)
         {
+            // No name on this PC (IdentityNotMappedException), or the lookup itself failed.
+            // The identifier is still reported, so nothing is lost.
             return null;
         }
     }

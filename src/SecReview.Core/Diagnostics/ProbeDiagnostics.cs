@@ -57,7 +57,9 @@ public static class ProbeDiagnostics
             output,
             "audit policy",
             probes.AuditPolicy.GetSubcategories([LogonAuditSubcategory]),
-            settings => $"Logon: {settings.GetValueOrDefault(LogonAuditSubcategory)}");
+            settings => settings.TryGetValue(LogonAuditSubcategory, out AuditSetting logon)
+                ? $"Logon: {logon}"
+                : "Logon: not returned");
         allFine &= Report(
             output,
             "user rights",
@@ -90,10 +92,11 @@ public static class ProbeDiagnostics
         : string.Join("; ", drives.Select(drive => string.Create(
             CultureInfo.InvariantCulture,
             $"{drive.Drive}{(drive.IsSystemDrive ? " (system)" : string.Empty)} {drive.State}" +
-            $"{(drive.RawValue is int raw ? $" [{raw}]" : string.Empty)}")));
+            $"{(drive.RawValue is int raw ? $" [{raw}]" : string.Empty)}" +
+            $"{(drive.Detail is null ? string.Empty : $" ({drive.Detail})")}")));
 
     private static string Describe(WindowsUpdateStatus status) =>
-        $"automatic updates {(status.AutomaticUpdatesEnabled ? "on" : "off")}, " +
+        $"updates: {status.Mode}, service {(status.ServiceAvailable ? "available" : "unavailable")}, " +
         $"restart {(status.RebootRequired ? "pending" : "not pending")}, " +
         $"last search {Date(status.LastSuccessfulSearch)}, last install {Date(status.LastSuccessfulInstall)}";
 

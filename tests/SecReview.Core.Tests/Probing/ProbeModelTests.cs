@@ -26,6 +26,50 @@ public sealed class ProbeModelTests
     }
 
     [TestMethod]
+    public void DriveEncryption_AStateNobodySet_IsUnreadable_NeverOn()
+    {
+        var slots = new DriveEncryptionState[1];
+
+        Assert.AreEqual(DriveEncryptionState.Unreadable, slots[0]);
+    }
+
+    [TestMethod]
+    [DataRow(@"ROOT\CIMV2")]
+    [DataRow(@"root\Microsoft\Windows\Defender")]
+    [DataRow("ROOT")]
+    public void WmiNamespace_OnThisPc_IsAccepted(string wmiNamespace)
+    {
+        Assert.IsTrue(WmiNames.IsLocalNamespace(wmiNamespace));
+    }
+
+    [TestMethod]
+    [DataRow(@"\\OTHERPC\ROOT\CIMV2", DisplayName = "another computer")]
+    [DataRow(@"\\.\ROOT\CIMV2", DisplayName = "explicit local computer prefix")]
+    [DataRow(@"\ROOT\CIMV2", DisplayName = "leading backslash")]
+    [DataRow(@"ROOT\\CIMV2", DisplayName = "empty segment")]
+    [DataRow(@"ROOT\CIMV2\", DisplayName = "trailing backslash")]
+    [DataRow(@"CIMV2", DisplayName = "does not start at ROOT")]
+    [DataRow(@"ROOT\CIM V2", DisplayName = "space")]
+    [DataRow(@"ROOT\CIMV2' OR '1'='1", DisplayName = "query text")]
+    [DataRow("", DisplayName = "empty")]
+    public void WmiNamespace_ThatCouldReachElsewhereOrIsMalformed_IsRefused(string wmiNamespace)
+    {
+        Assert.IsFalse(WmiNames.IsLocalNamespace(wmiNamespace));
+    }
+
+    [TestMethod]
+    [DataRow("Win32_OperatingSystem", true)]
+    [DataRow("MSFT_MpComputerStatus", true)]
+    [DataRow("Caption, Name", false)]
+    [DataRow("Win32_Process WHERE 1=1", false)]
+    [DataRow("*", false)]
+    [DataRow("", false)]
+    public void WmiClassAndPropertyNames_MustBePlainIdentifiers(string name, bool expected)
+    {
+        Assert.AreEqual(expected, WmiNames.IsIdentifier(name));
+    }
+
+    [TestMethod]
     public void WmiObject_ReadsEachKindOfValue_ByNameIgnoringCase()
     {
         WmiObject item = FakeProbes.Wmi(

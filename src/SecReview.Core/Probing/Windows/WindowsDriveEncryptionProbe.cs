@@ -39,21 +39,35 @@ internal sealed class WindowsDriveEncryptionProbe : IDriveEncryptionProbe
                     continue;
                 }
 
-                ProbeResult<int?> value = ReadValue(drive.Name, key);
-                if (!value.IsOk && value.Status != ProbeStatus.NotFound)
-                {
-                    return value.ToFailure();
-                }
+                string name = drive.Name.TrimEnd('\\');
+                bool isSystem = drive.Name.Equals(systemRoot, StringComparison.OrdinalIgnoreCase);
 
-                int? raw = value.IsOk ? value.Value : null;
-                drives.Add(new DriveEncryption(
-                    Drive: drive.Name.TrimEnd('\\'),
-                    IsSystemDrive: drive.Name.Equals(systemRoot, StringComparison.OrdinalIgnoreCase),
-                    State: DriveEncryption.Interpret(raw),
-                    RawValue: raw));
+                // One drive that cannot be read (locked, offline, damaged) must not hide the
+                // others, least of all the system drive.
+                ProbeResult<int?> value = ReadValueGuarded(drive.Name, key);
+                drives.Add(value.IsOk
+                    ? new DriveEncryption(name, isSystem, DriveEncryption.Interpret(value.Value), value.Value)
+                    : new DriveEncryption(
+                        name,
+                        isSystem,
+                        DriveEncryptionState.Unreadable,
+                        RawValue: null,
+                        Detail: value.Detail ?? $"Windows would not report the state of {name} ({value.Status})."));
             }
 
             return ProbeResult<IReadOnlyList<DriveEncryption>>.Ok(drives);
+        }
+        catch (Exception exception)
+        {
+            return WindowsError.FromException(exception, What);
+        }
+    }
+
+    private static ProbeResult<int?> ReadValueGuarded(string driveRoot, PROPERTYKEY key)
+    {
+        try
+        {
+            return ReadValue(driveRoot, key);
         }
         catch (Exception exception)
         {
