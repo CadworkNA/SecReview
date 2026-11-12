@@ -3,6 +3,7 @@
     <Platform Name="x64" />
   </Configurations>
   <Folder Name="/src/">
+    <Project Path="src/SecReview.App/SecReview.App.csproj" />
     <Project Path="src/SecReview.Cli/SecReview.Cli.csproj" />
     <Project Path="src/SecReview.Core/SecReview.Core.csproj" />
   </Folder>

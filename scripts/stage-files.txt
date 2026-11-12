@@ -1,0 +1,236 @@
+# Every file that ships, relative to the install folder. Files without an Authenticode
+# signature that are not built here carry their SHA-256. scripts\check-stage.ps1 fails the
+# build when the staged output differs. Regenerate with: scripts\check-stage.ps1 -Stage
+# artifacts\stage -Update, and review the difference before committing.
+CoreMessagingXP.dll
+DwmSceneI.dll
+MRM.dll
+Microsoft.DirectManipulation.dll
+Microsoft.Foundation.winmd sha256=ac743a2d4878a85f50f6939a9cb60ed32e0a09fc4a237e583159ca7c3ec1ca75
+Microsoft.Graphics.Display.dll
+Microsoft.Graphics.winmd sha256=161d8a274256aff5edd568b7ada03259cf8fda3b561cff8444c0e374850f7554
+Microsoft.InputStateManager.dll
+Microsoft.Internal.FrameworkUdk.dll
+Microsoft.Security.Authentication.OAuth.winmd sha256=0a5b730b03eadb18263f98f8a8c7a4476c517789a66b5625544b13ba8213e34d
+Microsoft.UI.Composition.OSSupport.dll
+Microsoft.UI.Input.dll
+Microsoft.UI.Text.winmd sha256=eaeebebbe2b789acd957f55e5cb1bb45ed4331e6a0408617da017fc4382ba1ee
+Microsoft.UI.Windowing.Core.dll
+Microsoft.UI.Windowing.dll
+Microsoft.UI.Xaml.Controls.dll
+Microsoft.UI.Xaml.Controls.pri sha256=c2e5bc7d667e01b6368fc0ec286bece6947c09630c47d668bf0ff24bb5818cde
+Microsoft.UI.Xaml.Internal.dll
+Microsoft.UI.Xaml.Phone.dll
+Microsoft.UI.Xaml.winmd sha256=72bcc3558747aa127364e7b06e55dd165784a15a77efc640b0c18080579d167f
+Microsoft.UI.Xaml/Assets/NoiseAsset_256x256_PNG.png sha256=4f2aa94a2e345a32dae689176b86c644bef87081ff9daef8c77417731862031b
+Microsoft.UI.dll
+Microsoft.UI.pri sha256=8ce1ac219934413c8f80da99c25beae225e204ba4173408cc655546505035365
+Microsoft.UI.winmd sha256=65f4b80f0fe73ed83bccd57294c197c8cabb4e57702e19ba2e613f6e2ae01d3e
+Microsoft.Windows.AppLifecycle.winmd sha256=47a60a4ee8daa0b57d2fb0715ff43d5732d33daba21b73043b3a25412ef5bfc0
+Microsoft.Windows.AppNotifications.Builder.winmd sha256=be15bbe08cbbc0387d9226e5279b85903c44069f94f1dbcd135a8bca82b1de4c
+Microsoft.Windows.AppNotifications.winmd sha256=737f4aabb8f0a0639a78ced96c5fff760802bd879fa7a9eca45f105d0d5a8190
+Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.dll
+Microsoft.Windows.ApplicationModel.Background.UniversalBGTask.winmd sha256=d8b60fb45f2715e84cf76678ccb2b60edd824e8f40cda08ba7670ef5e75bf044
+Microsoft.Windows.ApplicationModel.Background.winmd sha256=9266dbc78ee7dab0c68cee35f9df6af0ccef1e746fe879c4ffc48dfa6263121f
+Microsoft.Windows.ApplicationModel.DynamicDependency.winmd sha256=44bc4d97fd53db80430f4f891db0b7c8be67c73b95890c6546cc231540d0df99
+Microsoft.Windows.ApplicationModel.Resources.dll
+Microsoft.Windows.ApplicationModel.Resources.winmd sha256=5d8811b8cc57e23db73d431056471b842dd4a517b4933fd9cc4df3c467c23e43
+Microsoft.Windows.ApplicationModel.WindowsAppRuntime.winmd sha256=e87fd14d1d7295339767c8c7732189a3ca95fd32dad2aff121545e97a3bb7354
+Microsoft.Windows.BadgeNotifications.winmd sha256=5d4860ffbfa11726e676dade24cf9f1b3669900692e2750c20635f2f0eacb2d6
+Microsoft.Windows.Foundation.winmd sha256=8814d4c9ccd16715f56282c5b724a8f5a8097b0e2d923f622eff27366b3cc86f
+Microsoft.Windows.Globalization.winmd sha256=a901f4431761043e417e12803ad99739ca387944d188b536b8f4ba86d78fdd1d
+Microsoft.Windows.Management.Deployment.winmd sha256=f377b87c75c0f242014a28a7960d7352a39c005201025e978bc3a2699c25d187
+Microsoft.Windows.Media.Capture.winmd sha256=8d3f4405cd89e29baf7e730bcb3f93ba8c9525433db60b461fca0e1dac9f6c6c
+Microsoft.Windows.PushNotifications.winmd sha256=12b97f4d14ab85f4d0716b1b37bc6d0d8e2604cd165decfabcd80d70cee06f43
+Microsoft.Windows.Security.AccessControl.winmd sha256=b2e495d10d0dac9fe555fd54edaf9ed7e65d61992b28b70d5380b95d7738ee91
+Microsoft.Windows.Storage.Pickers.winmd sha256=0c525d8c4566b0f82a74c1136cb5fd1f3058ab0adf22134d15f7a56e57c8fc70
+Microsoft.Windows.Storage.winmd sha256=78f81a794a6bf33eda3d2391c84c0cef7cf2ef7d592e52e4cf41b70b942dd51c
+Microsoft.Windows.System.Power.winmd sha256=8940dbf74c0920ef08a30b13cbed8f9f580bdabaf65b2c6880f06e71de12160c
+Microsoft.Windows.System.winmd sha256=6ed062e1f7ec7a6bcdc44f41848cd9d26c197f5ea0ce5ae70bb990c7d1644d94
+Microsoft.WindowsAppRuntime.Bootstrap.dll
+Microsoft.WindowsAppRuntime.dll
+Microsoft.WindowsAppRuntime.pri sha256=0ec8d17e6ce296ba51aa539f8f3fc1b93b8bb53c20c82ba440f07e5cd1ce081e
+Microsoft.ui.xaml.dll
+Microsoft.ui.xaml.resources.19h1.dll
+Microsoft.ui.xaml.resources.common.dll
+PushNotificationsLongRunningTask.ProxyStub.dll
+SecReview.exe
+SecReview.pri
+SecReviewCli.exe
+WinUIEdit.dll
+af-ZA/Microsoft.UI.Xaml.Phone.dll.mui
+af-ZA/Microsoft.ui.xaml.dll.mui
+am-ET/Microsoft.UI.Xaml.Phone.dll.mui
+am-ET/Microsoft.ui.xaml.dll.mui
+ar-SA/Microsoft.UI.Xaml.Phone.dll.mui
+ar-SA/Microsoft.ui.xaml.dll.mui
+as-IN/Microsoft.UI.Xaml.Phone.dll.mui
+as-IN/Microsoft.ui.xaml.dll.mui
+az-Latn-AZ/Microsoft.UI.Xaml.Phone.dll.mui
+az-Latn-AZ/Microsoft.ui.xaml.dll.mui
+bg-BG/Microsoft.UI.Xaml.Phone.dll.mui
+bg-BG/Microsoft.ui.xaml.dll.mui
+bn-IN/Microsoft.UI.Xaml.Phone.dll.mui
+bn-IN/Microsoft.ui.xaml.dll.mui
+bs-Latn-BA/Microsoft.UI.Xaml.Phone.dll.mui
+bs-Latn-BA/Microsoft.ui.xaml.dll.mui
+ca-ES/Microsoft.UI.Xaml.Phone.dll.mui
+ca-ES/Microsoft.ui.xaml.dll.mui
+ca-Es-VALENCIA/Microsoft.UI.Xaml.Phone.dll.mui
+ca-Es-VALENCIA/Microsoft.ui.xaml.dll.mui
+cs-CZ/Microsoft.UI.Xaml.Phone.dll.mui
+cs-CZ/Microsoft.ui.xaml.dll.mui
+cy-GB/Microsoft.UI.Xaml.Phone.dll.mui
+cy-GB/Microsoft.ui.xaml.dll.mui
+da-DK/Microsoft.UI.Xaml.Phone.dll.mui
+da-DK/Microsoft.ui.xaml.dll.mui
+dcompi.dll
+de-DE/Microsoft.UI.Xaml.Phone.dll.mui
+de-DE/Microsoft.ui.xaml.dll.mui
+dwmcorei.dll
+el-GR/Microsoft.UI.Xaml.Phone.dll.mui
+el-GR/Microsoft.ui.xaml.dll.mui
+en-GB/Microsoft.UI.Xaml.Phone.dll.mui
+en-GB/Microsoft.ui.xaml.dll.mui
+en-us/Microsoft.UI.Xaml.Phone.dll.mui
+en-us/Microsoft.ui.xaml.dll.mui
+es-ES/Microsoft.UI.Xaml.Phone.dll.mui
+es-ES/Microsoft.ui.xaml.dll.mui
+es-MX/Microsoft.UI.Xaml.Phone.dll.mui
+es-MX/Microsoft.ui.xaml.dll.mui
+et-EE/Microsoft.UI.Xaml.Phone.dll.mui
+et-EE/Microsoft.ui.xaml.dll.mui
+eu-ES/Microsoft.UI.Xaml.Phone.dll.mui
+eu-ES/Microsoft.ui.xaml.dll.mui
+fa-IR/Microsoft.UI.Xaml.Phone.dll.mui
+fa-IR/Microsoft.ui.xaml.dll.mui
+fi-FI/Microsoft.UI.Xaml.Phone.dll.mui
+fi-FI/Microsoft.ui.xaml.dll.mui
+fil-PH/Microsoft.UI.Xaml.Phone.dll.mui
+fil-PH/Microsoft.ui.xaml.dll.mui
+fr-CA/Microsoft.UI.Xaml.Phone.dll.mui
+fr-CA/Microsoft.ui.xaml.dll.mui
+fr-FR/Microsoft.UI.Xaml.Phone.dll.mui
+fr-FR/Microsoft.ui.xaml.dll.mui
+ga-IE/Microsoft.UI.Xaml.Phone.dll.mui
+ga-IE/Microsoft.ui.xaml.dll.mui
+gd-gb/Microsoft.UI.Xaml.Phone.dll.mui
+gd-gb/Microsoft.ui.xaml.dll.mui
+gl-ES/Microsoft.UI.Xaml.Phone.dll.mui
+gl-ES/Microsoft.ui.xaml.dll.mui
+gu-IN/Microsoft.UI.Xaml.Phone.dll.mui
+gu-IN/Microsoft.ui.xaml.dll.mui
+he-IL/Microsoft.UI.Xaml.Phone.dll.mui
+he-IL/Microsoft.ui.xaml.dll.mui
+hi-IN/Microsoft.UI.Xaml.Phone.dll.mui
+hi-IN/Microsoft.ui.xaml.dll.mui
+hr-HR/Microsoft.UI.Xaml.Phone.dll.mui
+hr-HR/Microsoft.ui.xaml.dll.mui
+hu-HU/Microsoft.UI.Xaml.Phone.dll.mui
+hu-HU/Microsoft.ui.xaml.dll.mui
+hy-AM/Microsoft.UI.Xaml.Phone.dll.mui
+hy-AM/Microsoft.ui.xaml.dll.mui
+id-ID/Microsoft.UI.Xaml.Phone.dll.mui
+id-ID/Microsoft.ui.xaml.dll.mui
+is-IS/Microsoft.UI.Xaml.Phone.dll.mui
+is-IS/Microsoft.ui.xaml.dll.mui
+it-IT/Microsoft.UI.Xaml.Phone.dll.mui
+it-IT/Microsoft.ui.xaml.dll.mui
+ja-JP/Microsoft.UI.Xaml.Phone.dll.mui
+ja-JP/Microsoft.ui.xaml.dll.mui
+ka-GE/Microsoft.UI.Xaml.Phone.dll.mui
+ka-GE/Microsoft.ui.xaml.dll.mui
+kk-KZ/Microsoft.UI.Xaml.Phone.dll.mui
+kk-KZ/Microsoft.ui.xaml.dll.mui
+km-KH/Microsoft.UI.Xaml.Phone.dll.mui
+km-KH/Microsoft.ui.xaml.dll.mui
+kn-IN/Microsoft.UI.Xaml.Phone.dll.mui
+kn-IN/Microsoft.ui.xaml.dll.mui
+ko-KR/Microsoft.UI.Xaml.Phone.dll.mui
+ko-KR/Microsoft.ui.xaml.dll.mui
+kok-IN/Microsoft.UI.Xaml.Phone.dll.mui
+kok-IN/Microsoft.ui.xaml.dll.mui
+lb-LU/Microsoft.UI.Xaml.Phone.dll.mui
+lb-LU/Microsoft.ui.xaml.dll.mui
+lo-LA/Microsoft.UI.Xaml.Phone.dll.mui
+lo-LA/Microsoft.ui.xaml.dll.mui
+lt-LT/Microsoft.UI.Xaml.Phone.dll.mui
+lt-LT/Microsoft.ui.xaml.dll.mui
+lv-LV/Microsoft.UI.Xaml.Phone.dll.mui
+lv-LV/Microsoft.ui.xaml.dll.mui
+marshal.dll
+mi-NZ/Microsoft.UI.Xaml.Phone.dll.mui
+mi-NZ/Microsoft.ui.xaml.dll.mui
+mk-MK/Microsoft.UI.Xaml.Phone.dll.mui
+mk-MK/Microsoft.ui.xaml.dll.mui
+ml-IN/Microsoft.UI.Xaml.Phone.dll.mui
+ml-IN/Microsoft.ui.xaml.dll.mui
+mr-IN/Microsoft.UI.Xaml.Phone.dll.mui
+mr-IN/Microsoft.ui.xaml.dll.mui
+ms-MY/Microsoft.UI.Xaml.Phone.dll.mui
+ms-MY/Microsoft.ui.xaml.dll.mui
+mt-MT/Microsoft.UI.Xaml.Phone.dll.mui
+mt-MT/Microsoft.ui.xaml.dll.mui
+nb-NO/Microsoft.UI.Xaml.Phone.dll.mui
+nb-NO/Microsoft.ui.xaml.dll.mui
+ne-NP/Microsoft.UI.Xaml.Phone.dll.mui
+ne-NP/Microsoft.ui.xaml.dll.mui
+nl-NL/Microsoft.UI.Xaml.Phone.dll.mui
+nl-NL/Microsoft.ui.xaml.dll.mui
+nn-NO/Microsoft.UI.Xaml.Phone.dll.mui
+nn-NO/Microsoft.ui.xaml.dll.mui
+or-IN/Microsoft.UI.Xaml.Phone.dll.mui
+or-IN/Microsoft.ui.xaml.dll.mui
+pa-IN/Microsoft.UI.Xaml.Phone.dll.mui
+pa-IN/Microsoft.ui.xaml.dll.mui
+pl-PL/Microsoft.UI.Xaml.Phone.dll.mui
+pl-PL/Microsoft.ui.xaml.dll.mui
+pt-BR/Microsoft.UI.Xaml.Phone.dll.mui
+pt-BR/Microsoft.ui.xaml.dll.mui
+pt-PT/Microsoft.UI.Xaml.Phone.dll.mui
+pt-PT/Microsoft.ui.xaml.dll.mui
+quz-PE/Microsoft.UI.Xaml.Phone.dll.mui
+quz-PE/Microsoft.ui.xaml.dll.mui
+ro-RO/Microsoft.UI.Xaml.Phone.dll.mui
+ro-RO/Microsoft.ui.xaml.dll.mui
+ru-RU/Microsoft.UI.Xaml.Phone.dll.mui
+ru-RU/Microsoft.ui.xaml.dll.mui
+sk-SK/Microsoft.UI.Xaml.Phone.dll.mui
+sk-SK/Microsoft.ui.xaml.dll.mui
+sl-SI/Microsoft.UI.Xaml.Phone.dll.mui
+sl-SI/Microsoft.ui.xaml.dll.mui
+sq-AL/Microsoft.UI.Xaml.Phone.dll.mui
+sq-AL/Microsoft.ui.xaml.dll.mui
+sr-Cyrl-BA/Microsoft.UI.Xaml.Phone.dll.mui
+sr-Cyrl-BA/Microsoft.ui.xaml.dll.mui
+sr-Cyrl-RS/Microsoft.UI.Xaml.Phone.dll.mui
+sr-Cyrl-RS/Microsoft.ui.xaml.dll.mui
+sr-Latn-RS/Microsoft.UI.Xaml.Phone.dll.mui
+sr-Latn-RS/Microsoft.ui.xaml.dll.mui
+sv-SE/Microsoft.UI.Xaml.Phone.dll.mui
+sv-SE/Microsoft.ui.xaml.dll.mui
+ta-IN/Microsoft.UI.Xaml.Phone.dll.mui
+ta-IN/Microsoft.ui.xaml.dll.mui
+te-IN/Microsoft.UI.Xaml.Phone.dll.mui
+te-IN/Microsoft.ui.xaml.dll.mui
+th-TH/Microsoft.UI.Xaml.Phone.dll.mui
+th-TH/Microsoft.ui.xaml.dll.mui
+tr-TR/Microsoft.UI.Xaml.Phone.dll.mui
+tr-TR/Microsoft.ui.xaml.dll.mui
+tt-RU/Microsoft.UI.Xaml.Phone.dll.mui
+tt-RU/Microsoft.ui.xaml.dll.mui
+ug-CN/Microsoft.UI.Xaml.Phone.dll.mui
+ug-CN/Microsoft.ui.xaml.dll.mui
+uk-UA/Microsoft.UI.Xaml.Phone.dll.mui
+uk-UA/Microsoft.ui.xaml.dll.mui
+ur-PK/Microsoft.UI.Xaml.Phone.dll.mui
+ur-PK/Microsoft.ui.xaml.dll.mui
+uz-Latn-UZ/Microsoft.UI.Xaml.Phone.dll.mui
+uz-Latn-UZ/Microsoft.ui.xaml.dll.mui
+vi-VN/Microsoft.UI.Xaml.Phone.dll.mui
+vi-VN/Microsoft.ui.xaml.dll.mui
+wuceffectsi.dll
+zh-CN/Microsoft.UI.Xaml.Phone.dll.mui
+zh-CN/Microsoft.ui.xaml.dll.mui
+zh-TW/Microsoft.UI.Xaml.Phone.dll.mui
+zh-TW/Microsoft.ui.xaml.dll.mui

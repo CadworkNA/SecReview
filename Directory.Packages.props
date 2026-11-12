@@ -6,6 +6,12 @@
 
   <!-- Exact versions only. Adding a package also means adding its id to
        scripts/allowed-packages.txt; a third-party package needs the maintainer's approval. -->
+  <ItemGroup Label="App">
+    <!-- The two versions must move together. -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Runtime" Version="[2.6.5]" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="[2.6.5]" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="MSTest.Analyzers" Version="[4.5.3]" />
     <PackageVersion Include="MSTest.TestAdapter" Version="[4.5.3]" />
