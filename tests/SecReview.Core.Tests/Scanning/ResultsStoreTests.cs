@@ -95,6 +95,11 @@ public sealed class ResultsStoreTests
     [DataRow("\"schemaVersion\":1", "\"schemaVersion\":2", DisplayName = "another shape")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\"Passed\"", DisplayName = "a status this version does not know")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\"1\"", DisplayName = "a status as a number")]
+    [DataRow("\"status\":\"Pass\"", "\"status\":\" 1\"", DisplayName = "a status as a padded number")]
+    [DataRow("\"status\":\"Pass\"", "\"status\":\"+1\"", DisplayName = "a status as a signed number")]
+    [DataRow("\"status\":\"Pass\"", "\"status\":\"pass\"", DisplayName = "a status in another case")]
+    [DataRow("\"finishedAt\":\"2026-", "\"finishedAt\":\"2999-", DisplayName = "a scan from the future")]
+    [DataRow("\"finishedAt\":\"2026-", "\"finishedAt\":\"1999-", DisplayName = "a scan from before SecReview")]
     [DataRow("\"status\":\"Problem\"", "\"status\":\"Bad\"", DisplayName = "a finding status this version does not know")]
     [DataRow("\"summary\":\"Automatic sign-in is off.\"", "\"summary\":\"\"", DisplayName = "an empty summary")]
     [DataRow("\"summary\":\"Automatic sign-in is off.\"", "\"summary\":null", DisplayName = "no summary")]
@@ -110,6 +115,29 @@ public sealed class ResultsStoreTests
         System.IO.File.WriteAllText(File, saved.Replace(find, replace, StringComparison.Ordinal));
 
         Assert.IsNull(store.Load(Checks, Texts));
+    }
+
+    [TestMethod]
+    public void AVeryLongAnswer_IsCutToFit_AndTheFileStaysUsable()
+    {
+        var store = new ResultsStore(_folder);
+        var scan = new ScanResult(
+            [
+                Scanned(Checks[0], new CheckOutcome(
+                    CheckStatus.Fail,
+                    new string('s', 9000),
+                    [.. Enumerable.Range(0, 1500).Select(i => Finding.Problem($"item {i}", new string('f', 5000), "x", new string('p', 5000)))])),
+            ],
+            When,
+            Elevated: false);
+
+        Assert.IsTrue(store.Save(scan));
+        ScanResult read = store.Load(Checks, Texts)!;
+
+        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Summary.Length);
+        Assert.AreEqual(1000, read.Checks[0].Result.Outcome.Findings.Count);
+        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Findings[0].Found.Length);
+        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Findings[0].Source!.Length);
     }
 
     [TestMethod]

@@ -59,7 +59,7 @@ public sealed class ScanPresentationTests
         ScanResult scan = Mixed();
 
         CollectionAssert.AreEqual(
-            new[] { "Needs attention []: updates-high, chain-fail, access-low", "Could not be checked []: updates-error" },
+            new[] { "Needs attention []: updates-high, chain-fail, access-low" },
             Shape(ScanPresentation.Sections(scan, null, ScanFilter.NeedsAttention)));
         CollectionAssert.AreEqual(
             new[] { "Access [1 of 3 pass]: access-admin" }, Shape(ScanPresentation.Sections(scan, null, ScanFilter.NeedsAdmin)));
@@ -74,7 +74,8 @@ public sealed class ScanPresentationTests
         Assert.AreEqual(0, ScanPresentation.Sections(scan, null, ScanFilter.Ignored).Count);
 
         Assert.AreEqual(10, ScanPresentation.CountFor(scan, null, ScanFilter.All));
-        Assert.AreEqual(4, ScanPresentation.CountFor(scan, null, ScanFilter.NeedsAttention));
+        Assert.AreEqual(3, ScanPresentation.CountFor(scan, null, ScanFilter.NeedsAttention), "the same number the headline says");
+        Assert.AreEqual("3 things need attention", ScanPresentation.Headline(scan));
         Assert.AreEqual(1, ScanPresentation.CountFor(scan, null, ScanFilter.NeedsAdmin));
         Assert.AreEqual(3, ScanPresentation.CountFor(scan, null, ScanFilter.Passed));
         Assert.AreEqual(0, ScanPresentation.CountFor(scan, null, ScanFilter.Ignored));
@@ -107,7 +108,7 @@ public sealed class ScanPresentationTests
         CollectionAssert.AreEqual(
             new[] { "Ignored [not counted]: access-pass, updates-high" }, Shape(ScanPresentation.Sections(scan, ignored, ScanFilter.Ignored)));
         Assert.AreEqual(2, ScanPresentation.CountFor(scan, ignored, ScanFilter.Ignored));
-        Assert.AreEqual(3, ScanPresentation.CountFor(scan, ignored, ScanFilter.NeedsAttention));
+        Assert.AreEqual(2, ScanPresentation.CountFor(scan, ignored, ScanFilter.NeedsAttention));
         Assert.AreEqual("updates-high", ScanPresentation.InDisplayOrder(scan, ignored)[^1].Definition.Id);
     }
 
@@ -130,7 +131,9 @@ public sealed class ScanPresentationTests
     [DataRow(60 * 60, "1 hour ago")]
     [DataRow(3 * 3600, "3 hours ago")]
     [DataRow(23 * 3600, "23 hours ago")]
-    [DataRow(30 * 3600, "yesterday")]
+    [DataRow(24 * 3600, "1 day ago")]
+    [DataRow(47 * 3600, "1 day ago")]
+    [DataRow(48 * 3600, "2 days ago")]
     [DataRow(3 * 86400, "3 days ago")]
     [DataRow(-600, "just now")]
     public void TheAgeOfAScan_IsSaidInWords(int secondsAgo, string expected)
@@ -167,12 +170,57 @@ public sealed class ScanPresentationTests
         CollectionAssert.Contains(lines, "[!!] Public network: Off (expected: On) — made-up source");
         CollectionAssert.Contains(lines, "[i]  Rules: 12");
         CollectionAssert.Contains(lines, "Why it matters: " + Texts[FirewallCheck.Id].Why);
-        CollectionAssert.Contains(lines, "1. " + Texts[FirewallCheck.Id].Fix[0]);
+        CollectionAssert.Contains(lines, "How to fix: this setting is set by a policy, so it cannot be changed on this PC. Ask your IT department.");
+        Assert.IsFalse(details.Contains("1. ", StringComparison.Ordinal), "steps the user cannot take are not listed, as in the window");
+
+        string unmanaged = ScanPresentation.Details(new ScannedCheck(
+            check.Definition, check.Text, new CheckResult(FirewallCheck.Id, CheckOutcome.Fail("Off."), When, false, TimeSpan.Zero)));
+        CollectionAssert.Contains(unmanaged.Split(Environment.NewLine), "1. " + Texts[FirewallCheck.Id].Fix[0]);
 
         string passing = ScanPresentation.Details(new ScannedCheck(
             check.Definition, check.Text, new CheckResult(FirewallCheck.Id, CheckOutcome.Pass("On for every network."), When, false, TimeSpan.Zero)));
         Assert.IsFalse(passing.Contains("How to fix", StringComparison.Ordinal), "a passing check has nothing to fix");
         StringAssert.Contains(passing, "Passed · Firewall and sharing · firewall.enabled");
+    }
+
+    [TestMethod]
+    public void WhileTheFirstScanRuns_NothingIsSaidAboutHowThePcIsDoing()
+    {
+        (string headline, string detail) = ScanPresentation.Progress(3, 126);
+
+        Assert.AreEqual("Checking this PC…", headline);
+        Assert.AreEqual("3 of 126 checks answered", detail);
+    }
+
+    [TestMethod]
+    public void ARow_StartsOpenOnlyWhenItNeedsAttention_AndThenStaysAsTheUserLeftIt()
+    {
+        // New on screen.
+        Assert.IsTrue(ScanPresentation.StartsExpanded(null, isIgnored: false, Standing.NeedsAttention));
+        Assert.IsFalse(ScanPresentation.StartsExpanded(null, isIgnored: false, Standing.Passed));
+        Assert.IsFalse(ScanPresentation.StartsExpanded(null, isIgnored: false, Standing.CouldNotCheck));
+        Assert.IsFalse(ScanPresentation.StartsExpanded(null, isIgnored: true, Standing.NeedsAttention));
+
+        // Redrawn: as the user left it, whatever the new result.
+        Assert.IsFalse(ScanPresentation.StartsExpanded((WasIgnored: false, WasExpanded: false), isIgnored: false, Standing.NeedsAttention));
+        Assert.IsTrue(ScanPresentation.StartsExpanded((WasIgnored: false, WasExpanded: true), isIgnored: false, Standing.Passed));
+        Assert.IsTrue(ScanPresentation.StartsExpanded((WasIgnored: true, WasExpanded: true), isIgnored: true, Standing.NeedsAttention), "an open ignored row stays open");
+
+        // Just ignored, or just brought back: it starts over.
+        Assert.IsFalse(ScanPresentation.StartsExpanded((WasIgnored: false, WasExpanded: true), isIgnored: true, Standing.NeedsAttention));
+        Assert.IsTrue(ScanPresentation.StartsExpanded((WasIgnored: true, WasExpanded: false), isIgnored: false, Standing.NeedsAttention));
+    }
+
+    [TestMethod]
+    public async Task TheResultHandedOverAndTheOneInTheFinishedScan_AreTheSameAnswer()
+    {
+        // The window keeps a row on screen when its answer is the same object.
+        var scanner = new Scanner(new FakeProbes().Build(), TimeProvider.System);
+        var arrived = new System.Collections.Concurrent.ConcurrentDictionary<string, ScannedCheck>();
+
+        ScanResult scan = await scanner.RunAsync(CheckSelection.All, isElevated: false, check => arrived[check.Definition.Id] = check);
+
+        Assert.IsTrue(scan.Checks.All(check => ReferenceEquals(check.Result, arrived[check.Definition.Id].Result)));
     }
 
     [TestMethod]

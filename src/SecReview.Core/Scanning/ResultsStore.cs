@@ -46,12 +46,13 @@ public sealed class ResultsStore
             [.. scan.Checks.Select(check => new StoredCheck(
                 check.Definition.Id,
                 check.Result.Outcome.Status.ToString(),
-                check.Result.Outcome.Summary,
+                Fit(check.Result.Outcome.Summary),
                 check.Result.Outcome.ManagedByPolicy,
                 check.Result.CheckedAt,
                 check.Result.Elevated,
                 (long)check.Result.Duration.TotalMilliseconds,
-                [.. check.Result.Outcome.Findings.Select(f => new StoredFinding(f.Item, f.Found, f.Expected, f.Status.ToString(), f.Source))]))]);
+                [.. check.Result.Outcome.Findings.Take(MaximumFindings).Select(f =>
+                    new StoredFinding(Fit(f.Item), Fit(f.Found), Fit(f.Expected), f.Status.ToString(), f.Source is null ? null : Fit(f.Source)))]))]);
         try
         {
             AtomicFile.Write(_path, JsonSerializer.SerializeToUtf8Bytes(stored, ResultsJson.Default.StoredScan));
@@ -89,6 +90,13 @@ public sealed class ResultsStore
         }
 
         if (stored is not { SchemaVersion: SchemaVersion, Checks: not null } || stored.AppVersion != ProductInfo.Version)
+        {
+            return null;
+        }
+
+        // A scan that finished before SecReview existed, or after now, was not saved by a
+        // working clock: its age would be shown wrongly.
+        if (stored.FinishedAt.Year < 2025 || stored.FinishedAt > DateTimeOffset.UtcNow.AddDays(1))
         {
             return null;
         }
@@ -149,9 +157,16 @@ public sealed class ResultsStore
         return new CheckOutcome(status, saved.Summary!, findings, saved.ManagedByPolicy);
     }
 
+    /// <summary>A value by its exact name. Numbers, signs and padding, which the framework would accept, are not names.</summary>
     private static bool Known<T>(string? name, out T value)
-        where T : struct, Enum =>
-        Enum.TryParse(name, ignoreCase: false, out value) && Enum.IsDefined(value) && !char.IsAsciiDigit((name ?? "0")[0]);
+        where T : struct, Enum
+    {
+        value = default;
+        return name is not null && Array.IndexOf(Enum.GetNames<T>(), name) >= 0 && Enum.TryParse(name, ignoreCase: false, out value);
+    }
+
+    /// <summary>A text within what <see cref="Load"/> accepts, so that one very long answer cannot make the whole file unusable.</summary>
+    private static string Fit(string text) => text.Length <= MaximumTextLength ? text : text[..MaximumTextLength];
 
     private static bool IsText(string? text) => text is { Length: <= MaximumTextLength };
 

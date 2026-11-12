@@ -36,7 +36,7 @@ public enum ScanFilter
 {
     All,
 
-    /// <summary>What needs fixing, and what could not be checked.</summary>
+    /// <summary>What needs fixing: the same checks the headline counts.</summary>
     NeedsAttention,
 
     NeedsAdmin,
@@ -124,6 +124,10 @@ public static class ScanPresentation
                 "Needs attention",
                 string.Empty,
                 all.Where(x => x.Standing == Standing.NeedsAttention).OrderByDescending(x => (int)x.Check.Definition.Severity).Select(x => x.Check));
+        }
+
+        if (filter is ScanFilter.All)
+        {
             Add("Could not be checked", string.Empty, all.Where(x => x.Standing == Standing.CouldNotCheck).Select(x => x.Check));
         }
 
@@ -164,7 +168,7 @@ public static class ScanPresentation
         return filter switch
         {
             ScanFilter.All => scan.Checks.Count,
-            ScanFilter.NeedsAttention => Count(scan, ignored, Standing.NeedsAttention) + Count(scan, ignored, Standing.CouldNotCheck),
+            ScanFilter.NeedsAttention => Count(scan, ignored, Standing.NeedsAttention),
             ScanFilter.NeedsAdmin => Count(scan, ignored, Standing.NeedsAdmin),
             ScanFilter.Passed => Count(scan, ignored, Standing.Passed),
             _ => Count(scan, ignored, Standing.Ignored),
@@ -236,7 +240,34 @@ public static class ScanPresentation
         return text;
     }
 
-    /// <summary>How long ago a scan finished, in words: "just now", "5 minutes ago", "yesterday", "3 days ago".</summary>
+    /// <summary>
+    /// The headline and the line under it while the very first results come in. Nothing is said
+    /// about how the PC is doing until every check has answered: the first three passes are
+    /// not "everything is in order".
+    /// </summary>
+    public static (string Headline, string Detail) Progress(int answered, int total) =>
+        ("Checking this PC…", string.Create(CultureInfo.InvariantCulture, $"{answered} of {total} checks answered"));
+
+    /// <summary>
+    /// Whether a row starts open when it is (re)drawn. A check that needs attention starts
+    /// open, so the reason is visible without a click; everything else starts closed. A row
+    /// that was on screen keeps the state the user left it in, unless it has just been
+    /// ignored or brought back: then it starts over.
+    /// </summary>
+    /// <param name="shown">Whether the row was on screen before, and how.</param>
+    /// <param name="isIgnored">Whether the check is ignored now.</param>
+    /// <param name="standing">Where the check stands now, leaving aside that it may be ignored.</param>
+    public static bool StartsExpanded((bool WasIgnored, bool WasExpanded)? shown, bool isIgnored, Standing standing)
+    {
+        if (shown is { } before && before.WasIgnored == isIgnored)
+        {
+            return before.WasExpanded;
+        }
+
+        return !isIgnored && standing == Standing.NeedsAttention;
+    }
+
+    /// <summary>How long ago a scan finished, in words: "just now", "5 minutes ago", "1 day ago", "3 days ago".</summary>
     public static string Age(DateTimeOffset finishedAt, DateTimeOffset now)
     {
         TimeSpan age = now - finishedAt;
@@ -247,7 +278,7 @@ public static class ScanPresentation
             < 60 => string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalMinutes} minutes ago"),
             < 120 => "1 hour ago",
             < 24 * 60 => string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalHours} hours ago"),
-            < 48 * 60 => "yesterday",
+            < 48 * 60 => "1 day ago",
             _ => string.Create(CultureInfo.InvariantCulture, $"{(int)age.TotalDays} days ago"),
         };
     }
@@ -329,7 +360,11 @@ public static class ScanPresentation
 
         text.AppendLine();
         text.AppendLine(CultureInfo.InvariantCulture, $"Why it matters: {check.Text.Why}");
-        if (standing is Standing.NeedsAttention or Standing.WorthKnowing)
+        if (standing is Standing.NeedsAttention or Standing.WorthKnowing && outcome.ManagedByPolicy)
+        {
+            text.AppendLine("How to fix: this setting is set by a policy, so it cannot be changed on this PC. Ask your IT department.");
+        }
+        else if (standing is Standing.NeedsAttention or Standing.WorthKnowing)
         {
             text.AppendLine(CultureInfo.InvariantCulture, $"How to fix (about {check.Text.TimeToFix}):");
             for (int i = 0; i < check.Text.Fix.Count; i++)

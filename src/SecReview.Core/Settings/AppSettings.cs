@@ -82,6 +82,12 @@ public sealed class SettingsStore
 
     private readonly string _path;
 
+    /// <summary>
+    /// Set when a settings file is there but could not be read or moved aside. Saving would
+    /// then replace settings nobody has seen, so it is refused until a read succeeds.
+    /// </summary>
+    private bool _mustNotOverwrite;
+
     public SettingsStore(string folder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
@@ -92,6 +98,7 @@ public sealed class SettingsStore
     public AppSettings Load(out string? problem)
     {
         problem = null;
+        _mustNotOverwrite = false;
         try
         {
             var file = new FileInfo(_path);
@@ -122,7 +129,9 @@ public sealed class SettingsStore
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            problem = $"The settings file could not be read ({exception.GetType().Name}).";
+            // The file may be perfectly good and only held by another program for a moment.
+            _mustNotOverwrite = true;
+            problem = $"The settings file could not be read ({exception.GetType().Name}). Changes are not saved until it can be.";
             return new AppSettings();
         }
     }
@@ -132,6 +141,17 @@ public sealed class SettingsStore
     {
         ArgumentNullException.ThrowIfNull(settings);
         problem = null;
+        if (_mustNotOverwrite)
+        {
+            // Try once more: what kept the file from being read may be gone.
+            Load(out _);
+            if (_mustNotOverwrite)
+            {
+                problem = "The settings were not saved: the settings file on disk cannot be read, and saving would replace it.";
+                return false;
+            }
+        }
+
         try
         {
             AtomicFile.Write(_path, JsonSerializer.SerializeToUtf8Bytes(Checked(settings), SettingsJson.Default.AppSettings));
@@ -166,11 +186,12 @@ public sealed class SettingsStore
     {
         try
         {
-            File.Move(_path, _path + ".unreadable", overwrite: true);
+            // A name of its own each time, so one damaged file never replaces another.
+            File.Move(_path, $"{_path}.unreadable-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..6]}");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // It stays where it is; the next save replaces it.
+            _mustNotOverwrite = true;
         }
 
         return new AppSettings();

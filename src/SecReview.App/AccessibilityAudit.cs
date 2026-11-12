@@ -60,7 +60,7 @@ internal static class AccessibilityAudit
     private static void Walk(AutomationPeer peer, List<string> problems, ref int operated, int depth)
     {
         AutomationControlType type = peer.GetAutomationControlType();
-        if (IsOperated(type) && peer.IsControlElement())
+        if ((IsOperated(type) || IsOperated(peer)) && peer.IsControlElement())
         {
             operated++;
             string name = peer.GetName();
@@ -86,6 +86,17 @@ internal static class AccessibilityAudit
             Walk(child, problems, ref operated, depth + 1);
         }
     }
+
+    /// <summary>
+    /// Whether the control offers something to do, whatever kind it says it is: an expander
+    /// calls itself a group, and is still pressed to open.
+    /// </summary>
+    private static bool IsOperated(AutomationPeer peer) =>
+        peer.GetPattern(PatternInterface.Invoke) is not null ||
+        peer.GetPattern(PatternInterface.Toggle) is not null ||
+        peer.GetPattern(PatternInterface.ExpandCollapse) is not null ||
+        peer.GetPattern(PatternInterface.SelectionItem) is not null ||
+        peer.GetPattern(PatternInterface.Value) is not null;
 
     /// <summary>Whether a person presses, switches or types into a control of this kind.</summary>
     private static bool IsOperated(AutomationControlType type) => type is

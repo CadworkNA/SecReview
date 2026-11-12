@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
 
     private readonly UiRole _role;
     private readonly AppLog _log;
+    private readonly DispatcherQueueTimer _ticker;
     private int _frames;
     private bool _dialogOpen;
 
@@ -44,6 +45,13 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Resize(InitialSize);
         Root.Loaded += OnLoaded;
+
+        // Draws results that arrived between redraws and keeps "checked 5 minutes ago" true.
+        _ticker = DispatcherQueue.CreateTimer();
+        _ticker.Interval = TimeSpan.FromMilliseconds(300);
+        _ticker.Tick += (_, _) => ViewModel.Tick();
+        _ticker.Start();
+        Closed += (_, _) => _ticker.Stop();
     }
 
     public MainViewModel ViewModel { get; }
@@ -91,8 +99,9 @@ public sealed partial class MainWindow : Window
             // and their buttons are not there yet to be looked at.
             await Task.Delay(AnimationSettleTime);
 
-            // "Check again" and "More" are always there.
-            var problems = new List<string>(AccessibilityAudit.Problems(Root, atLeast: 2));
+            // "Check again" and "More" are always there; with results, so are the five filters
+            // and the rows.
+            var problems = new List<string>(AccessibilityAudit.Problems(Root, atLeast: ViewModel.HasResults ? 12 : 2));
             if (_role is { Demo: true, DemoState: DemoState.Dialogs })
             {
                 problems.AddRange(await ExerciseDialogsAsync());
@@ -153,9 +162,31 @@ public sealed partial class MainWindow : Window
             problems.Add("The details of a check or the report came back empty.");
         }
 
+        // The commands behind "More": each must say what it is.
+        if (MoreButton.Flyout is MenuFlyout menu)
+        {
+            foreach (MenuFlyoutItem command in menu.Items.OfType<MenuFlyoutItem>())
+            {
+                if (string.IsNullOrWhiteSpace(command.Text))
+                {
+                    problems.Add("A command in the More menu has no name.");
+                }
+            }
+        }
+
         _ = NewReportPicker();
         ViewModel.StopIgnoring(anyCheck);
         ViewModel.Ignore(anyCheck, "Made up for the automated run");
+
+        // What is inside the rows, the ignored ones included: every row on screen is opened.
+        foreach (ScanFilter filter in (ScanFilter[])[ScanFilter.Ignored, ScanFilter.All])
+        {
+            ViewModel.Filter = filter;
+            ViewModel.ExpandAll();
+            await Task.Delay(AnimationSettleTime);
+            problems.AddRange(AccessibilityAudit.Problems(Root, atLeast: 12).Select(problem => $"Rows open ({filter}): {problem}"));
+        }
+
         return problems;
     }
 
@@ -207,7 +238,7 @@ public sealed partial class MainWindow : Window
             var package = new DataPackage();
             package.SetText(details);
             Clipboard.SetContent(package);
-            button.Content = "Copied";
+            ShowCopied(button);
         }
 #pragma warning disable CA1031 // The clipboard can be held by another program; that is not worth more than a log line.
         catch (Exception exception)
@@ -215,6 +246,15 @@ public sealed partial class MainWindow : Window
         {
             _log.Error("The details could not be copied", exception);
         }
+    }
+
+    /// <summary>Says "Copied" on the button for a moment. It goes back by itself: rows are reused for other checks.</summary>
+    private static async void ShowCopied(Button button)
+    {
+        object? before = button.Content;
+        button.Content = "Copied";
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        button.Content = before;
     }
 
     private async void OnIgnoreClicked(object sender, RoutedEventArgs e)
@@ -242,7 +282,9 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.ReportJson() is not { } report)
         {
-            await ShowAsync(Message("Nothing to save yet", "There are no results yet. Run the checks first."));
+            await ShowAsync(Message(
+                "Nothing to save yet",
+                ViewModel.CanRun ? "There are no results yet. Run the checks first." : "The checks are still running. Save the report when they have finished."));
             return;
         }
 

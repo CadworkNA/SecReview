@@ -15,7 +15,13 @@ public static class AtomicFile
         string temporary = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
         try
         {
-            File.WriteAllBytes(temporary, contents);
+            // On disk before it takes the file's place: a power cut must not leave an empty file under the real name.
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(contents);
+                stream.Flush(flushToDisk: true);
+            }
+
             File.Move(temporary, fullPath, overwrite: true);
         }
         finally

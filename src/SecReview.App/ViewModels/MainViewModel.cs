@@ -30,11 +30,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private readonly Dictionary<string, ScannedCheck> _results = new(StringComparer.Ordinal);
     private readonly HashSet<string> _beingChecked = new(StringComparer.Ordinal);
 
+    /// <summary>Rows to open the next time they are drawn, whatever state they were in.</summary>
+    private readonly HashSet<string> _openNext = new(StringComparer.Ordinal);
+
     private AppSettings _settings = new();
     private DateTimeOffset? _finishedAt;
     private bool _elevated;
     private ScanFilter _filter = ScanFilter.All;
     private long _lastRedraw;
+    private bool _redrawPending;
+    private long _lastAgeShown;
 
     private string _headline = "Checking this PC…";
     private string _detail = string.Empty;
@@ -100,7 +105,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool CanRun => !IsBusy;
+    /// <summary>A scan can start when none is running and no single check is being run again.</summary>
+    public bool CanRun => !IsBusy && _beingChecked.Count == 0;
 
     /// <summary>True when the scan itself could not run; <see cref="Failure"/> says why.</summary>
     public bool HasFailed
@@ -237,28 +243,21 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// <summary>Runs a scan and shows it as it answers. Never throws: a failure is shown in the window.</summary>
     public async Task RunAsync()
     {
-        if (IsBusy || _role.Demo)
+        if (!CanRun || _role.Demo)
         {
             return;
         }
 
         IsBusy = true;
         HasFailed = false;
-        if (_results.Count == 0)
-        {
-            Headline = "Checking this PC…";
-            Detail = string.Empty;
-        }
-        else
-        {
-            ShowHeadline(checking: true);
-        }
+        ShowHeadline();
 
         try
         {
             ScanResult scan = await Task.Run(() => ScanThisPcAsync(Arrived)).ConfigureAwait(true);
             _results.Clear();
             Take(scan);
+            Changed(nameof(HasResults));
             if (!_resultsStore!.Save(scan))
             {
                 _log.Error("The results could not be saved", new IOException("Writing results.json failed."));
@@ -282,11 +281,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// <summary>Runs one check again and shows its new answer.</summary>
     public async Task CheckAgainAsync(string checkId)
     {
+        // During a scan every check is being run again already.
         if (_role.Demo || IsBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
         {
             return;
         }
 
+        Changed(nameof(CanRun));
         Redraw();
         try
         {
@@ -306,6 +307,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         finally
         {
             _beingChecked.Remove(checkId);
+            Changed(nameof(CanRun));
             Redraw();
         }
     }
@@ -340,8 +342,40 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public string? DetailsOf(string checkId) =>
         _results.TryGetValue(checkId, out ScannedCheck? check) ? ScanPresentation.Details(check, _settings.IgnoredOf(checkId)) : null;
 
-    /// <summary>The current results as a report; null when there are none.</summary>
-    public string? ReportJson() => CurrentScan() is { } scan ? ReportFile.ToJson(ReportBuilder.Build(scan)) : null;
+    /// <summary>
+    /// The current results as a report; null when there are none, or while a scan runs: a
+    /// report of half a scan would look like a whole one.
+    /// </summary>
+    public string? ReportJson() =>
+        !IsBusy && _beingChecked.Count == 0 && CurrentScan() is { } scan ? ReportFile.ToJson(ReportBuilder.Build(scan)) : null;
+
+    /// <summary>
+    /// Called by the window a few times a second: draws results that arrived since the last
+    /// redraw, and keeps "checked 5 minutes ago" true while the window stays open.
+    /// </summary>
+    public void Tick()
+    {
+        if (_redrawPending && Stopwatch.GetElapsedTime(_lastRedraw) >= RedrawInterval)
+        {
+            Redraw();
+        }
+        else if (Stopwatch.GetElapsedTime(_lastAgeShown) >= TimeSpan.FromSeconds(30))
+        {
+            ShowHeadline();
+        }
+    }
+
+    /// <summary>Opens every row on screen (automated runs, so that what is inside them can be looked at).</summary>
+    public void ExpandAll()
+    {
+        foreach (CheckItem row in Sections.OfType<SectionItem>().SelectMany(section => section.Checks.OfType<CheckItem>()).ToArray())
+        {
+            _results[row.Id] = row.Check with { Result = row.Check.Result with { } };
+            _openNext.Add(row.Id);
+        }
+
+        Redraw();
+    }
 
     private static Scanner NewScanner()
     {
@@ -368,6 +402,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         if (Stopwatch.GetElapsedTime(_lastRedraw) >= RedrawInterval)
         {
             Redraw();
+        }
+        else
+        {
+            _redrawPending = true; // drawn by the next Tick
         }
     });
 
@@ -431,6 +469,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private void Redraw()
     {
         _lastRedraw = Stopwatch.GetTimestamp();
+        _redrawPending = false;
         Dictionary<string, CheckItem> shown = Sections.OfType<SectionItem>()
             .SelectMany(section => section.Checks.OfType<CheckItem>())
             .ToDictionary(item => item.Id, StringComparer.Ordinal);
@@ -474,13 +513,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     return row;
                 }
 
-                // A check that needs attention starts open, so the reason is visible without a
-                // click; everything the headline leaves out starts closed. A row that was
-                // already on screen keeps the state the user left it in, unless it was just
-                // ignored: then it closes.
-                bool expanded = row is { IsIgnored: false } && entry is null
-                    ? row.IsExpanded
-                    : entry is null && ScanPresentation.StandingOf(check) == Standing.NeedsAttention;
+                bool expanded = _openNext.Remove(id) || ScanPresentation.StartsExpanded(
+                    row is null ? null : (row.IsIgnored, row.IsExpanded), entry is not null, ScanPresentation.StandingOf(check));
                 return new CheckItem(check, entry, expanded, beingChecked);
             }).ToList());
             groups.Add(group);
@@ -507,11 +541,28 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             _ => $"{needAdmin} checks need administrator rights. They are not counted as failing.",
         };
 
-        ShowHeadline(checking: IsBusy);
+        ShowHeadline();
     }
 
-    private void ShowHeadline(bool checking)
+    private void ShowHeadline()
     {
+        _lastAgeShown = Stopwatch.GetTimestamp();
+        if (HasFailed && _results.Count == 0)
+        {
+            return;
+        }
+
+        // No scan has ever finished: what is on screen is a beginning, not a verdict.
+        if (_finishedAt is null)
+        {
+            if (IsBusy)
+            {
+                (Headline, Detail) = ScanPresentation.Progress(_results.Count, CheckCatalogue.Checks.Count);
+            }
+
+            return;
+        }
+
         if (CurrentScan() is not { } scan)
         {
             return;
@@ -520,13 +571,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         IReadOnlySet<string> ignored = _settings.IgnoredIds();
         Headline = ScanPresentation.Headline(scan, ignored);
         string age = ScanPresentation.Age(scan.FinishedAt, DateTimeOffset.UtcNow);
-        Detail = checking
+        Detail = IsBusy
             ? $"{ScanPresentation.Counts(scan, ignored)} · checked {age} · checking again…"
             : $"{ScanPresentation.Counts(scan, ignored)} · checked {age}";
     }
 
+    /// <summary>A filter's name with its count. No count until a scan has finished: a count of the first few answers would mislead.</summary>
     private string Label(string name, ScanFilter filter) =>
-        CurrentScan() is { } scan ? $"{name} ({ScanPresentation.CountFor(scan, _settings.IgnoredIds(), filter)})" : name;
+        _finishedAt is not null && CurrentScan() is { } scan ? $"{name} ({ScanPresentation.CountFor(scan, _settings.IgnoredIds(), filter)})" : name;
 
     private void SaveSettings()
     {

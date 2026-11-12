@@ -98,7 +98,50 @@ public sealed class SettingsStoreTests
         Assert.AreEqual(expectedProblem, problem);
         Assert.IsFalse(settings.FirstRunDone);
         Assert.IsFalse(System.IO.File.Exists(File));
-        Assert.AreEqual(contents, System.IO.File.ReadAllText(File + ".unreadable"), "what the user had is not thrown away");
+        string aside = Directory.GetFiles(_folder, SettingsStore.FileName + ".unreadable-*").Single();
+        Assert.AreEqual(contents, System.IO.File.ReadAllText(aside), "what the user had is not thrown away");
+    }
+
+    [TestMethod]
+    public void TwoDamagedFilesInARow_AreBothKept()
+    {
+        Directory.CreateDirectory(_folder);
+        var store = new SettingsStore(_folder);
+
+        System.IO.File.WriteAllText(File, "first damaged file");
+        store.Load(out _);
+        System.IO.File.WriteAllText(File, "second damaged file");
+        store.Load(out _);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "first damaged file", "second damaged file" },
+            Directory.GetFiles(_folder, SettingsStore.FileName + ".unreadable-*").Select(System.IO.File.ReadAllText).ToArray());
+    }
+
+    [TestMethod]
+    public void AFileThatCouldNotBeRead_IsNeverReplacedByDefaults()
+    {
+        // Another program holds the file for a moment (antivirus, backup, a second SecReview).
+        var store = new SettingsStore(_folder);
+        store.Save(new AppSettings { FirstRunDone = true }.WithIgnored("firewall.enabled", "lab PC", Now), out _);
+        string good = System.IO.File.ReadAllText(File);
+
+        using (new FileStream(File, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            AppSettings defaults = store.Load(out string? problem);
+            Assert.IsFalse(defaults.FirstRunDone);
+            StringAssert.StartsWith(problem, "The settings file could not be read");
+
+            // The window now closes its first-run notice and tries to save that.
+            Assert.IsFalse(store.Save(defaults with { FirstRunDone = true }, out string? saveProblem));
+            Assert.AreEqual("The settings were not saved: the settings file on disk cannot be read, and saving would replace it.", saveProblem);
+        }
+
+        Assert.AreEqual(good, System.IO.File.ReadAllText(File), "the ignored checks and their reasons are still there");
+
+        // Once the file can be read again, saving works: nothing is being replaced unseen.
+        Assert.IsTrue(store.Save(store.Load(out _).WithIgnored("sc.uv.cooldown", "x", Now), out _));
+        Assert.AreEqual(2, store.Load(out _).Ignored.Count);
     }
 
     [TestMethod]

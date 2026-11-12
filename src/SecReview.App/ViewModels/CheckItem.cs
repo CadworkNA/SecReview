@@ -160,7 +160,7 @@ public sealed partial class CheckItem
 
     /// <summary>Whether this row still says everything about that result, so it can stay on screen as it is.</summary>
     public bool IsStill(ScannedCheck check, IgnoredCheck? ignored, bool isBeingChecked) =>
-        ReferenceEquals(Check, check) && Equals(Ignored, ignored) && IsBeingChecked == isBeingChecked;
+        ReferenceEquals(Check.Result, check.Result) && Equals(Ignored, ignored) && IsBeingChecked == isBeingChecked;
 
     /// <summary>Where the check stands; the same answer the headline and the order use.</summary>
     public Standing Standing { get; }
