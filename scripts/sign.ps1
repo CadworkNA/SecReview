@@ -49,7 +49,15 @@ try {
         TimestampRfc3161       = 'http://timestamp.acs.microsoft.com'
         TimestampDigest        = 'SHA256'
     }
-    Invoke-ArtifactSigning @arguments
+    # From a folder outside the repository: the module installs its own tools with NuGet, and
+    # the repository's nuget.config (one source, every package id mapped to it) is meant for
+    # SecReview's packages, not for the signing tools. Files are given by their full paths.
+    Push-Location -LiteralPath $work
+    try {
+        Invoke-ArtifactSigning @arguments
+    } finally {
+        Pop-Location
+    }
 
     foreach ($entry in $map.GetEnumerator()) {
         $signature = Get-AuthenticodeSignature -LiteralPath $entry.Value
