@@ -19,3 +19,6 @@ TestResults/
 # Reports and screenshots produced by local runs: never commit real machine data
 /out/
 *.report.json
+
+# The list of known-malicious packages is built by CI, never committed
+*.idx

@@ -10,13 +10,16 @@
 #   .\build.ps1 -Locked              # restore in locked mode, as CI does
 #   .\build.ps1 -UpdateStageList     # rewrite scripts\stage-files.txt from this build's output
 #                                    # (after a Windows App SDK change; review the difference)
+#   .\build.ps1 -MalwareIndex <file> # ship this list of known-malicious packages (built by the
+#                                    # "Known-malicious list" workflow); without it there is none
 param(
     [string] $Version = '0.0.0-dev',
     [switch] $NoTests,
     [switch] $NoPublish,
     [switch] $LocalCache,
     [switch] $Locked,
-    [switch] $UpdateStageList
+    [switch] $UpdateStageList,
+    [string] $MalwareIndex
 )
 $ErrorActionPreference = 'Stop'
 # Exit codes of native commands are checked explicitly below, whatever the user's profile says.
@@ -111,6 +114,10 @@ foreach ($file in Get-ChildItem $appPublish -Recurse -File) {
 Copy-Item (Join-Path $publish 'cli\SecReviewCli.exe') $stage
 Copy-Item (Join-Path $publish 'cli\*.pdb') $symbols -Force
 
+if ($MalwareIndex) {
+    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $MalwareIndex).Path (Join-Path $stage 'known-malicious.idx')
+}
+
 Invoke-Step 'Check staged output' {
     & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -Update:$UpdateStageList
 }
@@ -189,6 +196,15 @@ Invoke-Step 'Smoke test' {
         if ($env:CI -eq 'true') { Write-Host ("  {0,-20} {1,-14} {2}" -f $check.id, $check.status, $check.summary) }
     }
     Write-Host "Report: $($report.checks.Count) checks, well-formed."
+
+    # A list that was staged must load in the compiled helper: its checksum and every entry.
+    if ($MalwareIndex) {
+        $list = $report.checks | Where-Object { $_.id -eq 'sc.malware.list' }
+        if (-not $list -or $list.status -notin 'Pass', 'Fail') {
+            throw "The staged list of known-malicious packages was not usable: $($list.status), $($list.summary)"
+        }
+        Write-Host "Known-malicious list: $($list.summary)"
+    }
 
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.

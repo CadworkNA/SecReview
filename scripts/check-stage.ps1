@@ -60,7 +60,11 @@ function Test-MicrosoftSignature([string] $path) {
     }
 }
 
-$files = @(Get-ChildItem $stagePath -Recurse -File)
+# The list of known-malicious packages is rebuilt every day, so it is neither in the list nor
+# of a fixed hash, and a development build has none. It carries its own checksum, which the
+# apps verify each time they load it (build.ps1 -MalwareIndex has the smoke test prove that).
+$optional = 'known-malicious.idx'
+$files = @(Get-ChildItem $stagePath -Recurse -File | Where-Object { (Get-RelativePath $_) -cne $optional })
 if ($files.Count -eq 0) {
     Write-Host "::error::$Stage is empty."
     exit 1

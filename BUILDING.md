@@ -39,6 +39,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/Rules` and `rules/` | Checks written as data: `rules/*.json` (embedded at build time) and the engine that runs them. A rule names a registry value, service, account policy value, audit subcategory, user right or Microsoft Defender setting, what is expected, what it means when the value is absent, and the Microsoft page and date it was verified against. A rule file that does not hold together fails the load, and so the tests |
 | `src/SecReview.Core/Config` | Readers for the settings files of developer tools: TOML, YAML, INI, Git's settings format, XML and Java-style properties. Each covers what settings files use and stops at the first thing it does not understand, with the line number: a file is read in full or not judged at all. Seeded mutation tests keep them from crashing or hanging |
 | `src/SecReview.Core/SupplyChain` | The developer supply-chain checks, a folder per tool or topic (uv, pnpm, Scoop, npm, Yarn, pip, NuGet, Cargo, Go, Git, editors, AI agents and MCP servers, Docker, winget, Chocolatey, environment variables, stored credentials): release cooldowns, unsafe package sources, switched-off protections, secrets stored as plain text. No tool is ever run: versions come from files, and where none records one the result says so. A check does not apply when its tool is absent |
+| `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording; the display order and headline; the made-up results behind `--demo` |
 | `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
 | `src/SecReview.Core/Diagnostics` | `--diagnose`, the local error log (size-capped, names removed) and where SecReview keeps its files |
@@ -46,9 +47,25 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Cli` | `SecReviewCli.exe` (Native AOT console). The only binary that ever runs elevated |
 | `src/SecReview.App` | `SecReview.exe` (WinUI 3, Native AOT, unpackaged, Windows App SDK copied next to it). `Program.Main` picks the role before XAML starts |
 | `tests/SecReview.Core.Tests` | MSTest unit tests for `Core` |
+| `tools/SecReview.IndexBuilder` | Builds the list of known-malicious packages from a checkout of the OpenSSF malicious-packages feed. Compiles the same source files the apps read the list with. Not shipped |
 | `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships: every binary not ours must be signed by Microsoft and chain to a pinned root, every other file must match its recorded hash) |
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
+| `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
+
+## The list of known-malicious packages
+
+The list is a file beside the programs, `known-malicious.idx`. A plain build has none, and the
+three checks that need it then say so ("could not check"). To build with one:
+
+```
+gh run download --name known-malicious-index --dir out    # from the latest "Known-malicious list" run
+.\build.ps1 -MalwareIndex out\known-malicious.idx
+```
+
+The data comes from the [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages)
+feed (Apache-2.0). Tests use made-up package names only: no real advisory and no real package is
+in the repository.
 
 ## Looking at the window
 
