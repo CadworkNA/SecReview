@@ -53,12 +53,14 @@ public interface IElevatedLauncher
 /// Windows prompt, take its answer, and trust nothing about it that was not checked.
 /// </summary>
 /// <remarks>
-/// The pipe is the first of its name, takes one connection at a time, and is open to this
-/// user, SYSTEM and Administrators only (a standard user may answer the prompt with another
-/// account's credentials; the helper then runs as that administrator), never over the network.
-/// Only a connection from the very process Windows started for us is listened to; any other is
-/// hung up on. What arrives is read like a results file: size-capped, every field checked,
-/// and only results for administrator checks of this version are taken.
+/// The pipe is the first of its name, takes one connection at a time, and can be written to
+/// by Administrators only: the helper always is one once Windows has started it elevated,
+/// whichever account answered the prompt, and nothing that runs without those rights can
+/// connect in its place. Not even the user who made the pipe may change who is allowed, and
+/// nothing comes in over the network. On top of that, only a connection from the very
+/// process Windows started for us is listened to; any other is hung up on. What arrives is
+/// read like a results file: size-capped, every field checked, and only results for
+/// administrator checks of this version are taken, read with administrator rights.
 /// </remarks>
 public static class AdministratorScan
 {
@@ -104,8 +106,16 @@ public static class AdministratorScan
     /// <param name="texts">The wording of the checks.</param>
     /// <param name="timeout">How long the helper has to answer once started; <see cref="DefaultTimeout"/> if null.</param>
     /// <param name="cancellation">Abandons the run.</param>
-    public static async Task<AdministratorScanResult> RunAsync(
-        IElevatedLauncher launcher, IReadOnlyList<ICheck> checks, CheckTexts texts, TimeSpan? timeout = null, CancellationToken cancellation = default)
+    public static Task<AdministratorScanResult> RunAsync(
+        IElevatedLauncher launcher, IReadOnlyList<ICheck> checks, CheckTexts texts, TimeSpan? timeout = null, CancellationToken cancellation = default) =>
+        RunAsync(launcher, checks, texts, timeout, alsoThisUser: false, cancellation);
+
+    /// <summary>
+    /// As above. <paramref name="alsoThisUser"/> opens the pipe to the current user as well:
+    /// for tests only, which play the helper from an ordinary process.
+    /// </summary>
+    internal static async Task<AdministratorScanResult> RunAsync(
+        IElevatedLauncher launcher, IReadOnlyList<ICheck> checks, CheckTexts texts, TimeSpan? timeout, bool alsoThisUser, CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(launcher);
         ArgumentNullException.ThrowIfNull(checks);
@@ -115,7 +125,7 @@ public static class AdministratorScan
         string name = ElevationPipe.NewName();
         try
         {
-            using NamedPipeServerStream pipe = CreatePipe(name);
+            using NamedPipeServerStream pipe = CreatePipe(name, alsoThisUser);
 
             // The Windows prompt blocks until it is answered: not on the caller's thread.
             using ElevatedProcess? helper = await Task.Run(() => launcher.Start(name), cancellation).ConfigureAwait(false);
@@ -138,6 +148,12 @@ public static class AdministratorScan
                 return Failed("The administrator checks' answer could not be used.");
             }
 
+            // An answer read without administrator rights is not what was asked for.
+            if (!scan.Elevated || scan.Checks.Any(check => !check.Result.Elevated))
+            {
+                return Failed("The administrator checks ran without administrator rights; their answer was not used.");
+            }
+
             return new AdministratorScanResult(AdministratorScanOutcome.Completed, scan);
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
@@ -156,21 +172,25 @@ public static class AdministratorScan
         static AdministratorScanResult Failed(string problem) => new(AdministratorScanOutcome.Failed, Problem: problem);
     }
 
-    /// <summary>The pipe: the first of its name, one connection at a time, for this PC's user and administrators only.</summary>
-    private static NamedPipeServerStream CreatePipe(string name)
+    /// <summary>The pipe: the first of its name, one connection at a time, for this PC's administrators only.</summary>
+    internal static NamedPipeServerStream CreatePipe(string name, bool alsoThisUser)
     {
         var security = new PipeSecurity();
-        using (WindowsIdentity me = WindowsIdentity.GetCurrent())
-        {
-            security.AddAccessRule(new PipeAccessRule(me.User!, PipeAccessRights.FullControl, AccessControlType.Allow));
-        }
-
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.ReadWrite, AccessControlType.Allow));
+
+        // The maker of a pipe owns it, and an owner may normally rewrite who is allowed. This
+        // entry takes that away: the owner may look at the list, not change it.
         security.AddAccessRule(new PipeAccessRule(
-            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), PipeAccessRights.ReadWrite, AccessControlType.Allow));
+            new SecurityIdentifier(WellKnownSidType.WinCreatorOwnerRightsSid, null), PipeAccessRights.ReadPermissions, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.NetworkSid, null), PipeAccessRights.FullControl, AccessControlType.Deny));
+
+        if (alsoThisUser)
+        {
+            using WindowsIdentity me = WindowsIdentity.GetCurrent();
+            security.AddAccessRule(new PipeAccessRule(me.User!, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+        }
 
         return NamedPipeServerStreamAcl.Create(
             name,
@@ -192,10 +212,18 @@ public static class AdministratorScan
     {
         while (true)
         {
-            await pipe.WaitForConnectionAsync(cancellation).ConfigureAwait(false);
-            if (ClientProcessId(pipe) == helperProcessId)
+            try
             {
-                break;
+                await pipe.WaitForConnectionAsync(cancellation).ConfigureAwait(false);
+                if (ClientProcessId(pipe) == helperProcessId)
+                {
+                    break;
+                }
+            }
+            catch (IOException)
+            {
+                // Something connected and left again before it was looked at. Not the helper,
+                // which stays until it has written its answer; the wait goes on.
             }
 
             pipe.Disconnect();
@@ -264,6 +292,9 @@ public sealed class WindowsElevatedLauncher(string helperPath) : IElevatedLaunch
             Verb = "runas",
             Arguments = $"--elevated-scan --pipe {pipeName}",
             WindowStyle = ProcessWindowStyle.Hidden,
+
+            // Not the folder the app happened to be started in, which a user may be able to write to.
+            WorkingDirectory = Environment.SystemDirectory,
         };
 
         try

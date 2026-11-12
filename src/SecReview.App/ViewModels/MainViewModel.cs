@@ -362,7 +362,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public async Task CheckAgainAsync(string checkId)
     {
         // During a scan every check is being run again already.
-        if (_role.Demo || IsBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
+        if (_role.Demo || IsBusy || _administratorBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
         {
             return;
         }
@@ -372,7 +372,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         try
         {
             ScannedCheck again = await Task.Run(() => NewScanner().RunOneAsync(checkId, WindowsProbes.IsProcessElevated())).ConfigureAwait(true);
-            _results[checkId] = again;
+            _results[checkId] = ScanPresentation.Newer(_results.GetValueOrDefault(checkId), again, DateTimeOffset.UtcNow);
             if (CurrentScan() is { } scan)
             {
                 _resultsStore!.Save(scan);

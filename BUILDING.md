@@ -65,15 +65,19 @@ answer from a pipe.
   and 32 random hexadecimal digits). No paths, lists or options. It runs the machine-scope
   checks that need administrator rights, writes their results as one document and exits. It
   reads nothing from the pipe, and connects without lending its identity to whoever made it.
-- **The app trusts nothing it did not check:** the pipe is the first of its name, open to this
-  user, SYSTEM and Administrators only, never over the network; only a connection from the
-  process Windows started is heard; the answer is capped at 1 MB, read like `results.json`,
-  and may hold results for administrator checks of this version only.
+- **The app trusts nothing it did not check:** the pipe is the first of its name; only
+  Administrators can write to it (the helper always is one), not even its maker can change
+  that, and nothing comes over the network; only a connection from the process Windows
+  started is heard; the answer is capped at 1 MB, read like `results.json`, and must hold
+  exactly the administrator checks of this version, read with administrator rights.
 - **Only from Program Files.** The helper runs elevated, so it must be a file an ordinary
   user cannot replace. A copy of SecReview anywhere else shows why the button is not there.
 - **Saying no at the prompt** changes nothing: the checks stay "needs administrator".
-- **Afterwards** an ordinary scan keeps an administrator answer for the checks it cannot read
-  itself, with its date, for 30 days.
+- **Afterwards** an ordinary scan keeps an administrator answer, with its date, for 30 days,
+  but only for checks it cannot read at all. Where it reads something itself (drive
+  encryption), its own answer is always shown.
+- **`--report` with administrator rights** never replaces an existing file: an elevated
+  program that overwrites whatever it is pointed at could be used to destroy any file.
 - The build runs the compiled helper over a real pipe (`build.ps1` stands in for the app). On
   a build machine that runs with administrator rights, as hosted runners do, the checks are
   really answered. The Windows prompt itself cannot be exercised by a build.

@@ -145,7 +145,9 @@ public sealed class ResultsStore
                 continue;
             }
 
-            if (Outcome(saved) is not { } outcome)
+            // An answer dated before SecReview existed or after now was not saved by a working
+            // clock; how old it is, which decides how long it is kept, could not be told.
+            if (Outcome(saved) is not { } outcome || saved.CheckedAt.Year < 2025 || saved.CheckedAt > DateTimeOffset.UtcNow.AddDays(1))
             {
                 return null;
             }

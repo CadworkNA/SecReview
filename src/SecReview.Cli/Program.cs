@@ -71,7 +71,7 @@ static async Task<int> WriteReportAsync(SystemProbes probes, bool isElevated, st
 
     try
     {
-        ReportFile.Write(report, path);
+        ReportFile.Write(report, path, replaceExisting: !isElevated);
     }
     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
         or ArgumentException or NotSupportedException)

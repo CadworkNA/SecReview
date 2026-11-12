@@ -11,6 +11,7 @@ public static class CliArguments
         Usage: SecReviewCli <command>
 
           --report <file>   Run the checks and write the results to <file> as JSON.
+                            With administrator rights an existing file is not replaced.
           --diagnose        Show which readings work on this PC (for support).
           --version         Print the version.
           --help            Print this text.

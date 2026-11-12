@@ -49,6 +49,9 @@ public static class ElevatedHelper
     /// <summary>How long the helper waits for the pipe to be there.</summary>
     public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long the helper lives at most: it is an elevated process, and nobody may keep one waiting.</summary>
+    public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(100);
+
     /// <summary>
     /// Runs the administrator checks and writes their results to the pipe. Returns false when
     /// the name is not a pipe name of ours or the pipe could not be reached or written.
@@ -77,6 +80,10 @@ public static class ElevatedHelper
         {
             return false;
         }
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        deadline.CancelAfter(Lifetime);
+        cancellation = deadline.Token;
 
         try
         {

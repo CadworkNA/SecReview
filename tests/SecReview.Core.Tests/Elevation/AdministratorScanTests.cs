@@ -44,6 +44,16 @@ public sealed class AdministratorScanTests
         }
     }
 
+    /// <summary>Runs the window's side with the pipe opened to this user as well: the tests play the helper from an ordinary process.</summary>
+    private static Task<AdministratorScanResult> Run(IElevatedLauncher launcher, TimeSpan timeout) =>
+        AdministratorScan.RunAsync(launcher, Checks, Texts, timeout, alsoThisUser: true);
+
+    private static bool ThisProcessIsElevated()
+    {
+        using WindowsIdentity me = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(me).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
     /// <summary>The real helper code, with made-up readings, as if it had administrator rights.</summary>
     private static Task<bool> RealHelper(string pipeName) =>
         ElevatedHelper.RunAsync(pipeName, new FakeProbes().Build(), isElevated: true, TimeProvider.System, Checks, Texts);
@@ -113,7 +123,7 @@ public sealed class AdministratorScanTests
     {
         var launcher = new Launcher(RealHelper);
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(30));
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(30));
         await launcher.Helper;
 
         Assert.AreEqual(AdministratorScanOutcome.Completed, result.Outcome, result.Problem);
@@ -131,7 +141,7 @@ public sealed class AdministratorScanTests
     [TestMethod]
     public async Task SayingNoAtThePrompt_IsNotAnError()
     {
-        AdministratorScanResult result = await AdministratorScan.RunAsync(new Launcher(null, declined: true), Checks, Texts);
+        AdministratorScanResult result = await Run(new Launcher(null, declined: true), TimeSpan.FromSeconds(5));
 
         Assert.AreEqual(AdministratorScanOutcome.Cancelled, result.Outcome);
         Assert.IsNull(result.Scan);
@@ -143,7 +153,7 @@ public sealed class AdministratorScanTests
     {
         var launcher = new Launcher(null, fails: new InvalidOperationException("Windows did not start the helper."));
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts);
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(5));
 
         Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome);
         Assert.AreEqual("The administrator checks could not be run: Windows did not start the helper.", result.Problem);
@@ -163,7 +173,7 @@ public sealed class AdministratorScanTests
             Elevated: true));
         var launcher = new Launcher(Writes(forged), processId: 4);
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(2));
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(2));
         await launcher.Helper;
 
         Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome);
@@ -172,7 +182,7 @@ public sealed class AdministratorScanTests
 
         // The same answer from the process that was started is taken: the difference is who sent it.
         var genuine = new Launcher(Writes(forged));
-        AdministratorScanResult taken = await AdministratorScan.RunAsync(genuine, Checks, Texts, TimeSpan.FromSeconds(30));
+        AdministratorScanResult taken = await Run(genuine, TimeSpan.FromSeconds(30));
         await genuine.Helper;
         Assert.AreEqual(AdministratorScanOutcome.Completed, taken.Outcome, taken.Problem);
     }
@@ -182,7 +192,7 @@ public sealed class AdministratorScanTests
     {
         var launcher = new Launcher(Writes(new byte[ElevationPipe.MaximumBytes + 100_000]));
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(30));
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(30));
         await launcher.Helper;
 
         Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome);
@@ -196,12 +206,12 @@ public sealed class AdministratorScanTests
 
         // Not a document at all.
         var garbage = new Launcher(Writes("not results"u8.ToArray()));
-        Assert.AreEqual(Unusable, (await AdministratorScan.RunAsync(garbage, Checks, Texts, TimeSpan.FromSeconds(30))).Problem);
+        Assert.AreEqual(Unusable, (await Run(garbage, TimeSpan.FromSeconds(30))).Problem);
         await garbage.Helper;
 
         // Nothing at all.
         var empty = new Launcher(Writes([]));
-        Assert.AreEqual(Unusable, (await AdministratorScan.RunAsync(empty, Checks, Texts, TimeSpan.FromSeconds(30))).Problem);
+        Assert.AreEqual(Unusable, (await Run(empty, TimeSpan.FromSeconds(30))).Problem);
         await empty.Helper;
 
         // A well-formed answer about a check that is not an administrator check: an ordinary
@@ -213,7 +223,7 @@ public sealed class AdministratorScanTests
             DateTimeOffset.UtcNow,
             Elevated: true));
         var other = new Launcher(Writes(wrongChecks));
-        Assert.AreEqual(Unusable, (await AdministratorScan.RunAsync(other, Checks, Texts, TimeSpan.FromSeconds(30))).Problem);
+        Assert.AreEqual(Unusable, (await Run(other, TimeSpan.FromSeconds(30))).Problem);
         await other.Helper;
     }
 
@@ -222,7 +232,7 @@ public sealed class AdministratorScanTests
     {
         var launcher = new Launcher(_ => Task.CompletedTask);
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(1));
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(1));
 
         Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome);
         Assert.AreEqual("The administrator checks did not answer in time.", result.Problem);
@@ -240,17 +250,85 @@ public sealed class AdministratorScanTests
     }
 
     [TestMethod]
-    public async Task WithoutAdministratorRights_TheHelperStillAnswers_AndSaysWhatItCouldNotRead()
+    public async Task AnAnswerReadWithoutAdministratorRights_IsNotWhatWasAskedFor()
     {
-        // Started by hand without the prompt: harmless, and honest about it.
+        // A helper that ended up without the rights: harmless, honest about it, and not used.
         var launcher = new Launcher(name => ElevatedHelper.RunAsync(name, new FakeProbes().Build(), isElevated: false, TimeProvider.System, Checks, Texts));
 
-        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(30));
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(30));
         await launcher.Helper;
 
-        Assert.AreEqual(AdministratorScanOutcome.Completed, result.Outcome, result.Problem);
-        Assert.IsTrue(result.Scan!.Checks.Any(check => check.Result.Outcome.Status == CheckStatus.NeedsAdmin));
-        Assert.IsFalse(result.Scan.Elevated);
+        Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome);
+        Assert.AreEqual("The administrator checks ran without administrator rights; their answer was not used.", result.Problem);
+        Assert.IsNull(result.Scan);
+    }
+
+    [TestMethod]
+    public async Task OnlyAdministratorsCanWriteToThePipe()
+    {
+        if (ThisProcessIsElevated())
+        {
+            Assert.Inconclusive("This test process is an administrator itself, so the pipe lets it in.");
+        }
+
+        // The pipe as the window really makes it, and a client without administrator rights.
+        string name = ElevationPipe.NewName();
+        using NamedPipeServerStream pipe = AdministratorScan.CreatePipe(name, alsoThisUser: false);
+        using var client = new NamedPipeClientStream(".", name, PipeDirection.Out, PipeOptions.Asynchronous, TokenImpersonationLevel.Anonymous);
+
+        await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() => client.ConnectAsync(2000));
+
+        // And through the whole of the window's side: the same forged answer that an ordinary
+        // process could deliver in the tests above never even arrives.
+        var launcher = new Launcher(async pipeName =>
+        {
+            try
+            {
+                await Writes("anything"u8.ToArray())(pipeName);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Refused, as it must be.
+            }
+        });
+        AdministratorScanResult result = await AdministratorScan.RunAsync(launcher, Checks, Texts, TimeSpan.FromSeconds(2));
+        await launcher.Helper;
+        Assert.AreEqual("The administrator checks did not answer in time.", result.Problem);
+    }
+
+    [TestMethod]
+    public void ThePipe_IsTheOnlyOneOfItsName()
+    {
+        string name = ElevationPipe.NewName();
+        using NamedPipeServerStream first = AdministratorScan.CreatePipe(name, alsoThisUser: true);
+
+        // Whoever comes second, the window or a program lying in wait, does not get a pipe of that name.
+        Assert.ThrowsExactly<UnauthorizedAccessException>(() => AdministratorScan.CreatePipe(name, alsoThisUser: true).Dispose());
+    }
+
+    [TestMethod]
+    public async Task SomethingThatConnectsAndLeaves_DoesNotEndTheRun()
+    {
+        // A visitor opens the pipe and closes it at once; then the helper answers.
+        var launcher = new Launcher(async pipeName =>
+        {
+            using (var visitor = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous, TokenImpersonationLevel.Anonymous))
+            {
+                await visitor.ConnectAsync(10_000);
+            }
+
+            await Task.Delay(200);
+            await RealHelper(pipeName);
+        });
+
+        AdministratorScanResult result = await Run(launcher, TimeSpan.FromSeconds(30));
+        await launcher.Helper;
+
+        // The visitor came from this process too, so its empty answer may be the one that is
+        // read; either way the run ends with a clear answer and never with an error thrown.
+        Assert.IsTrue(
+            result.Outcome == AdministratorScanOutcome.Completed || result.Problem == "The administrator checks' answer could not be used.",
+            $"{result.Outcome}: {result.Problem}");
     }
 
     [TestMethod]

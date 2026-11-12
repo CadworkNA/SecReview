@@ -99,6 +99,8 @@ public sealed class ResultsStoreTests
     [DataRow("\"status\":\"Pass\"", "\"status\":\"+1\"", DisplayName = "a status as a signed number")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\"pass\"", DisplayName = "a status in another case")]
     [DataRow("\"finishedAt\":\"2026-", "\"finishedAt\":\"2999-", DisplayName = "a scan from the future")]
+    [DataRow("\"checkedAt\":\"2026-", "\"checkedAt\":\"2099-", DisplayName = "an answer from the future")]
+    [DataRow("\"checkedAt\":\"2026-", "\"checkedAt\":\"1999-", DisplayName = "an answer from before SecReview")]
     [DataRow("\"finishedAt\":\"2026-", "\"finishedAt\":\"1999-", DisplayName = "a scan from before SecReview")]
     [DataRow("\"status\":\"Problem\"", "\"status\":\"Bad\"", DisplayName = "a finding status this version does not know")]
     [DataRow("\"summary\":\"Automatic sign-in is off.\"", "\"summary\":\"\"", DisplayName = "an empty summary")]
