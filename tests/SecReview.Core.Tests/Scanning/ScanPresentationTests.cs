@@ -183,6 +183,82 @@ public sealed class ScanPresentationTests
         StringAssert.Contains(passing, "Passed · Firewall and sharing · firewall.enabled");
     }
 
+    private static ScannedCheck Answer(CheckOutcome outcome, bool elevated, DateTimeOffset checkedAt) => new(
+        new CheckDefinition("made-up.check", CheckCategory.Hardening, Severity.Medium, AdminNeed.Yes),
+        Texts[FirewallCheck.Id],
+        new CheckResult("made-up.check", outcome, checkedAt, elevated, TimeSpan.Zero));
+
+    [TestMethod]
+    public void AnAdministratorAnswer_IsKept_WhenAnOrdinaryScanCanOnlyAsk()
+    {
+        ScannedCheck fromAdministrator = Answer(CheckOutcome.Fail("Auditing is off."), elevated: true, When.AddDays(-3));
+        ScannedCheck ordinary = Answer(CheckOutcome.NeedsAdmin("This check needs administrator rights."), elevated: false, When);
+
+        Assert.AreSame(fromAdministrator, ScanPresentation.Newer(fromAdministrator, ordinary, When), "the earlier answer says more, and keeps its date");
+        Assert.AreSame(ordinary, ScanPresentation.Newer(null, ordinary, When));
+    }
+
+    [TestMethod]
+    public void ANewAnswer_AlwaysReplacesTheOldOne_Otherwise()
+    {
+        ScannedCheck asks = Answer(CheckOutcome.NeedsAdmin("x"), elevated: false, When);
+        ScannedCheck ordinaryPass = Answer(CheckOutcome.Pass("x"), elevated: false, When);
+        ScannedCheck oldOrdinary = Answer(CheckOutcome.Fail("x"), elevated: false, When.AddDays(-1));
+        ScannedCheck oldAdministrator = Answer(CheckOutcome.Fail("x"), elevated: true, When.AddDays(-1));
+        ScannedCheck newAdministrator = Answer(CheckOutcome.Pass("x"), elevated: true, When);
+        ScannedCheck administratorAsked = Answer(CheckOutcome.NeedsAdmin("x"), elevated: true, When.AddDays(-1));
+
+        // An ordinary scan that has an answer of its own shows it.
+        Assert.AreSame(ordinaryPass, ScanPresentation.Newer(oldAdministrator, ordinaryPass, When));
+
+        // An old ordinary answer is not kept alive by a scan that can only ask.
+        Assert.AreSame(asks, ScanPresentation.Newer(oldOrdinary, asks, When));
+
+        // A new run of the administrator checks replaces the old one, whatever it says.
+        Assert.AreSame(newAdministrator, ScanPresentation.Newer(oldAdministrator, newAdministrator, When));
+
+        // An "administrator" run that itself could not read (started without rights) is nothing to keep.
+        Assert.AreSame(asks, ScanPresentation.Newer(administratorAsked, asks, When));
+    }
+
+    [TestMethod]
+    public void WhereAnOrdinaryScanReadsSomething_ItsAnswerIsShown_NotAnOlderPass()
+    {
+        // Drive encryption: the administrator run said "on". Days later an ordinary scan finds
+        // that Windows no longer confirms it. That is a reading, and it must not be hidden.
+        ScannedCheck Partly(CheckOutcome outcome, bool elevated, DateTimeOffset checkedAt) => new(
+            new CheckDefinition("made-up.partly", CheckCategory.SystemIntegrity, Severity.High, AdminNeed.ForFullDetail),
+            Texts[FirewallCheck.Id],
+            new CheckResult("made-up.partly", outcome, checkedAt, elevated, TimeSpan.Zero));
+
+        ScannedCheck wasOn = Partly(CheckOutcome.Pass("On for every drive."), elevated: true, When.AddDays(-3));
+        ScannedCheck notConfirmed = Partly(CheckOutcome.NeedsAdmin("Windows does not confirm that C: is fully protected."), elevated: false, When);
+
+        Assert.AreSame(notConfirmed, ScanPresentation.Newer(wasOn, notConfirmed, When));
+    }
+
+    [TestMethod]
+    public void AnAnswerDatedAfterNow_IsNotKept()
+    {
+        ScannedCheck asks = Answer(CheckOutcome.NeedsAdmin("x"), elevated: false, When);
+        ScannedCheck fromTheFuture = Answer(CheckOutcome.Pass("x"), elevated: true, When.AddYears(70));
+        ScannedCheck aMinuteAhead = Answer(CheckOutcome.Pass("x"), elevated: true, When.AddMinutes(1));
+
+        Assert.AreSame(asks, ScanPresentation.Newer(fromTheFuture, asks, When), "an answer that never ages would be kept for ever");
+        Assert.AreSame(aMinuteAhead, ScanPresentation.Newer(aMinuteAhead, asks, When), "a clock a minute off is still a clock");
+    }
+
+    [TestMethod]
+    public void AnAdministratorAnswer_IsNotKeptForever()
+    {
+        ScannedCheck asks = Answer(CheckOutcome.NeedsAdmin("x"), elevated: false, When);
+        ScannedCheck thirtyDays = Answer(CheckOutcome.Pass("x"), elevated: true, When - ScanPresentation.AdministratorAnswerLifetime);
+        ScannedCheck older = Answer(CheckOutcome.Pass("x"), elevated: true, When - ScanPresentation.AdministratorAnswerLifetime - TimeSpan.FromMinutes(1));
+
+        Assert.AreSame(thirtyDays, ScanPresentation.Newer(thirtyDays, asks, When));
+        Assert.AreSame(asks, ScanPresentation.Newer(older, asks, When), "after a month the PC may be set up differently: it asks again");
+    }
+
     [TestMethod]
     public void WhileTheFirstScanRuns_NothingIsSaidAboutHowThePcIsDoing()
     {

@@ -11,6 +11,7 @@ public static class CliArguments
         Usage: SecReviewCli <command>
 
           --report <file>   Run the checks and write the results to <file> as JSON.
+                            With administrator rights an existing file is not replaced.
           --diagnose        Show which readings work on this PC (for support).
           --version         Print the version.
           --help            Print this text.
@@ -31,12 +32,23 @@ public static class CliArguments
             "--version" => WithoutArguments(args, new VersionCommand()),
             "--diagnose" => WithoutArguments(args, new DiagnoseCommand()),
             "--report" => Report(args),
+            "--elevated-scan" => ElevatedScan(args),
             _ => new InvalidCommand($"Unknown command '{Printable(args[0])}'."),
         };
     }
 
     private static CliCommand WithoutArguments(IReadOnlyList<string> args, CliCommand command) =>
         args.Count > 1 ? new InvalidCommand($"Unexpected argument '{Printable(args[1])}'.") : command;
+
+    /// <summary>
+    /// "--elevated-scan --pipe name", exactly. This command runs with administrator rights on
+    /// the word of an unelevated caller, so it takes one thing only: a pipe name of the one
+    /// form the app makes. No paths, no lists, no options.
+    /// </summary>
+    private static CliCommand ElevatedScan(IReadOnlyList<string> args) =>
+        args is [_, "--pipe", var name] && Elevation.ElevationPipe.IsValidName(name)
+            ? new ElevatedScanCommand(name)
+            : new InvalidCommand("--elevated-scan is started by SecReview itself.");
 
     private static CliCommand Report(IReadOnlyList<string> args)
     {

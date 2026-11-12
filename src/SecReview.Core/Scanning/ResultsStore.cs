@@ -37,6 +37,24 @@ public sealed class ResultsStore
     public bool Save(ScanResult scan)
     {
         ArgumentNullException.ThrowIfNull(scan);
+        try
+        {
+            AtomicFile.Write(_path, ToBytes(scan));
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// A scan as the bytes it is kept or handed over in. The same form serves the results file
+    /// and what the administrator helper sends back.
+    /// </summary>
+    public static byte[] ToBytes(ScanResult scan)
+    {
+        ArgumentNullException.ThrowIfNull(scan);
 
         var stored = new StoredScan(
             SchemaVersion,
@@ -53,15 +71,7 @@ public sealed class ResultsStore
                 (long)check.Result.Duration.TotalMilliseconds,
                 [.. check.Result.Outcome.Findings.Take(MaximumFindings).Select(f =>
                     new StoredFinding(Fit(f.Item), Fit(f.Found), Fit(f.Expected), f.Status.ToString(), f.Source is null ? null : Fit(f.Source)))]))]);
-        try
-        {
-            AtomicFile.Write(_path, JsonSerializer.SerializeToUtf8Bytes(stored, ResultsJson.Default.StoredScan));
-            return true;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
+        return JsonSerializer.SerializeToUtf8Bytes(stored, ResultsJson.Default.StoredScan);
     }
 
     /// <summary>
@@ -73,18 +83,34 @@ public sealed class ResultsStore
         ArgumentNullException.ThrowIfNull(checks);
         ArgumentNullException.ThrowIfNull(texts);
 
-        StoredScan? stored;
         try
         {
             var file = new FileInfo(_path);
-            if (!file.Exists || file.Length > MaximumBytes)
-            {
-                return null;
-            }
-
-            stored = JsonSerializer.Deserialize(File.ReadAllBytes(_path), ResultsJson.Default.StoredScan);
+            return file.Exists && file.Length <= MaximumBytes ? FromBytes(File.ReadAllBytes(_path), checks, texts) : null;
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A scan from its bytes, with the wording of this version's catalogue; null when the
+    /// bytes are damaged, from another version of SecReview, or name something this version
+    /// does not know. Results for checks that are not among <paramref name="checks"/> are
+    /// left out, so a caller that expects only some checks hands in only those.
+    /// </summary>
+    public static ScanResult? FromBytes(ReadOnlySpan<byte> bytes, IReadOnlyList<ICheck> checks, CheckTexts texts)
+    {
+        ArgumentNullException.ThrowIfNull(checks);
+        ArgumentNullException.ThrowIfNull(texts);
+
+        StoredScan? stored;
+        try
+        {
+            stored = bytes.Length <= MaximumBytes ? JsonSerializer.Deserialize(bytes, ResultsJson.Default.StoredScan) : null;
+        }
+        catch (JsonException)
         {
             return null;
         }
@@ -119,7 +145,9 @@ public sealed class ResultsStore
                 continue;
             }
 
-            if (Outcome(saved) is not { } outcome)
+            // An answer dated before SecReview existed or after now was not saved by a working
+            // clock; how old it is, which decides how long it is kept, could not be told.
+            if (Outcome(saved) is not { } outcome || saved.CheckedAt.Year < 2025 || saved.CheckedAt > DateTimeOffset.UtcNow.AddDays(1))
             {
                 return null;
             }

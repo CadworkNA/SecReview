@@ -87,17 +87,32 @@ public static class ReportFile
     /// Writes the report, replacing any existing file only once the new one is complete, so a
     /// reader never sees half a report.
     /// </summary>
-    public static void Write(ScanReport report, string path)
+    /// <param name="report">The report.</param>
+    /// <param name="path">The file to write.</param>
+    /// <param name="replaceExisting">
+    /// Whether a file that is already there may be replaced. False when running with
+    /// administrator rights: an elevated program that replaces whatever file it is pointed at
+    /// could be used by anyone to destroy any file on the PC.
+    /// </param>
+    /// <exception cref="IOException">The file exists and may not be replaced, or could not be written.</exception>
+    public static void Write(ScanReport report, string path, bool replaceExisting = true)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         string fullPath = Path.GetFullPath(path);
+        if (!replaceExisting && (File.Exists(fullPath) || Directory.Exists(fullPath)))
+        {
+            throw new IOException("the file already exists, and with administrator rights an existing file is never replaced. Delete it first or choose another name.");
+        }
+
         string temporary = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
         try
         {
             File.WriteAllText(temporary, ToJson(report));
-            File.Move(temporary, fullPath, overwrite: true);
+
+            // Without "replace", the move itself fails if a file appeared in the meantime.
+            File.Move(temporary, fullPath, overwrite: replaceExisting);
         }
         finally
         {

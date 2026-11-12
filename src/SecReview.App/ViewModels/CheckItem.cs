@@ -125,7 +125,7 @@ public sealed partial class CheckItem
         string status = ScanPresentation.StandingName(found);
         StatusText = string.Create(
             CultureInfo.CurrentCulture,
-            $"{status}{(SeverityText.Length > 0 ? $" · {SeverityText}" : string.Empty)} · {ScanPresentation.CategoryName(check.Definition.Category)} · checked {check.Result.CheckedAt.ToLocalTime():d MMM yyyy, HH:mm}");
+            $"{status}{(SeverityText.Length > 0 ? $" · {SeverityText}" : string.Empty)} · {ScanPresentation.CategoryName(check.Definition.Category)} · checked {check.Result.CheckedAt.ToLocalTime():d MMM yyyy, HH:mm}{(check.Result.Elevated ? " with administrator rights" : string.Empty)}");
 
         IsIgnored = ignored is not null;
         IgnoredText = ignored is null

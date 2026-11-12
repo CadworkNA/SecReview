@@ -267,6 +267,42 @@ public static class ScanPresentation
         return !isIgnored && standing == Standing.NeedsAttention;
     }
 
+    /// <summary>An answer read with administrator rights is kept this long while ordinary scans cannot read it themselves.</summary>
+    public static readonly TimeSpan AdministratorAnswerLifetime = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// Which answer to show for a check when a new one arrives. The new one, except in one
+    /// case: about a check that only administrator rights can answer, an ordinary scan reads
+    /// nothing at all and can only say so, and an answer the administrator checks gave earlier
+    /// says more. That earlier answer is kept, with its own date, until it is older than
+    /// <see cref="AdministratorAnswerLifetime"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not for a check that an ordinary scan answers in part
+    /// (<see cref="AdminNeed.ForFullDetail"/>): there "needs administrator rights" is itself a
+    /// reading ("Windows does not confirm that the drive is protected"), and an older pass
+    /// must not hide it. Nor for an earlier answer dated after now: its age cannot be trusted.
+    /// </remarks>
+    /// <param name="shown">The answer on screen; null when there is none.</param>
+    /// <param name="arrived">The answer that just came in.</param>
+    /// <param name="now">The current time.</param>
+    public static ScannedCheck Newer(ScannedCheck? shown, ScannedCheck arrived, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(arrived);
+
+        bool nothingWasRead = arrived.Definition.NeedsAdmin == AdminNeed.Yes && arrived.Result.Outcome.Status == CheckStatus.NeedsAdmin;
+        if (!nothingWasRead || shown is not { Result.Elevated: true } || shown.Result.Outcome.Status == CheckStatus.NeedsAdmin)
+        {
+            return arrived;
+        }
+
+        TimeSpan age = now - shown.Result.CheckedAt;
+        return age >= -ClockTolerance && age <= AdministratorAnswerLifetime ? shown : arrived;
+    }
+
+    /// <summary>How far a saved time may lie ahead of the clock before it is not believed.</summary>
+    private static readonly TimeSpan ClockTolerance = TimeSpan.FromMinutes(5);
+
     /// <summary>How long ago a scan finished, in words: "just now", "5 minutes ago", "1 day ago", "3 days ago".</summary>
     public static string Age(DateTimeOffset finishedAt, DateTimeOffset now)
     {

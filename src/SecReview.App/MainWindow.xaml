@@ -51,6 +51,11 @@
                     <FontIcon FontSize="16" Glyph="&#xE712;" />
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuFlyoutItem
+                                Click="OnAdministratorChecksClicked"
+                                IsEnabled="{x:Bind ViewModel.CanRunAdministratorChecks, Mode=OneWay}"
+                                Text="Run administrator checks"
+                                Visibility="{x:Bind ViewModel.ShowAdministratorButton, Mode=OneWay}" />
                             <MenuFlyoutItem Click="OnSaveReportClicked" Text="Save report…" />
                             <MenuFlyoutItem Click="OnSettingsClicked" Text="Settings…" />
                             <MenuFlyoutItem
@@ -93,7 +98,24 @@
                 IsOpen="{x:Bind ViewModel.HasNotice, Mode=OneWay}"
                 Message="{x:Bind ViewModel.Notice, Mode=OneWay}"
                 Severity="Informational"
-                Visibility="{x:Bind ViewModel.HasNotice, Mode=OneWay}" />
+                Visibility="{x:Bind ViewModel.HasNotice, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Name="AdministratorButton"
+                        Click="OnAdministratorChecksClicked"
+                        Content="Run administrator checks"
+                        IsEnabled="{x:Bind ViewModel.CanRunAdministratorChecks, Mode=OneWay}"
+                        ToolTipService.ToolTip="Windows will ask for permission."
+                        Visibility="{x:Bind ViewModel.ShowAdministratorButton, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar
+                Title="Administrator checks"
+                CloseButtonClick="OnAdministratorProblemClosed"
+                IsOpen="{x:Bind ViewModel.HasAdministratorProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.AdministratorProblem, Mode=OneWay}"
+                Severity="Warning"
+                Visibility="{x:Bind ViewModel.HasAdministratorProblem, Mode=OneWay}" />
         </StackPanel>
 
         <!-- Which checks to show. -->

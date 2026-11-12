@@ -4,6 +4,7 @@ using System.Diagnostics;
 using SecReview.Checks;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
+using SecReview.Elevation;
 using SecReview.Probing.Windows;
 using SecReview.Reporting;
 using SecReview.Scanning;
@@ -52,6 +53,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private string _settingsProblem = string.Empty;
     private string _emptyText = string.Empty;
     private bool _showFirstRun;
+    private bool _administratorBusy;
+    private string _administratorProblem = string.Empty;
+
+    /// <summary>Why the administrator checks cannot be run from this copy; null when they can.</summary>
+    private readonly string? _administratorUnavailable;
 
     /// <param name="role">How the window was started.</param>
     /// <param name="log">The local log.</param>
@@ -76,6 +82,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             _settingsStore = new SettingsStore(AppData.Directory);
             _resultsStore = new ResultsStore(AppData.Directory);
+            _administratorUnavailable = AdministratorScan.WhyUnavailable(
+                AppContext.BaseDirectory,
+                new[]
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                },
+                File.Exists);
         }
     }
 
@@ -113,7 +127,31 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>A scan can start when none is running and no single check is being run again.</summary>
-    public bool CanRun => !IsBusy && _beingChecked.Count == 0;
+    public bool CanRun => !IsBusy && !_administratorBusy && _beingChecked.Count == 0;
+
+    /// <summary>
+    /// Whether the button for the administrator checks is shown: when this copy can run them.
+    /// Made-up results show it too, so it can be looked at; pressing it does nothing there.
+    /// </summary>
+    public bool ShowAdministratorButton => _role.Demo || _administratorUnavailable is null;
+
+    /// <summary>Whether the administrator checks can be started right now.</summary>
+    public bool CanRunAdministratorChecks => ShowAdministratorButton && CanRun && HasResults;
+
+    /// <summary>What went wrong with the administrator checks; empty when nothing did.</summary>
+    public string AdministratorProblem
+    {
+        get => _administratorProblem;
+        private set
+        {
+            if (Set(ref _administratorProblem, value, nameof(AdministratorProblem)))
+            {
+                Changed(nameof(HasAdministratorProblem));
+            }
+        }
+    }
+
+    public bool HasAdministratorProblem => AdministratorProblem.Length > 0;
 
     /// <summary>True when the scan itself could not run; <see cref="Failure"/> says why.</summary>
     public bool HasFailed
@@ -290,10 +328,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         try
         {
             ScanResult scan = await Task.Run(() => ScanThisPcAsync(Arrived)).ConfigureAwait(true);
-            _results.Clear();
-            Take(scan);
+            TakeOver(scan);
             Changed(nameof(HasResults));
-            if (!_resultsStore!.Save(scan))
+
+            // What is saved is what is shown: the new answers, and for checks an ordinary scan
+            // cannot read, what the administrator checks said earlier.
+            if (CurrentScan() is { } shown && !_resultsStore!.Save(shown))
             {
                 _log.Error("The results could not be saved", new IOException("Writing results.json failed."));
             }
@@ -322,7 +362,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public async Task CheckAgainAsync(string checkId)
     {
         // During a scan every check is being run again already.
-        if (_role.Demo || IsBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
+        if (_role.Demo || IsBusy || _administratorBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
         {
             return;
         }
@@ -332,7 +372,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         try
         {
             ScannedCheck again = await Task.Run(() => NewScanner().RunOneAsync(checkId, WindowsProbes.IsProcessElevated())).ConfigureAwait(true);
-            _results[checkId] = again;
+            _results[checkId] = ScanPresentation.Newer(_results.GetValueOrDefault(checkId), again, DateTimeOffset.UtcNow);
             if (CurrentScan() is { } scan)
             {
                 _resultsStore!.Save(scan);
@@ -351,6 +391,73 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             Changed(nameof(CanRun));
             Redraw();
         }
+    }
+
+    /// <summary>
+    /// Runs the checks that need administrator rights, through the Windows prompt, and shows
+    /// their answers. Saying no at the prompt changes nothing. Never throws.
+    /// </summary>
+    public async Task RunAdministratorChecksAsync()
+    {
+        if (_role.Demo || !CanRunAdministratorChecks)
+        {
+            return;
+        }
+
+        SetAdministratorBusy(true);
+        AdministratorProblem = string.Empty;
+        try
+        {
+            var launcher = new WindowsElevatedLauncher(Path.Combine(AppContext.BaseDirectory, AdministratorScan.HelperFileName));
+            AdministratorScanResult result = await AdministratorScan
+                .RunAsync(launcher, CheckCatalogue.Checks, CheckCatalogue.Texts)
+                .ConfigureAwait(true);
+
+            switch (result.Outcome)
+            {
+                case AdministratorScanOutcome.Completed:
+                    foreach (ScannedCheck check in result.Scan!.Checks)
+                    {
+                        _results[check.Definition.Id] = check;
+                    }
+
+                    if (CurrentScan() is { } shown)
+                    {
+                        _resultsStore!.Save(shown);
+                    }
+
+                    break;
+
+                case AdministratorScanOutcome.Failed:
+                    AdministratorProblem = result.Problem ?? "The administrator checks could not be run.";
+                    _log.Error("The administrator checks failed", new InvalidOperationException(AdministratorProblem));
+                    break;
+            }
+        }
+#pragma warning disable CA1031 // Whatever goes wrong here, the window and its other results stay.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            _log.Error("The administrator checks could not be run", exception);
+            _reporter.Report(exception);
+            AdministratorProblem = "The administrator checks could not be run.";
+        }
+        finally
+        {
+            SetAdministratorBusy(false);
+            Redraw();
+        }
+    }
+
+    /// <summary>Closes the note about what went wrong with the administrator checks.</summary>
+    public void DismissAdministratorProblem() => AdministratorProblem = string.Empty;
+
+    private void SetAdministratorBusy(bool busy)
+    {
+        _administratorBusy = busy;
+        Changed(nameof(CanRun));
+        Changed(nameof(CanRunAdministratorChecks));
+        ShowHeadline();
     }
 
     /// <summary>Leaves a check out of every count, with the user's reason.</summary>
@@ -485,7 +592,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return; // the scan is over and its full result is already shown
         }
 
-        _results[check.Definition.Id] = check;
+        _results[check.Definition.Id] = ScanPresentation.Newer(_results.GetValueOrDefault(check.Definition.Id), check, DateTimeOffset.UtcNow);
         if (Stopwatch.GetElapsedTime(_lastRedraw) >= RedrawInterval)
         {
             Redraw();
@@ -526,6 +633,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         Take(scan);
         Redraw();
+    }
+
+    /// <summary>
+    /// Replaces what is known with a finished scan. Checks the scan does not have are dropped.
+    /// Where the scan can only say "needs administrator rights" and the administrator checks
+    /// answered earlier, that answer stays (see <see cref="ScanPresentation.Newer"/>).
+    /// </summary>
+    private void TakeOver(ScanResult scan)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        Dictionary<string, ScannedCheck> merged = scan.Checks.ToDictionary(
+            check => check.Definition.Id,
+            check => ScanPresentation.Newer(_results.GetValueOrDefault(check.Definition.Id), check, now),
+            StringComparer.Ordinal);
+
+        _results.Clear();
+        foreach ((string id, ScannedCheck check) in merged)
+        {
+            _results[id] = check;
+        }
+
+        _finishedAt = scan.FinishedAt;
+        _elevated = scan.Elevated;
     }
 
     private void Take(ScanResult scan)
@@ -621,12 +751,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             };
 
         int needAdmin = ScanPresentation.CountFor(scan, ignored, ScanFilter.NeedsAdmin);
-        Notice = needAdmin switch
+        string notice = needAdmin switch
         {
             0 => string.Empty,
             1 => "1 check needs administrator rights. It is not counted as failing.",
             _ => $"{needAdmin} checks need administrator rights. They are not counted as failing.",
         };
+
+        // Where this copy cannot run them, the notice says what it takes.
+        Notice = notice.Length > 0 && !ShowAdministratorButton ? $"{notice} {_administratorUnavailable}" : notice;
+        Changed(nameof(CanRunAdministratorChecks));
 
         ShowHeadline();
     }
@@ -660,7 +794,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         string age = ScanPresentation.Age(scan.FinishedAt, DateTimeOffset.UtcNow);
         Detail = IsBusy
             ? $"{ScanPresentation.Counts(scan, ignored)} · checked {age} · checking again…"
-            : $"{ScanPresentation.Counts(scan, ignored)} · checked {age}";
+            : _administratorBusy
+                ? $"{ScanPresentation.Counts(scan, ignored)} · checked {age} · running the administrator checks…"
+                : $"{ScanPresentation.Counts(scan, ignored)} · checked {age}";
     }
 
     /// <summary>A filter's name with its count. No count until a scan has finished: a count of the first few answers would mislead.</summary>

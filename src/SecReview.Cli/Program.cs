@@ -2,6 +2,7 @@ using SecReview;
 using SecReview.Checks;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
+using SecReview.Elevation;
 using SecReview.Probing;
 using SecReview.Probing.Windows;
 using SecReview.Reporting;
@@ -33,6 +34,18 @@ switch (CliArguments.Parse(args))
 
         return await WriteReportAsync(WindowsProbes.Create(), WindowsProbes.IsProcessElevated(), report.Path);
 
+    case ElevatedScanCommand elevated:
+        if (!WindowsProbes.IsSupported)
+        {
+            return UnsupportedWindows();
+        }
+
+        // Nothing is printed: this runs hidden, started by the app, and answers on the pipe only.
+        return await ElevatedHelper.RunAsync(
+            elevated.PipeName, WindowsProbes.Create(), WindowsProbes.IsProcessElevated(), TimeProvider.System, CheckCatalogue.Checks, CheckCatalogue.Texts)
+            ? ExitCode.Ok
+            : ExitCode.ElevatedScanFailed;
+
     case InvalidCommand invalid:
         Console.Error.WriteLine(invalid.Message);
         Console.Error.WriteLine(CliArguments.Usage);
@@ -58,7 +71,7 @@ static async Task<int> WriteReportAsync(SystemProbes probes, bool isElevated, st
 
     try
     {
-        ReportFile.Write(report, path);
+        ReportFile.Write(report, path, replaceExisting: !isElevated);
     }
     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
         or ArgumentException or NotSupportedException)

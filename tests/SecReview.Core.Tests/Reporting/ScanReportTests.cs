@@ -130,6 +130,38 @@ public sealed class ScanReportTests
     }
 
     [TestMethod]
+    public void WithAdministratorRights_AnExistingFileIsNeverReplaced()
+    {
+        // An elevated program that replaces whatever it is pointed at could be used to destroy any file.
+        string folder = Path.Combine(Path.GetTempPath(), "SecReviewTests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string existing = Path.Combine(folder, "important.txt");
+            File.WriteAllText(existing, "something that matters");
+            Directory.CreateDirectory(Path.Combine(folder, "a-folder"));
+
+            IOException refused = Assert.ThrowsExactly<IOException>(() =>
+                ReportFile.Write(Build((FirewallCheck.Id, CheckOutcome.Pass("fine"))), existing, replaceExisting: false));
+            StringAssert.Contains(refused.Message, "already exists");
+            Assert.AreEqual("something that matters", File.ReadAllText(existing));
+            Assert.ThrowsExactly<IOException>(() => ReportFile.Write(Build(), Path.Combine(folder, "a-folder"), replaceExisting: false));
+
+            // A new file is written as usual.
+            string fresh = Path.Combine(folder, "report.json");
+            ReportFile.Write(Build((FirewallCheck.Id, CheckOutcome.Pass("fine"))), fresh, replaceExisting: false);
+            using JsonDocument written = JsonDocument.Parse(File.ReadAllText(fresh));
+            Assert.AreEqual(1, written.RootElement.GetProperty("counts").GetProperty("pass").GetInt32());
+            CollectionAssert.AreEquivalent(
+                new[] { "important.txt", "report.json" }, Directory.GetFiles(folder).Select(Path.GetFileName).ToArray(), "no temporary file is left behind");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public void Write_ToAFolderThatDoesNotExist_Throws_AndCreatesNothing()
     {
         string missing = Path.Combine(Path.GetTempPath(), "SecReviewTests-missing-" + Guid.NewGuid().ToString("N"));

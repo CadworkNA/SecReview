@@ -216,6 +216,10 @@ public sealed partial class MainWindow : Window
 
     private void OnFirstRunClosed(InfoBar sender, object args) => ViewModel.DismissFirstRun();
 
+    private async void OnAdministratorChecksClicked(object sender, RoutedEventArgs e) => await ViewModel.RunAdministratorChecksAsync();
+
+    private void OnAdministratorProblemClosed(InfoBar sender, object args) => ViewModel.DismissAdministratorProblem();
+
     private async void OnOpenSettingsClicked(object sender, RoutedEventArgs e)
     {
         // The address comes from the check catalogue. Only a Windows Settings page is ever

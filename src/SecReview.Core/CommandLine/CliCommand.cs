@@ -15,5 +15,12 @@ public sealed record DiagnoseCommand : CliCommand;
 /// <summary>Run the checks and write the results to <see cref="Path"/> as JSON.</summary>
 public sealed record ReportCommand(string Path) : CliCommand;
 
+/// <summary>
+/// Run the checks that need administrator rights and send their results down the pipe
+/// <see cref="PipeName"/>. Started by the app through the Windows prompt; the pipe name is the
+/// only thing it is told.
+/// </summary>
+public sealed record ElevatedScanCommand(string PipeName) : CliCommand;
+
 /// <summary>The arguments were not understood; <see cref="Message"/> says why.</summary>
 public sealed record InvalidCommand(string Message) : CliCommand;
