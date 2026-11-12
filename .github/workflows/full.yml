@@ -9,6 +9,8 @@ name: Package and release
 #   tag. Publishing the draft is the maintainer's step.
 on:
   push:
+    branches:
+      - feat/installer   # TEMPORARY: to try the workflow before it is on main
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-*'
