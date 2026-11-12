@@ -1,5 +1,6 @@
 using SecReview.Checks;
 using SecReview.SupplyChain.Pnpm;
+using SecReview.SupplyChain.Scoop;
 using SecReview.SupplyChain.Uv;
 
 namespace SecReview.SupplyChain;
@@ -19,5 +20,9 @@ public static class SupplyChainChecks
         new PnpmCooldownCheck(),
         new PnpmSettingsCheck(),
         new PnpmCredentialsCheck(),
+        new ScoopBucketsCheck(),
+        new ScoopAppsCheck(),
+        new ScoopUpdatesCheck(),
+        new ScoopCredentialsCheck(),
     ];
 }

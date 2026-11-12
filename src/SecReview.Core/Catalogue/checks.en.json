@@ -400,5 +400,59 @@
     "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.scoop.buckets": {
+    "name": "Scoop buckets",
+    "titlePass": "Scoop's buckets come from Scoop's own sources",
+    "titleFail": "A Scoop bucket comes from another source",
+    "why": "Scoop installs whatever a bucket's manifest names, and runs its install scripts. Whoever controls a bucket controls what lands on this PC.",
+    "fix": [
+      "Decide whether you still need the bucket named in the details and trust who runs it.",
+      "If not, remove it with scoop bucket rm followed by its name.",
+      "If you keep it, tell IT, so the choice is a known one."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.apps": {
+    "name": "Scoop app downloads",
+    "titlePass": "Scoop apps were verified when installed",
+    "titleFail": "A Scoop app was not verified when installed",
+    "why": "Without a hash, Scoop cannot tell a tampered download from the real one. An app with no bucket has no source to check it against later.",
+    "fix": [
+      "Reinstall the app named in the details from one of Scoop's buckets: scoop uninstall, then scoop install.",
+      "If only a nightly or unverified build exists, weigh whether you need the app."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.updates": {
+    "name": "Scoop app updates",
+    "titlePass": "Scoop apps are up to date",
+    "titleFail": "Scoop apps have updates waiting",
+    "why": "Scoop never updates by itself. An app stays at the version you installed, with its known flaws, until you update it.",
+    "fix": [
+      "Open a terminal and run scoop update to refresh the buckets.",
+      "Run scoop update * to update every app, or scoop update followed by one app's name."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.credentials": {
+    "name": "Scoop stored tokens",
+    "titlePass": "Scoop keeps no tokens as plain text",
+    "titleFail": "Scoop keeps tokens as plain text",
+    "why": "Scoop's settings file is plain text that every program you run can read. A GitHub token in it gives them your GitHub access.",
+    "fix": [
+      "Remove the setting named in the details with scoop config rm followed by its name.",
+      "Revoke the token where it was issued, since it was stored in the open.",
+      "If Scoop hits GitHub's rate limit without a token, create one with no permissions at all."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }
