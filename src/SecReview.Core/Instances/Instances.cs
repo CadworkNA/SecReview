@@ -103,18 +103,35 @@ public sealed class WakeSignal : IDisposable
     /// Calls <paramref name="onWake"/>, on some other thread, each time the signal is sent.
     /// Null when the signal could not be set up; the caller then simply is not woken.
     /// </summary>
+    /// <remarks>
+    /// Only a signal this call made itself is listened to. One that is there already was made
+    /// by another program, which could keep it signalled for ever; a sender has it open only
+    /// for an instant, so a few tries tell the two apart.
+    /// </remarks>
     public static WakeSignal? Listen(string name, Action onWake)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(onWake);
         try
         {
-            return new WakeSignal(new EventWaitHandle(initialState: false, EventResetMode.AutoReset, name), onWake);
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                var handle = new EventWaitHandle(initialState: false, EventResetMode.AutoReset, name, out bool createdNew);
+                if (createdNew)
+                {
+                    return new WakeSignal(handle, onWake);
+                }
+
+                handle.Dispose();
+                Thread.Sleep(50);
+            }
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException or WaitHandleCannotBeOpenedException or IOException)
         {
-            return null;
+            // As good as taken.
         }
+
+        return null;
     }
 
     /// <summary>Sends the signal. False when nobody listens.</summary>

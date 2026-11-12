@@ -135,7 +135,7 @@ public sealed class SettingsStore
                 return SetAside();
             }
 
-            AppSettings? read = JsonSerializer.Deserialize(File.ReadAllBytes(_path), SettingsJson.Default.AppSettings);
+            AppSettings? read = JsonSerializer.Deserialize(AtomicFile.Read(_path), SettingsJson.Default.AppSettings);
             if (read is null || read.Version != AppSettings.CurrentVersion)
             {
                 problem = "The settings file is from another version of SecReview.";

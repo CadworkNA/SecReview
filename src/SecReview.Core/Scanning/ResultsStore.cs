@@ -100,7 +100,7 @@ public sealed class ResultsStore
         try
         {
             var file = new FileInfo(_path);
-            return file.Exists && file.Length <= MaximumBytes ? FromBytes(File.ReadAllBytes(_path), checks, texts) : null;
+            return file.Exists && file.Length <= MaximumBytes ? FromBytes(AtomicFile.Read(_path), checks, texts) : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

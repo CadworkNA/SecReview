@@ -140,4 +140,18 @@ public sealed class InstancesTests
 
         static byte[] Bytes(byte length, string text) => [length, .. System.Text.Encoding.ASCII.GetBytes(text)];
     }
+
+    [TestMethod]
+    public void ASignalSomebodyElseMadeFirst_IsNotListenedTo()
+    {
+        string name = InstanceNames.TrayWake(_folder);
+
+        // Another program made it, signalled for ever: listening to it would never rest.
+        using var planted = new EventWaitHandle(initialState: true, EventResetMode.ManualReset, name);
+        int woken = 0;
+        using WakeSignal? listener = WakeSignal.Listen(name, () => Interlocked.Increment(ref woken));
+
+        Assert.IsNull(listener);
+        Assert.AreEqual(0, woken);
+    }
 }

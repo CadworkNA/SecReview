@@ -188,7 +188,9 @@ public sealed unsafe class NotificationAreaIcon : ITrayIcon, IDisposable
             return;
         }
 
-        if (PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_ADD, &data))
+        // At sign-in Windows may add the icon and still answer "no" (the taskbar was busy): a
+        // change that then succeeds shows it is there after all.
+        if (PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_ADD, &data) || PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_MODIFY, &data))
         {
             // The current way of reporting clicks (where on screen, keyboard or mouse).
             data.Anonymous.uVersion = PInvoke.NOTIFYICON_VERSION_4;
@@ -359,6 +361,12 @@ public sealed unsafe class NotificationAreaIcon : ITrayIcon, IDisposable
                 return new LRESULT(0);
 
             case PInvoke.WM_TIMER when wParam.Value == TimerId:
+                // No taskbar yet when the icon was first put up: try again until there is one.
+                if (!_added && !_icon.IsNull)
+                {
+                    ShowIcon();
+                }
+
                 _onCommand(TrayCommand.Tick);
                 return new LRESULT(0);
 

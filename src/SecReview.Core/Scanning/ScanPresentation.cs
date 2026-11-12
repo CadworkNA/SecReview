@@ -300,6 +300,36 @@ public static class ScanPresentation
         return age >= -ClockTolerance && age <= AdministratorAnswerLifetime ? shown : arrived;
     }
 
+    /// <summary>
+    /// Takes into what one process knows the answers another process saved since: every
+    /// answer that is newer than the one known, by the time the check ran (and by the rule of
+    /// <see cref="Newer"/> for administrator answers). Answers known and not in
+    /// <paramref name="saved"/> stay. Returns whether anything changed.
+    /// </summary>
+    public static bool TakeNewer(IDictionary<string, ScannedCheck> known, ScanResult saved, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(known);
+        ArgumentNullException.ThrowIfNull(saved);
+
+        bool changed = false;
+        foreach (ScannedCheck check in saved.Checks)
+        {
+            string id = check.Definition.Id;
+            if (!known.TryGetValue(id, out ScannedCheck? have))
+            {
+                known[id] = check;
+                changed = true;
+            }
+            else if (check.Result.CheckedAt > have.Result.CheckedAt && !ReferenceEquals(Newer(have, check, now), have))
+            {
+                known[id] = check;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
     /// <summary>How far a saved time may lie ahead of the clock before it is not believed.</summary>
     private static readonly TimeSpan ClockTolerance = TimeSpan.FromMinutes(5);
 

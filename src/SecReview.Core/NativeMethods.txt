@@ -129,3 +129,5 @@ AllowSetForegroundWindow
 ASFW_ANY
 IsIconic
 ShowWindow
+GetTokenInformation
+TOKEN_ELEVATION_TYPE

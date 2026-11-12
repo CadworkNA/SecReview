@@ -18,7 +18,7 @@ internal static class Program
     private static readonly TimeSpan AutomatedRunLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>A second start waits this long for the open window to answer before opening its own.</summary>
-    private static readonly TimeSpan HandOverLimit = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan HandOverLimit = TimeSpan.FromSeconds(8);
 
     [STAThread]
     private static int Main(string[] args)
@@ -50,6 +50,21 @@ internal static class Program
             ? new Timer(
                 _ => Environment.Exit(ExitCode.SmokeTestTimedOut), null, AutomatedRunLimit, Timeout.InfiniteTimeSpan)
             : null;
+
+        // Started from the notification-area icon, the window would inherit that process's
+        // low priority. A window somebody is looking at runs at the ordinary one.
+        try
+        {
+            using var self = System.Diagnostics.Process.GetCurrentProcess();
+            if (self.PriorityClass != System.Diagnostics.ProcessPriorityClass.Normal)
+            {
+                self.PriorityClass = System.Diagnostics.ProcessPriorityClass.Normal;
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // It then runs at the priority it was given.
+        }
 
         // One window per user: a second start (from the notification-area icon, or the Start
         // menu) brings the open one forward, on the check it was asked to show, and ends.

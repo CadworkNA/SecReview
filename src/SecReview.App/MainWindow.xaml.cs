@@ -245,18 +245,27 @@ public sealed partial class MainWindow : Window
         // Once the list has taken in the change.
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
-            // Rows far down the list do not exist until they are scrolled to; asking for one makes it.
-            if (ViewModel.PositionOf(checkId) is not { } at || SectionsList.GetOrCreateElement(at.Section) is not FrameworkElement group)
+            try
             {
-                return;
-            }
+                // Rows far down the list do not exist until they are scrolled to; asking for one makes it.
+                if (ViewModel.PositionOf(checkId) is not { } at || SectionsList.GetOrCreateElement(at.Section) is not FrameworkElement group)
+                {
+                    return;
+                }
 
-            group.UpdateLayout();
-            if (FirstRepeaterIn(group)?.GetOrCreateElement(at.Row) is FrameworkElement row)
+                group.UpdateLayout();
+                if (FirstRepeaterIn(group)?.GetOrCreateElement(at.Row) is FrameworkElement row)
+                {
+                    row.UpdateLayout();
+                    row.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
+                    (row as Control)?.Focus(FocusState.Programmatic);
+                }
+            }
+#pragma warning disable CA1031 // Scrolling to the row is a convenience: the row is open either way, and the window stays.
+            catch (Exception exception)
+#pragma warning restore CA1031
             {
-                row.UpdateLayout();
-                row.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
-                (row as Control)?.Focus(FocusState.Programmatic);
+                _log.Error("The window could not scroll to a check", exception);
             }
         });
 
@@ -551,7 +560,9 @@ public sealed partial class MainWindow : Window
         panel.Children.Add(icon);
         panel.Children.Add(new TextBlock
         {
-            Text = "The icon shows how this PC is doing. SecReview checks again by itself, and only reads settings, as always.",
+            Text = ViewModel.StartsIconLater
+                ? "This window runs as administrator, so the icon is not started from here. It starts the next time you sign in."
+                : "The icon shows how this PC is doing. SecReview checks again by itself, and only reads settings, as always.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = secondary,
         });

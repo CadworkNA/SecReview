@@ -45,6 +45,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private bool _redrawPending;
     private long _lastAgeShown;
 
+    /// <summary>The results file as this window last read or wrote it; another stamp means the icon saved since.</summary>
+    private DateTimeOffset? _resultsStamp;
+    private long _lastLookAtDisk;
+
     private string _headline = "Checking this PC…";
     private string _detail = string.Empty;
     private bool _isBusy;
@@ -298,7 +302,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            if (_resultsStore!.Load(CheckCatalogue.Checks, CheckCatalogue.Texts) is { } last)
+            _resultsStamp = _resultsStore!.Stamp();
+            if (_resultsStore.Load(CheckCatalogue.Checks, CheckCatalogue.Texts) is { } last)
             {
                 Take(last);
                 Redraw();
@@ -334,12 +339,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
             // What is saved is what is shown: the new answers, and for checks an ordinary scan
             // cannot read, what the administrator checks said earlier.
-            if (CurrentScan() is { } shown && !_resultsStore!.Save(shown))
-            {
-                _log.Error("The results could not be saved", new IOException("Writing results.json failed."));
-            }
-
-            WakeTray();
+            SaveResults();
         }
 #pragma warning disable CA1031 // The window must stay usable whatever goes wrong in a scan.
         catch (Exception exception)
@@ -376,11 +376,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             ScannedCheck again = await Task.Run(() => NewScanner().RunOneAsync(checkId, WindowsProbes.IsProcessElevated())).ConfigureAwait(true);
             _results[checkId] = ScanPresentation.Newer(_results.GetValueOrDefault(checkId), again, DateTimeOffset.UtcNow);
-            if (CurrentScan() is { } scan)
-            {
-                _resultsStore!.Save(scan);
-                WakeTray();
-            }
+            SaveResults();
         }
 #pragma warning disable CA1031 // One check failing to run again must not take the window down.
         catch (Exception exception)
@@ -425,12 +421,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                         _results[check.Definition.Id] = check;
                     }
 
-                    if (CurrentScan() is { } shown)
-                    {
-                        _resultsStore!.Save(shown);
-                        WakeTray();
-                    }
-
+                    SaveResults();
                     break;
 
                 case AdministratorScanOutcome.Failed:
@@ -501,11 +492,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
 
         ChangeSettings(settings => settings with { RunInNotificationArea = on });
-        if (on && !_role.Demo)
+        if (on && !_role.Demo && !StartsIconLater)
         {
             StartTray();
         }
     }
+
+    /// <summary>
+    /// Whether this window got administrator rights through the Windows prompt. An icon
+    /// started from it would keep those rights all day, so it is not started from here: it
+    /// comes at the next sign-in.
+    /// </summary>
+    public bool StartsIconLater => !_role.Demo && WindowsProbes.IsSupported && WindowsProbes.IsElevatedByPrompt();
 
     public void SetRecheckHours(int hours)
     {
@@ -529,6 +527,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public bool Open(string checkId)
     {
+        // The icon asks for a check it has just found failing: show its answer, not an older one.
+        TakeInFromDisk();
         if (!_results.TryGetValue(checkId, out ScannedCheck? check))
         {
             return false;
@@ -613,6 +613,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public void Tick()
     {
+        // What the notification-area icon found while this window was open is shown here too.
+        if (Stopwatch.GetElapsedTime(_lastLookAtDisk) >= TimeSpan.FromSeconds(2))
+        {
+            _lastLookAtDisk = Stopwatch.GetTimestamp();
+            if (TakeInFromDisk())
+            {
+                Redraw();
+                return;
+            }
+        }
+
         if (_redrawPending && Stopwatch.GetElapsedTime(_lastRedraw) >= RedrawInterval)
         {
             Redraw();
@@ -900,9 +911,64 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _settings = _settingsStore.Update(change, out string? problem);
+        AppSettings changed = _settingsStore.Update(change, out string? problem);
+
+        // Settings that could not be read or saved: the change holds in this window, on top of
+        // what the window knew, not on top of the defaults.
+        _settings = problem is null ? changed : change(_settings);
         SettingsProblem = problem ?? string.Empty;
         WakeTray();
+    }
+
+    /// <summary>
+    /// Takes in the answers the notification-area icon saved since this window last read or
+    /// wrote the results. True when something changed.
+    /// </summary>
+    private bool TakeInFromDisk()
+    {
+        if (_resultsStore is null || _resultsStore.Stamp() is not { } stamp || stamp == _resultsStamp)
+        {
+            return false;
+        }
+
+        _resultsStamp = stamp;
+        if (_resultsStore.Load(CheckCatalogue.Checks, CheckCatalogue.Texts) is not { } saved)
+        {
+            return false;
+        }
+
+        bool changed = ScanPresentation.TakeNewer(_results, saved, DateTimeOffset.UtcNow);
+        if (_finishedAt is null || saved.FinishedAt > _finishedAt)
+        {
+            _finishedAt = saved.FinishedAt;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Saves what is shown, after taking in what the icon saved meanwhile, so neither
+    /// process writes its older answers over the other's newer ones.
+    /// </summary>
+    private void SaveResults()
+    {
+        if (_resultsStore is null)
+        {
+            return;
+        }
+
+        TakeInFromDisk();
+        if (CurrentScan() is { } shown)
+        {
+            if (!_resultsStore.Save(shown))
+            {
+                _log.Error("The results could not be saved", new IOException("Writing results.json failed."));
+            }
+
+            _resultsStamp = _resultsStore.Stamp();
+            WakeTray();
+        }
     }
 
     /// <summary>Tells the notification-area icon, if there is one, that the settings or the results changed.</summary>

@@ -22,6 +22,27 @@ public static class WindowsProbes
             .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 
+    /// <summary>
+    /// Whether this process got its administrator rights through the Windows prompt: the user
+    /// has an ordinary side as well, and this process is not on it. False for an ordinary
+    /// process, and where administrators are always elevated (User Account Control off).
+    /// False too when Windows does not say.
+    /// </summary>
+    [SupportedOSPlatform(MinimumWindows.Platform)]
+    public static unsafe bool IsElevatedByPrompt()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        global::Windows.Win32.Security.TOKEN_ELEVATION_TYPE type = default;
+        uint length;
+        return global::Windows.Win32.PInvoke.GetTokenInformation(
+                new global::Windows.Win32.Foundation.HANDLE(identity.Token),
+                global::Windows.Win32.Security.TOKEN_INFORMATION_CLASS.TokenElevationType,
+                &type,
+                sizeof(uint),
+                &length)
+            && type == global::Windows.Win32.Security.TOKEN_ELEVATION_TYPE.TokenElevationTypeFull;
+    }
+
     /// <summary>The oldest supported Windows, for messages.</summary>
     public static string MinimumWindowsName => MinimumWindows.DisplayName;
 

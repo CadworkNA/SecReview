@@ -88,14 +88,20 @@ public sealed class TraySession
     /// <summary>After a scan that could not run, the next one by the clock waits this long.</summary>
     public static readonly TimeSpan RetryAfterFailure = TimeSpan.FromMinutes(15);
 
+    /// <summary>A second "open" this soon after the first is the same double-click.</summary>
+    public static readonly TimeSpan SameClick = TimeSpan.FromSeconds(1);
+
     private readonly ITrayIcon _icon;
     private readonly TrayEnvironment _environment;
 
     private AppSettings _settings = new();
     private ScanResult? _last;
     private DateTimeOffset? _lastStamp;
-    private DateTimeOffset _started;
-    private DateTimeOffset? _notBefore;
+
+    // Measured on a clock that only runs forward, so setting the PC's clock changes neither.
+    private long _started;
+    private long? _failed;
+    private long? _opened;
     private bool _scanning;
     private Task _scan = Task.CompletedTask;
     private string? _notifiedCheck;
@@ -121,7 +127,7 @@ public sealed class TraySession
     /// </summary>
     public bool Start()
     {
-        _started = _environment.Clock.GetUtcNow();
+        _started = _environment.Clock.GetTimestamp();
         Reload();
         if (!_settings.RunInNotificationArea)
         {
@@ -140,12 +146,13 @@ public sealed class TraySession
             DateTimeOffset now = _environment.Clock.GetUtcNow();
             switch (command)
             {
-                case TrayCommand.Open:
-                    _environment.OpenWindow(null);
-                    break;
+                case TrayCommand.Open or TrayCommand.NotificationClicked:
+                    if (_opened is null || _environment.Clock.GetElapsedTime(_opened.Value) >= SameClick)
+                    {
+                        _opened = _environment.Clock.GetTimestamp();
+                        _environment.OpenWindow(command == TrayCommand.NotificationClicked ? _notifiedCheck : null);
+                    }
 
-                case TrayCommand.NotificationClicked:
-                    _environment.OpenWindow(_notifiedCheck);
                     break;
 
                 case TrayCommand.CheckNow:
@@ -191,7 +198,9 @@ public sealed class TraySession
             return;
         }
 
-        if (!_scanning && (_notBefore is null || now >= _notBefore) && now >= TrayLogic.NextRun(_last?.FinishedAt, _settings, now, _started))
+        bool backingOff = _failed is { } failed && _environment.Clock.GetElapsedTime(failed) < RetryAfterFailure;
+        DateTimeOffset started = now - _environment.Clock.GetElapsedTime(_started);
+        if (!_scanning && !backingOff && now >= TrayLogic.NextRun(_last?.FinishedAt, _settings, now, started))
         {
             BeginScan();
         }
@@ -207,8 +216,8 @@ public sealed class TraySession
             _environment.OnError("The pause could not be saved", new IOException(problem));
         }
 
-        // Kept for this session even when it could not be saved: the user asked for it.
-        _settings = changed;
+        // When it could not be saved, the pause still holds here until the settings are next read.
+        _settings = problem is null ? changed : _settings with { SnoozedUntil = until };
         Show();
     }
 
@@ -245,7 +254,9 @@ public sealed class TraySession
             ReloadSettings();
 
             // Read again: the window may have scanned, or run the administrator checks, meanwhile.
-            ScanResult? before = _environment.Results.Load(_environment.Checks, _environment.Texts);
+            // A file that is there but cannot be read just now does not make this a first scan.
+            ScanResult? before = _environment.Results.Load(_environment.Checks, _environment.Texts)
+                ?? (_environment.Results.Stamp() is null ? null : _last);
             ScanResult kept = TrayLogic.Merge(before, after, now);
             if (!_environment.Results.Save(kept))
             {
@@ -254,7 +265,7 @@ public sealed class TraySession
 
             _last = kept;
             _lastStamp = _environment.Results.Stamp();
-            _notBefore = null;
+            _failed = null;
 
             IReadOnlyList<ScannedCheck> news = TrayLogic.NewFailures(before, kept, _settings.IgnoredIds());
             if (_settings.NotifyNewFailures && !TrayLogic.IsSnoozed(_settings, now) && TrayLogic.Notification(news) is { } notification)
@@ -267,6 +278,7 @@ public sealed class TraySession
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            _failed = _environment.Clock.GetTimestamp();
             _environment.OnError("The scan's results could not be taken in", exception);
         }
         finally
@@ -279,7 +291,7 @@ public sealed class TraySession
     private void Failed(Exception exception)
     {
         _scanning = false;
-        _notBefore = _environment.Clock.GetUtcNow() + RetryAfterFailure;
+        _failed = _environment.Clock.GetTimestamp();
         _environment.OnError("The scan could not run", exception);
         Show();
     }
@@ -292,7 +304,9 @@ public sealed class TraySession
         if (stamp != _lastStamp)
         {
             _lastStamp = stamp;
-            _last = _environment.Results.Load(_environment.Checks, _environment.Texts) ?? _last;
+
+            // No file: nothing is known any more. A file that cannot be used just now: what was known stands.
+            _last = stamp is null ? null : _environment.Results.Load(_environment.Checks, _environment.Texts) ?? _last;
         }
     }
 

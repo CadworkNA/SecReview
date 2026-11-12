@@ -140,6 +140,7 @@ public sealed class TraySessionTests
         Assert.AreEqual(Texts[FirewallCheck.Id].TitleFail, _icon.Notifications[0].Title);
 
         session.Handle(TrayCommand.NotificationClicked);
+        _clock.Advance(TimeSpan.FromSeconds(5));
         session.Handle(TrayCommand.Open);
         CollectionAssert.AreEqual(new string?[] { FirewallCheck.Id, null }, _opened);
 
@@ -378,13 +379,102 @@ public sealed class TraySessionTests
         Assert.IsFalse(_icon.HasQuit);
     }
 
+    [TestMethod]
+    public void ADoubleClick_OpensOneWindow()
+    {
+        TraySession session = Session();
+        session.Start();
+
+        session.Handle(TrayCommand.Open);
+        session.Handle(TrayCommand.Open);
+        Assert.AreEqual(1, _opened.Count);
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        session.Handle(TrayCommand.Open);
+        Assert.AreEqual(2, _opened.Count);
+    }
+
+    [TestMethod]
+    public async Task SettingThePcsClockBack_DoesNotStopTheChecks()
+    {
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        _scan = () => throw new InvalidOperationException("made up");
+        await Tick(session);
+        Assert.AreEqual(1, _scans);
+
+        // A year back: neither the first minute nor the wait after a failure is counted on this clock.
+        _clock.SetBack(TimeSpan.FromDays(365));
+        ScansAnswer();
+        _clock.Advance(TimeSpan.FromMinutes(16));
+        await Tick(session);
+
+        Assert.AreEqual(2, _scans);
+        Assert.AreEqual(TrayState.Fine, _icon.State);
+    }
+
+    [TestMethod]
+    public async Task WhenTheResultsAreDeleted_NothingIsKnownAnyMore()
+    {
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        ScansAnswer();
+        await Tick(session);
+        Assert.AreEqual(TrayState.Fine, _icon.State);
+
+        File.Delete(Path.Combine(_folder, ResultsStore.FileName));
+        _scan = () => new TaskCompletionSource<ScanResult>().Task; // the scan that now starts does not answer in this test
+        session.Handle(TrayCommand.Tick);
+
+        Assert.AreEqual(TrayState.Unknown, _icon.State);
+        Assert.IsNull(session.Last);
+    }
+
+    [TestMethod]
+    public async Task ResultsThatCannotBeReadJustNow_AreNotTakenForAFirstScan()
+    {
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        ScansAnswer();
+        await Tick(session);
+
+        // The file is held by another program while the next scan finishes.
+        string file = Path.Combine(_folder, ResultsStore.FileName);
+        var gate = new TaskCompletionSource<ScanResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _scan = () => gate.Task;
+        _clock.Advance(TimeSpan.FromHours(4));
+        session.Handle(TrayCommand.Tick);
+        using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            gate.SetResult(Scan(Checks[0]));
+            await session.Idle;
+        }
+
+        Assert.AreEqual(1, _icon.Notifications.Count, "compared with what this session knew, the firewall started failing");
+    }
+
+    /// <summary>A clock for the time of day, which can be set back, and one that only runs forward.</summary>
     private sealed class Clock(DateTimeOffset now) : TimeProvider
     {
         private DateTimeOffset _now = now;
+        private TimeSpan _run;
 
         public override DateTimeOffset GetUtcNow() => _now;
 
-        public void Advance(TimeSpan by) => _now += by;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _run.Ticks;
+
+        public void Advance(TimeSpan by)
+        {
+            _now += by;
+            _run += by;
+        }
+
+        public void SetBack(TimeSpan by) => _now -= by;
     }
 
     /// <summary>An icon that remembers what it was told. Posted actions run at once.</summary>

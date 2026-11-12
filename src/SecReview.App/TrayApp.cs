@@ -34,15 +34,30 @@ internal static class TrayApp
             : null;
 
         string data = AppData.Directory;
+        AppLog log = AppLog.ForThisProcess();
 
-        // One icon per user. A second start has nothing to add.
-        using SingleInstance? claim = SingleInstance.TryClaim(InstanceNames.Tray(data));
-        if (claim is null)
+        // The icon stays all day and opens the window. With administrator rights from the
+        // Windows prompt it would hand those rights to whatever it starts, so it does not run.
+        if (WindowsProbes.IsElevatedByPrompt())
         {
+            log.Info("The notification-area icon was started as administrator and did not run. It starts at the next sign-in.");
             return ExitCode.Ok;
         }
 
-        AppLog log = AppLog.ForThisProcess();
+        // One icon per user. A second start has nothing to add. An icon that is just leaving
+        // (switched off and on again) still holds the claim for a moment.
+        SingleInstance? claimed = null;
+        for (int attempt = 0; attempt < 10 && (claimed = SingleInstance.TryClaim(InstanceNames.Tray(data))) is null; attempt++)
+        {
+            Thread.Sleep(200);
+        }
+
+        using SingleInstance? claim = claimed;
+        if (claim is null)
+        {
+            log.Info("The notification-area icon did not start: there is one already.");
+            return ExitCode.Ok;
+        }
 
         // A build machine's errors are the build's business, as with the window's smoke test.
         using var reporter = new ErrorReporter(
@@ -124,7 +139,19 @@ internal static class TrayApp
         }
 
         // The window says when it changed the settings or the results, so the icon follows at once.
-        using WakeSignal? wake = WakeSignal.Listen(InstanceNames.TrayWake(data), () => icon.Post(() => session.Handle(TrayCommand.Tick)));
+        // However often it is signalled, one look is waiting at most.
+        int waiting = 0;
+        using WakeSignal? wake = WakeSignal.Listen(InstanceNames.TrayWake(data), () =>
+        {
+            if (Interlocked.Exchange(ref waiting, 1) == 0)
+            {
+                icon.Post(() =>
+                {
+                    Volatile.Write(ref waiting, 0);
+                    session.Handle(TrayCommand.Tick);
+                });
+            }
+        });
         icon.StartTimer(TraySession.TickInterval);
 
         if (role.SmokeTest)
