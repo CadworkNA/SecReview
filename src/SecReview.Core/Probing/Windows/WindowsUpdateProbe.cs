@@ -51,20 +51,18 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
             bool rebootRequired = system->RebootRequired != VARIANT_BOOL.VARIANT_FALSE;
 
             results = updates->Results;
-            ProbeResult<DateTimeOffset?> lastSearch = TakeDate(results->LastSearchSuccessDate);
-            if (!lastSearch.IsOk)
+            if (TakeDate(results->LastSearchSuccessDate, out DateTimeOffset? lastSearch) is { } searchFailed)
             {
-                return lastSearch.ToFailure();
+                return searchFailed;
             }
 
-            ProbeResult<DateTimeOffset?> lastInstall = TakeDate(results->LastInstallationSuccessDate);
-            if (!lastInstall.IsOk)
+            if (TakeDate(results->LastInstallationSuccessDate, out DateTimeOffset? lastInstall) is { } installFailed)
             {
-                return lastInstall.ToFailure();
+                return installFailed;
             }
 
             return ProbeResult<WindowsUpdateStatus>.Ok(new WindowsUpdateStatus(
-                mode.Value, serviceAvailable, rebootRequired, lastSearch.Value, lastInstall.Value));
+                mode.Value, serviceAvailable, rebootRequired, lastSearch, lastInstall));
         }
         catch (Exception exception)
         {
@@ -108,14 +106,16 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
     /// The agent returns a UTC date, or an empty value when there has been none. Only an empty
     /// value means "never": anything else that is not a valid date is a failed reading.
     /// </summary>
-    private static ProbeResult<DateTimeOffset?> TakeDate(VARIANT value)
+    /// <returns>Null when the reading worked (<paramref name="date"/> is null for "never"), else the failure.</returns>
+    private static ProbeFailure? TakeDate(VARIANT value, out DateTimeOffset? date)
     {
+        date = null;
         try
         {
             VARENUM type = value.Anonymous.Anonymous.vt;
             if (type is VARENUM.VT_EMPTY or VARENUM.VT_NULL)
             {
-                return ProbeResult<DateTimeOffset?>.Ok(null);
+                return null;
             }
 
             if (type != VARENUM.VT_DATE)
@@ -123,15 +123,8 @@ internal sealed class WindowsUpdateProbe : IWindowsUpdateProbe
                 return ProbeFailure.Failed($"{What} failed: a date came back as type {(int)type}.");
             }
 
-            double automationDate = value.Anonymous.Anonymous.Anonymous.date;
-            if (automationDate == 0)
-            {
-                // The automation "zero date" (1899-12-30) is how the agent says "never".
-                return ProbeResult<DateTimeOffset?>.Ok(null);
-            }
-
-            return ProbeResult<DateTimeOffset?>.Ok(
-                new DateTimeOffset(DateTime.FromOADate(automationDate), TimeSpan.Zero));
+            date = WindowsUpdateDates.FromAutomationDate(value.Anonymous.Anonymous.Anonymous.date);
+            return null;
         }
         catch (ArgumentException)
         {

@@ -76,3 +76,9 @@ SafeArrayGetLBound
 SafeArrayGetUBound
 SafeArrayGetElement
 SysAllocString
+
+// Platform: firmware type, TPM, Modern Standby
+GetFirmwareType
+Tbsi_GetDeviceInfo
+TPM_DEVICE_INFO
+GetPwrCapabilities

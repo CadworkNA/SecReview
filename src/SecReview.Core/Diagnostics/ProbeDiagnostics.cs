@@ -50,6 +50,31 @@ public static class ProbeDiagnostics
             systems => systems.Count == 0
                 ? "no operating system object"
                 : $"{systems[0].Text("Caption")}, build {systems[0].Text("BuildNumber")}");
+        allFine &= Report(output, "firmware", probes.Platform.GetFirmware(), kind => kind.ToString());
+        allFine &= Report(output, "tpm", probes.Platform.GetTpm(), version => version switch
+        {
+            TpmVersion.Version20 => "TPM 2.0",
+            TpmVersion.Version12 => "TPM 1.2",
+            _ => "none",
+        });
+        allFine &= Report(
+            output,
+            "code integrity",
+            probes.Platform.GetCodeIntegrity(),
+            state => $"test signing: {OnOff(state.TestSigning)}, kernel debugging: {OnOff(state.KernelDebugging)}, " +
+                $"memory integrity: {OnOff(state.MemoryIntegrity)}");
+        allFine &= Report(
+            output,
+            "uptime",
+            probes.Environment.Uptime(),
+            uptime => string.Create(CultureInfo.InvariantCulture, $"{uptime.TotalDays:F1} days"));
+        allFine &= Report(
+            output,
+            "files",
+            probes.Environment.Folder(KnownFolder.Windows) is { IsOk: true } windows
+                ? probes.Files.List(windows.Value!)
+                : ProbeFailure.Failed("Windows did not say where its folder is."),
+            entries => $"Windows folder: {entries.Count} entries");
 
         // These two need administrator rights: "needs administrator" is the expected answer
         // for a normal user.
@@ -103,12 +128,14 @@ public static class ProbeDiagnostics
     private static string Date(DateTimeOffset? value) =>
         value is null ? "never" : value.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    private static string OnOff(bool value) => value ? "on" : "off";
+
     private static string Describe(ServiceInfo service) =>
         $"{service.Name}: {service.StartType}, {(service.IsRunning ? "running" : "stopped")}";
 
     private static string Describe(PowerSettings settings) =>
         $"plugged in: {Describe(settings.PluggedIn)}; on battery: {Describe(settings.OnBattery)}; " +
-        $"battery: {(settings.HasBattery ? "yes" : "no")}";
+        $"battery: {(settings.HasBattery ? "yes" : "no")}; modern standby: {(settings.ModernStandby ? "yes" : "no")}";
 
     private static string Describe(PowerSourceSettings source) =>
         $"display off {Minutes(source.DisplayOff, "never")}, sleep {Minutes(source.Sleep, "never")}, " +

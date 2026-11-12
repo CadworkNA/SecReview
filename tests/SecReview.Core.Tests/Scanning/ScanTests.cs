@@ -158,15 +158,23 @@ public sealed class ScanTests
     [TestMethod]
     public async Task Scanner_RunsTheCatalogue_AndPairsEachResultWithItsWording()
     {
-        // Nothing set up, and the registry unreadable too: every reading fails.
-        var probes = new FakeProbes { RegistryFailure = ProbeFailure.Failed("Reading the registry failed.") };
+        // Nothing set up, and the registry, services and files unreadable too: every reading fails.
+        var probes = new FakeProbes
+        {
+            RegistryFailure = ProbeFailure.Failed("Reading the registry failed."),
+            ServicesFailure = ProbeFailure.Failed("Reading services failed."),
+            FilesFailure = ProbeFailure.Failed("Reading files failed."),
+        };
         var scanner = new Scanner(probes.Build(), TimeProvider.System);
 
         ScanResult scan = await scanner.RunAsync(CheckSelection.All, isElevated: false);
 
         Assert.AreEqual(BuiltInChecks.All.Count, scan.Checks.Count);
         Assert.IsFalse(scan.Elevated);
-        Assert.IsTrue(scan.Checks.All(c => c.Result.Outcome.Status == CheckStatus.Error), "unreadable is never a pass");
+        string[] answered = [.. scan.Checks
+            .Where(c => c.Result.Outcome.Status != CheckStatus.Error)
+            .Select(c => $"{c.Definition.Id}: {c.Result.Outcome.Status}")];
+        Assert.AreEqual(0, answered.Length, "unreadable is never a pass: " + string.Join(", ", answered));
         Assert.IsTrue(scan.Checks.All(c => c.Text.Name == c.Title), "an unanswered check is named neutrally");
     }
 

@@ -15,4 +15,7 @@ public sealed record SystemProbes(
     IDriveEncryptionProbe DriveEncryption,
     IWindowsUpdateProbe WindowsUpdate,
     IAuditPolicyProbe AuditPolicy,
-    IUserRightsProbe UserRights);
+    IUserRightsProbe UserRights,
+    IFileProbe Files,
+    IEnvironmentProbe Environment,
+    IPlatformProbe Platform);

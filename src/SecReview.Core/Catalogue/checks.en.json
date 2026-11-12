@@ -1,4 +1,18 @@
 {
+  "lock.screen": {
+    "name": "Screen lock",
+    "titlePass": "The screen locks when you are away",
+    "titleFail": "The screen does not lock soon enough",
+    "why": "An unlocked PC left alone gives anyone who walks by your files, mail and saved passwords.",
+    "fix": [
+      "Open Settings > System > Power & battery and set the screen and sleep times to 15 minutes or less.",
+      "Open Settings > Accounts > Sign-in options and choose that Windows asks you to sign in again every time.",
+      "Lock by hand with Windows+L whenever you leave your desk."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": "ms-settings:powersleep",
+    "references": []
+  },
   "logon.automatic": {
     "name": "Automatic sign-in",
     "titlePass": "Windows asks who you are at start-up",
@@ -13,6 +27,129 @@
     "settingsLink": "ms-settings:signinoptions",
     "references": []
   },
+  "accounts.builtin": {
+    "name": "Built-in accounts",
+    "titlePass": "The built-in Administrator and Guest accounts are off",
+    "titleFail": "A built-in account is enabled",
+    "why": "Every Windows PC has these two accounts, so attackers try them first. Guest needs no password at all.",
+    "fix": [
+      "Press Windows+R, type lusrmgr.msc and press Enter, then open Users.",
+      "Open the account shown as enabled, tick \"Account is disabled\" and select OK.",
+      "On Windows Home, which has no such tool, ask IT to disable the account."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "password.manager": {
+    "name": "Password manager",
+    "titlePass": "A password manager is installed",
+    "titleFail": "No password manager found",
+    "why": "A password manager makes a long, different password for every site practical. Reused passwords are how one leak becomes many break-ins.",
+    "fix": [
+      "Install the password manager your organisation provides, or ask IT which one to use.",
+      "Add its browser extension and move your saved passwords into it."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "ssh.keys.passphrase": {
+    "name": "SSH key passphrases",
+    "titlePass": "SSH keys have a passphrase",
+    "titleFail": "An SSH key has no passphrase",
+    "why": "An SSH key without a passphrase works for anyone who copies the file. Malware looks for these files first.",
+    "fix": [
+      "Open a terminal.",
+      "Run ssh-keygen -p -f followed by the path of the key file, and enter a new passphrase.",
+      "Or move the key into a password manager or SSH agent and delete the file."
+    ],
+    "timeToFix": "2 min per key",
+    "settingsLink": null,
+    "references": []
+  },
+  "ssh.keys.strength": {
+    "name": "SSH key strength",
+    "titlePass": "SSH keys are strong",
+    "titleFail": "An SSH key is weak",
+    "why": "Short RSA keys and DSA keys can be broken with enough computing power, and current servers refuse some of them.",
+    "fix": [
+      "Open a terminal and run ssh-keygen -t ed25519 to create a new key.",
+      "Add the new public key wherever the old one was used.",
+      "Remove the old key from those places, then delete its files."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "ssh.config": {
+    "name": "SSH client settings",
+    "titlePass": "SSH client settings are safe",
+    "titleFail": "SSH client settings are unsafe",
+    "why": "Forwarding your agent lets every server you connect to use your keys. Without host key checking, an impostor server goes unnoticed.",
+    "fix": [
+      "Open the settings file named in the details in a text editor.",
+      "Remove ForwardAgent from settings that apply to every host; use ProxyJump or set it for one host.",
+      "Remove \"StrictHostKeyChecking no\" and \"UserKnownHostsFile /dev/null\" from settings that apply to every host."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "updates.automatic": {
+    "name": "Automatic updates",
+    "titlePass": "Windows installs updates by itself",
+    "titleFail": "Windows updates are off or paused",
+    "why": "Most attacks use flaws that an update has already fixed. Updates that wait for you to remember them arrive too late.",
+    "fix": [
+      "Open Settings > Windows Update.",
+      "Select Resume updates if updates are paused.",
+      "If the page says your organisation manages updates and they stay off, contact IT."
+    ],
+    "timeToFix": "1 min",
+    "settingsLink": "ms-settings:windowsupdate",
+    "references": []
+  },
+  "updates.recent": {
+    "name": "Recent updates",
+    "titlePass": "Windows was updated recently",
+    "titleFail": "Windows has not been updated recently",
+    "why": "Microsoft releases security fixes every month. A PC that has installed nothing for longer is missing them.",
+    "fix": [
+      "Open Settings > Windows Update and select Check for updates.",
+      "Install what is offered and restart when asked.",
+      "If updates fail to install, note the error shown and contact IT."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": "ms-settings:windowsupdate",
+    "references": []
+  },
+  "updates.restart": {
+    "name": "Restart",
+    "titlePass": "The PC was restarted recently",
+    "titleFail": "The PC needs a restart",
+    "why": "Many updates only take effect after a restart. Until then the PC keeps running the old, flawed code.",
+    "fix": [
+      "Save your work.",
+      "Open Start, select the power button and choose Update and restart, or Restart."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": "ms-settings:windowsupdate",
+    "references": []
+  },
+  "updates.supported": {
+    "name": "Windows version",
+    "titlePass": "This Windows version still gets security updates",
+    "titleFail": "This Windows version no longer gets security updates",
+    "why": "Once a Windows version reaches its end date, newly found flaws stay open for good.",
+    "fix": [
+      "Open Settings > Windows Update and install the newer Windows version offered there.",
+      "If none is offered, the PC may not meet its requirements: contact IT."
+    ],
+    "timeToFix": "1 to 2 hours",
+    "settingsLink": "ms-settings:windowsupdate",
+    "references": []
+  },
   "firewall.enabled": {
     "name": "Firewall",
     "titlePass": "Firewall is on",
@@ -24,6 +161,62 @@
     ],
     "timeToFix": "1 min",
     "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "remote.desktop": {
+    "name": "Remote Desktop",
+    "titlePass": "Remote Desktop is off or asks for sign-in first",
+    "titleFail": "Remote Desktop accepts connections without sign-in first",
+    "why": "Remote Desktop lets other computers control this PC. Without Network Level Authentication, anyone on the network reaches the sign-in screen and its flaws.",
+    "fix": [
+      "Open Settings > System > Remote Desktop.",
+      "Turn Remote Desktop off if you do not use it.",
+      "Otherwise open its options and require Network Level Authentication."
+    ],
+    "timeToFix": "1 min",
+    "settingsLink": "ms-settings:remotedesktop",
+    "references": []
+  },
+  "remote.services": {
+    "name": "Remote management services",
+    "titlePass": "No remote management service is running",
+    "titleFail": "A remote management service is running",
+    "why": "These services let other computers run commands on this PC. A staff PC rarely needs them, and each one is another door to guard.",
+    "fix": [
+      "Press Windows+R, type services.msc and press Enter.",
+      "Open the service shown as running, select Stop and set Startup type to Disabled.",
+      "If you need the service for your work, tell IT instead."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sharing.folders": {
+    "name": "Shared folders",
+    "titlePass": "No folders are shared on the network",
+    "titleFail": "Folders are shared on the network",
+    "why": "A shared folder is reachable from every network the PC joins, including public Wi-Fi if the firewall allows it.",
+    "fix": [
+      "Press Windows+R, type fsmgmt.msc and press Enter, then open Shares.",
+      "Right-click each share you no longer need and select Stop Sharing.",
+      "Leave the shares whose names end in $: Windows uses them itself."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "disk.encryption": {
+    "name": "Disk encryption",
+    "titlePass": "Disk encryption is on",
+    "titleFail": "Disk encryption is off",
+    "why": "Without encryption, anyone who takes the PC or its drive can read every file on it.",
+    "fix": [
+      "Open Settings > Privacy & security > Device encryption and turn it on.",
+      "If that page is missing, search for Manage BitLocker and turn BitLocker on for each drive.",
+      "Store the recovery key where your organisation asks you to."
+    ],
+    "timeToFix": "10 min, then encrypts in the background",
+    "settingsLink": "ms-settings:deviceencryption",
     "references": []
   },
   "antivirus.active": {
@@ -40,18 +233,88 @@
     "settingsLink": "ms-settings:windowsdefender",
     "references": []
   },
-  "disk.encryption": {
-    "name": "Disk encryption",
-    "titlePass": "Disk encryption is on",
-    "titleFail": "Disk encryption is off",
-    "why": "Without encryption, anyone who takes the PC or its drive can read every file on it.",
+  "defender.protection": {
+    "name": "Microsoft Defender protection",
+    "titlePass": "Microsoft Defender's protections are on",
+    "titleFail": "A Microsoft Defender protection is off",
+    "why": "Real-time and cloud protection catch malware as it arrives. Tamper protection stops malware from switching them off.",
     "fix": [
-      "Open Settings > Privacy & security > Device encryption and turn it on.",
-      "If that page is missing, search for Manage BitLocker and turn BitLocker on for each drive.",
-      "Store the recovery key where your organisation asks you to."
+      "Open Windows Security and select Virus & threat protection.",
+      "Under Virus & threat protection settings, select Manage settings.",
+      "Turn on Real-time protection, Cloud-delivered protection and Tamper Protection."
     ],
-    "timeToFix": "10 min, then encrypts in the background",
-    "settingsLink": "ms-settings:deviceencryption",
+    "timeToFix": "1 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "system.uac": {
+    "name": "User Account Control",
+    "titlePass": "Windows asks before programs get administrator rights",
+    "titleFail": "Programs get administrator rights without asking",
+    "why": "With User Account Control off, every program you start can change Windows itself without you noticing.",
+    "fix": [
+      "Open Start, type UAC and open Change User Account Control settings.",
+      "Move the slider to the second position from the top, or to the top, and select OK.",
+      "Restart the PC."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.secureboot": {
+    "name": "Secure Boot",
+    "titlePass": "Secure Boot is on",
+    "titleFail": "Secure Boot is off",
+    "why": "Secure Boot lets only trusted software start the PC. Without it, malware can load before Windows and hide from it.",
+    "fix": [
+      "Open Settings > System > Recovery and select Restart now next to Advanced startup.",
+      "Choose Troubleshoot > Advanced options > UEFI Firmware Settings and restart.",
+      "Turn Secure Boot on, save and exit. If the PC then fails to start, turn it off again and ask IT."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.tpm": {
+    "name": "Security chip (TPM)",
+    "titlePass": "The PC has a TPM 2.0 security chip",
+    "titleFail": "The PC has no usable TPM 2.0 security chip",
+    "why": "The TPM keeps disk encryption keys and sign-in secrets out of reach of software. Without it they are easier to steal.",
+    "fix": [
+      "Open Settings > System > Recovery and select Restart now next to Advanced startup.",
+      "Choose Troubleshoot > Advanced options > UEFI Firmware Settings and restart.",
+      "Turn the TPM on; it may be called PTT or fTPM. If there is no such setting, tell IT."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.memoryintegrity": {
+    "name": "Memory integrity",
+    "titlePass": "Memory integrity is on",
+    "titleFail": "Memory integrity is off",
+    "why": "Memory integrity stops malicious or flawed drivers from changing Windows' own code while it runs.",
+    "fix": [
+      "Open Windows Security and select Device security > Core isolation details.",
+      "Turn Memory integrity on and restart.",
+      "If Windows lists incompatible drivers, update or remove them first."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "system.bootoptions": {
+    "name": "Start-up protections",
+    "titlePass": "Windows starts with its normal protections",
+    "titleFail": "Windows starts in a developer mode",
+    "why": "Test signing lets unsigned drivers load, and kernel debugging gives full control over Windows. Both are for driver developers only.",
+    "fix": [
+      "Open a terminal as administrator.",
+      "Run bcdedit /set testsigning off, then bcdedit /debug off.",
+      "Restart the PC."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
     "references": []
   }
 }

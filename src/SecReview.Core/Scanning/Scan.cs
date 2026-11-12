@@ -56,7 +56,8 @@ public sealed class Scanner
     public async Task<ScanResult> RunAsync(
         CheckSelection selection, bool isElevated, CancellationToken cancellation = default)
     {
-        var runner = new CheckRunner(_probes, _clock, selection, isElevated);
+        // Readings that several checks share are taken once per scan.
+        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, selection, isElevated);
         IReadOnlyList<CheckResult> results = await runner.RunAsync(_checks, cancellation).ConfigureAwait(false);
 
         Dictionary<string, CheckDefinition> definitions = _checks.ToDictionary(c => c.Definition.Id, c => c.Definition);
