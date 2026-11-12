@@ -144,6 +144,18 @@ Invoke-Step 'Smoke test' {
     & $cli --no-such-command 2>$null | Out-Null
     if ($LASTEXITCODE -ne 2) { throw "An unknown command exited with $LASTEXITCODE, expected 2." }
 
+    # Every probe must answer from the compiled helper on real Windows: a value, "needs
+    # administrator" or "not supported" are all fine; an outright failure is not. The values
+    # are this machine's settings, so only the status column is printed outside CI.
+    $report = & $cli --diagnose
+    $diagnoseExit = $LASTEXITCODE
+    foreach ($line in $report) {
+        if ($env:CI -eq 'true') { Write-Host "  $line" }
+        elseif ($line.Length -gt 41) { Write-Host "  $($line.Substring(0, 41).TrimEnd())" }
+        else { Write-Host "  $line" }
+    }
+    if ($diagnoseExit -ne 0) { throw "SecReviewCli --diagnose exited with $diagnoseExit, expected 0." }
+
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.
     $timer = [System.Diagnostics.Stopwatch]::StartNew()

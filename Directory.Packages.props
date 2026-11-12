@@ -12,6 +12,11 @@
     <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="[2.6.5]" />
   </ItemGroup>
 
+  <ItemGroup Label="Build-time only">
+    <!-- Source generator for Windows API declarations; nothing from it ships. -->
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="[0.3.369]" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="MSTest.Analyzers" Version="[4.5.3]" />
     <PackageVersion Include="MSTest.TestAdapter" Version="[4.5.3]" />

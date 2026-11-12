@@ -3,7 +3,14 @@
   <PropertyGroup>
     <RootNamespace>SecReview</RootNamespace>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- Windows APIs are called through pointers (no runtime marshalling), which keeps the
+         calls identical under Native AOT. Unsafe code stays inside Probing/Windows. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />

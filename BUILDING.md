@@ -34,6 +34,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | Path | Contents |
 |------|----------|
 | `src/SecReview.Core` | Everything without UI: checks, rules, readers, command-line parsing. All logic lives here and is unit-tested |
+| `src/SecReview.Core/Probing` | How the machine is read. Interfaces and result types at the top; `Windows/` holds the real implementations (the only place with Windows API calls and unsafe code). `NativeMethods.txt` lists the Windows APIs that CsWin32 generates declarations for |
 | `src/SecReview.Cli` | `SecReviewCli.exe` (Native AOT console). The only binary that ever runs elevated |
 | `src/SecReview.App` | `SecReview.exe` (WinUI 3, Native AOT, unpackaged, Windows App SDK copied next to it). `Program.Main` picks the role before XAML starts |
 | `tests/SecReview.Core.Tests` | MSTest unit tests for `Core` |

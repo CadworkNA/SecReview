@@ -1,0 +1,24 @@
+// Windows APIs used by Probing/Windows. One name per line; CsWin32 generates the declarations.
+
+// Account policy
+NetUserModalsGet
+NetApiBufferFree
+USER_MODALS_INFO_0
+USER_MODALS_INFO_3
+
+// COM basics
+CoInitializeEx
+CoUninitialize
+CoCreateInstance
+SysFreeString
+SysStringLen
+VariantClear
+
+// Firewall
+INetFwPolicy2
+NetFwPolicy2
+
+// Windows Security Center
+IWSCProductList
+WSCProductList
+IWscProduct

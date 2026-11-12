@@ -7,6 +7,12 @@ Microsoft.DotNet.ILCompiler
 Microsoft.NET.ILLink.Tasks
 runtime.win-x64.Microsoft.DotNet.ILCompiler
 
+# Build-time generator for Windows API declarations and the metadata it reads; nothing ships
+Microsoft.Windows.CsWin32
+Microsoft.Windows.SDK.Win32Docs
+Microsoft.Windows.SDK.Win32Metadata
+Microsoft.Windows.WDK.Win32Metadata
+
 # Windows App SDK (WinUI) for the app; WebView2 is a dependency of WinUI and is not used
 Microsoft.WindowsAppSDK.Base
 Microsoft.WindowsAppSDK.Foundation
