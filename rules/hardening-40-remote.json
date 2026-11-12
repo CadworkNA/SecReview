@@ -83,14 +83,18 @@
       },
       "source": "https://learn.microsoft.com/en-us/windows/win32/winrm/installation-and-configuration-for-windows-remote-management",
       "verified": "2026-11-12",
+      "needsAdmin": "forFullDetail",
       "registry": {
         "item": "Basic sign-in from this PC",
         "root": "localMachine",
-        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowBasic", "policy": true } ],
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowBasic", "policy": true },
+          { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WSMAN\\Client", "value": "auth_basic" }
+        ],
         "expect": { "is": 0 },
         "expected": "Not allowed",
         "labels": { "0": "Not allowed", "1": "Allowed" },
-        "absent": { "found": "Not set by policy (WinRM default: allowed)", "passes": false }
+        "absent": { "found": "Not configured (WinRM default: allowed)", "passes": false }
       }
     },
     {
@@ -113,14 +117,18 @@
       },
       "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
       "verified": "2026-11-12",
+      "needsAdmin": "forFullDetail",
       "registry": {
         "item": "Unencrypted traffic from this PC",
         "root": "localMachine",
-        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowUnencryptedTraffic", "policy": true } ],
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowUnencryptedTraffic", "policy": true },
+          { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WSMAN\\Client", "value": "allow_unencrypted" }
+        ],
         "expect": { "not": 1 },
         "expected": "Not allowed",
         "labels": { "0": "Not allowed", "1": "Allowed" },
-        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+        "absent": { "found": "Not configured (WinRM default: not allowed)", "passes": true }
       }
     },
     {
@@ -143,14 +151,18 @@
       },
       "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
       "verified": "2026-11-12",
+      "needsAdmin": "forFullDetail",
       "registry": {
         "item": "Basic sign-in to this PC",
         "root": "localMachine",
-        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowBasic", "policy": true } ],
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowBasic", "policy": true },
+          { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WSMAN\\Service", "value": "auth_basic" }
+        ],
         "expect": { "not": 1 },
         "expected": "Not allowed",
         "labels": { "0": "Not allowed", "1": "Allowed" },
-        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+        "absent": { "found": "Not configured (WinRM default: not allowed)", "passes": true }
       }
     },
     {
@@ -173,14 +185,18 @@
       },
       "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
       "verified": "2026-11-12",
+      "needsAdmin": "forFullDetail",
       "registry": {
         "item": "Unencrypted traffic to this PC",
         "root": "localMachine",
-        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowUnencryptedTraffic", "policy": true } ],
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowUnencryptedTraffic", "policy": true },
+          { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WSMAN\\Service", "value": "allow_unencrypted" }
+        ],
         "expect": { "not": 1 },
         "expected": "Not allowed",
         "labels": { "0": "Not allowed", "1": "Allowed" },
-        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+        "absent": { "found": "Not configured (WinRM default: not allowed)", "passes": true }
       }
     },
     {

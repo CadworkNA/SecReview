@@ -136,6 +136,13 @@
       "registry": {
         "item": "Prompt for administrators",
         "root": "localMachine",
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so no prompt is shown at all; see the User Account Control check."
+        },
         "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "ConsentPromptBehaviorAdmin" } ],
         "expect": { "not": 0 },
         "expected": "Asks for consent or a password",
@@ -172,6 +179,13 @@
       "registry": {
         "item": "Prompts on the secure desktop",
         "root": "localMachine",
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so no prompt is shown at all; see the User Account Control check."
+        },
         "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "PromptOnSecureDesktop" } ],
         "expect": { "is": 1 },
         "expected": "On",

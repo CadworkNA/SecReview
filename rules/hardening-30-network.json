@@ -5,10 +5,10 @@
       "category": "hardening",
       "severity": "high",
       "text": {
-        "name": "SMB 1 file sharing",
-        "titlePass": "The outdated SMB 1 protocol is off",
-        "titleFail": "The outdated SMB 1 protocol is on",
-        "why": "SMB 1 is the file-sharing protocol the WannaCry worm spread through. Microsoft no longer installs it.",
+        "name": "SMB 1 client",
+        "titlePass": "This PC does not connect with the outdated SMB 1",
+        "titleFail": "This PC can connect with the outdated SMB 1",
+        "why": "SMB 1 is a file-sharing protocol from the 1980s with no protection against tampering. A rogue server can talk this PC down to it.",
         "fix": [
           "Open Start, type Windows features and open Turn Windows features on or off.",
           "Clear SMB 1.0/CIFS File Sharing Support, select OK and restart.",

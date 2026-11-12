@@ -56,7 +56,10 @@ public sealed class RuleSetTests
         CheckDefinition definition = new RuleCheck(rule).Definition;
 
         bool needsAdministrator = rule.AuditPolicy is not null || rule.UserRight is not null;
-        Assert.AreEqual(needsAdministrator ? AdminNeed.Yes : rule.NeedsAdmin ?? AdminNeed.No, definition.NeedsAdmin);
+        bool defender = rule.Defender is not null || rule.DefenderRules is not null;
+        Assert.AreEqual(
+            needsAdministrator ? AdminNeed.Yes : rule.NeedsAdmin ?? (defender ? AdminNeed.ForFullDetail : AdminNeed.No),
+            definition.NeedsAdmin);
 
         // A rule about the user's own settings must never be read under an administrator's account.
         if (rule.Registry?.Root == RegistryRoot.CurrentUser)
@@ -163,6 +166,51 @@ public sealed class RuleSetTests
         StringAssert.Contains(exception.Message, "test.json");
         StringAssert.Contains(exception.Message, "harden.test");
         StringAssert.Contains(exception.Message, reason);
+    }
+
+    [TestMethod]
+    [DataRow(
+        """, "registry": { "item": "A", "root": "localMachine", "locations": [ null ], "expect": { "is": 1 }, "expected": "On", "absent": { "found": "Not configured", "passes": false } }""",
+        DisplayName = "an empty location")]
+    [DataRow(""", "userRight": { "item": "Debug", "right": "SeDebugPrivilege", "allowed": [ null ] }""", DisplayName = "an empty identifier")]
+    [DataRow(""", "defenderRules": { "rules": [ null ] }""", DisplayName = "an empty Defender rule")]
+    [DataRow(
+        """, "accountPolicy": { "item": "A", "field": 99, "expect": { "atMost": 10 }, "expected": "10 or fewer" }""",
+        DisplayName = "a field given as an unknown number")]
+    [DataRow(
+        """, "registry": { "item": "A", "root": "localMachine", "locations": [ { "key": "SYSTEM\\X", "value": "V" } ], "expect": { "is": 1 }, "expected": "On", "absent": { "found": "Not configured", "passes": false }, "onlyWhen": { "key": "SYSTEM\\X", "value": "W", "expect": { }, "holdsWhenAbsent": true, "otherwise": "Off." } }""",
+        DisplayName = "a condition that says nothing")]
+    public void AMalformedRule_IsRefusedByName_NeverACrash(string kind)
+    {
+        JsonException exception = Assert.ThrowsExactly<JsonException>(() => Parse(RuleJson(kind)));
+
+        StringAssert.Contains(exception.Message, "test.json");
+    }
+
+    [TestMethod]
+    [DataRow("\"severity\": \"low\", ", DisplayName = "severity")]
+    [DataRow("\"category\": \"hardening\", ", DisplayName = "category")]
+    [DataRow(", \"verified\": \"2026-11-12\"", DisplayName = "the verification date")]
+    [DataRow(", \"source\": \"https://learn.microsoft.com/x\"", DisplayName = "the source")]
+    public void ARuleWithARequiredPartLeftOut_IsRefused_NotGivenADefault(string part)
+    {
+        string json = RuleJson(""", "service": { "item": "A", "name": "a", "require": "disabled" }""");
+        Assert.IsTrue(json.Contains(part, StringComparison.Ordinal), "the test removes a part that is there");
+
+        JsonException exception = Assert.ThrowsExactly<JsonException>(() => Parse(json.Replace(part, string.Empty, StringComparison.Ordinal)));
+
+        StringAssert.Contains(exception.Message, "test.json");
+    }
+
+    [TestMethod]
+    [DataRow("\"severity\": \"low\"", "\"severity\": 99", DisplayName = "an unknown severity number")]
+    [DataRow("\"category\": \"hardening\"", "\"category\": 99", DisplayName = "an unknown category number")]
+    [DataRow("\"require\": \"disabled\"", "\"require\": 99", DisplayName = "an unknown requirement number")]
+    public void AnUnknownNumberWhereANameBelongs_IsRefused(string old, string replacement)
+    {
+        string json = RuleJson(""", "service": { "item": "A", "name": "a", "require": "disabled" }""");
+
+        Assert.ThrowsExactly<JsonException>(() => Parse(json.Replace(old, replacement, StringComparison.Ordinal)));
     }
 
     [TestMethod]

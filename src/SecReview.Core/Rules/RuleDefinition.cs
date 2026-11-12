@@ -89,6 +89,17 @@ public sealed record RegistryLocation(string Key, string Value, bool Policy = fa
 /// <param name="Passes">Whether Windows' behaviour without the setting is the expected one.</param>
 public sealed record AbsentValue(string Found, bool Passes);
 
+/// <summary>
+/// Another setting a rule depends on. Where it does not hold the rule says nothing: a rule
+/// about how a prompt looks does not apply while prompts are switched off altogether.
+/// </summary>
+/// <param name="Key">The registry key, under the same root as the rule.</param>
+/// <param name="Value">The value name.</param>
+/// <param name="Expect">What the number must be for the rule to apply.</param>
+/// <param name="HoldsWhenAbsent">Whether the rule applies when the value is not set.</param>
+/// <param name="Otherwise">What to say when the rule does not apply.</param>
+public sealed record RegistryCondition(string Key, string Value, Expectation Expect, bool HoldsWhenAbsent, string Otherwise);
+
 /// <summary>A registry number compared with what is expected.</summary>
 /// <param name="Item">What the setting is, in words: "LSA protection".</param>
 /// <param name="Root">Machine or user. A user rule never runs elevated.</param>
@@ -98,6 +109,7 @@ public sealed record AbsentValue(string Found, bool Passes);
 /// <param name="Absent">What it means when no location has the setting.</param>
 /// <param name="Labels">Words for particular values ("0": "Off"); other values are shown as numbers.</param>
 /// <param name="Unit">A unit shown after a number without a label: "seconds".</param>
+/// <param name="OnlyWhen">Another setting that must hold for the rule to apply.</param>
 public sealed record RegistryRule(
     string Item,
     RegistryRoot Root,
@@ -106,7 +118,8 @@ public sealed record RegistryRule(
     string Expected,
     AbsentValue Absent,
     IReadOnlyDictionary<string, string>? Labels = null,
-    string? Unit = null);
+    string? Unit = null,
+    RegistryCondition? OnlyWhen = null);
 
 /// <summary>What a service must be.</summary>
 public enum ServiceRequirement
@@ -183,9 +196,13 @@ public sealed record AttackSurfaceRule(Guid Id, string Name);
 /// <param name="Rules">The rules that are expected.</param>
 public sealed record DefenderRulesRule(IReadOnlyList<AttackSurfaceRule> Rules);
 
+// Every constructor parameter without a default must be in the file, and none may be null:
+// a rule with its severity or verification date left out is refused, not given a default.
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     UseStringEnumConverter = true,
+    RespectRequiredConstructorParameters = true,
+    RespectNullableAnnotations = true,
     ReadCommentHandling = JsonCommentHandling.Disallow,
     UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow)]
 [JsonSerializable(typeof(RuleFile))]

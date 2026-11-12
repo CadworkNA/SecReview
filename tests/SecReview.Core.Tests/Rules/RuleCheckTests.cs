@@ -129,6 +129,79 @@ public sealed class RuleCheckTests
         Assert.AreEqual(AdminNeed.No, new RuleCheck(Registry()).Definition.NeedsAdmin);
     }
 
+    // A rule that depends on another setting
+
+    private const string SwitchValue = "MasterSwitch";
+
+    private static RuleDefinition DependentRule(bool holdsWhenAbsent) => Rule(registry: new RegistryRule(
+        "Example protection",
+        RegistryRoot.LocalMachine,
+        [new RegistryLocation(LocalKey, Value)],
+        new Expectation(Is: 1),
+        "On",
+        new AbsentValue("Not configured (Windows default: on)", true),
+        OnlyWhen: new RegistryCondition(LocalKey, SwitchValue, new Expectation(Not: 0), holdsWhenAbsent, "The whole feature is off; see that check.")));
+
+    [TestMethod]
+    public void Registry_WhereTheSettingItDependsOnIsOff_TheRuleDoesNotApply_RatherThanPass()
+    {
+        FakeProbes probes = new FakeProbes()
+            .WithRegistryNumber(RegistryRoot.LocalMachine, LocalKey, SwitchValue, 0)
+            .WithRegistryNumber(RegistryRoot.LocalMachine, LocalKey, Value, 1);
+
+        CheckOutcome outcome = Run(DependentRule(holdsWhenAbsent: true), probes);
+
+        Assert.AreEqual(CheckStatus.NotApplicable, outcome.Status);
+        Assert.AreEqual("The whole feature is off; see that check.", outcome.Summary);
+    }
+
+    [TestMethod]
+    public void Registry_WhereTheSettingItDependsOnHolds_TheRuleIsJudgedAsUsual()
+    {
+        FakeProbes on = new FakeProbes()
+            .WithRegistryNumber(RegistryRoot.LocalMachine, LocalKey, SwitchValue, 1)
+            .WithRegistryNumber(RegistryRoot.LocalMachine, LocalKey, Value, 0);
+        Assert.AreEqual(CheckStatus.Fail, Run(DependentRule(holdsWhenAbsent: true), on).Status);
+
+        // Not set: the rule says whether that counts as holding.
+        Assert.AreEqual(CheckStatus.Pass, Run(DependentRule(holdsWhenAbsent: true), new FakeProbes()).Status);
+        Assert.AreEqual(CheckStatus.NotApplicable, Run(DependentRule(holdsWhenAbsent: false), new FakeProbes()).Status);
+    }
+
+    [TestMethod]
+    public void Registry_WhereTheSettingItDependsOnCannotBeRead_IsCouldNotCheck()
+    {
+        FakeProbes probes = new FakeProbes().WithRegistryValue(RegistryRoot.LocalMachine, LocalKey, SwitchValue, RegistryValue.FromText("on"));
+
+        Assert.AreEqual(CheckStatus.Error, Run(DependentRule(holdsWhenAbsent: true), probes).Status);
+    }
+
+    [TestMethod]
+    [DataRow("harden.uac.admin-prompt")]
+    [DataRow("harden.uac.secure-desktop")]
+    public void TheShippedPromptRules_DoNotPassWhileUserAccountControlIsOff(string id)
+    {
+        RuleDefinition rule = RuleSet.Shipped.Single(r => r.Id == id);
+        FakeProbes uacOff = new FakeProbes().WithRegistryNumber(RegistryRoot.LocalMachine, UacCheck.Key, UacCheck.Value, 0);
+
+        Assert.AreEqual(CheckStatus.NotApplicable, Run(rule, uacOff).Status);
+        Assert.AreEqual(CheckStatus.Pass, Run(rule, new FakeProbes()).Status, "Windows' defaults pass");
+    }
+
+    [TestMethod]
+    public void TheShippedRemoteManagementRules_ReadTheLocalSetting_NotOnlyThePolicy()
+    {
+        const string LocalService = @"SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Service";
+        RuleDefinition rule = RuleSet.Shipped.Single(r => r.Id == "harden.winrm.service-unencrypted");
+
+        Assert.AreEqual(CheckStatus.Pass, Run(rule, new FakeProbes()).Status);
+
+        FakeProbes local = new FakeProbes().WithRegistryNumber(RegistryRoot.LocalMachine, LocalService, "allow_unencrypted", 1);
+        CheckOutcome outcome = Run(rule, local);
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.IsFalse(outcome.ManagedByPolicy);
+    }
+
     // Expectations
 
     [TestMethod]
@@ -230,6 +303,26 @@ public sealed class RuleCheckTests
         Assert.AreEqual(CheckStatus.Pass, Run(rule, Policy(maximumAgeDays: 60)).Status);
         Assert.AreEqual(CheckStatus.Fail, Run(rule, Policy(maximumAgeDays: 400)).Status);
         Assert.AreEqual("Setting: Passwords never expire. Expected: 365 days or fewer.", Run(rule, Policy(maximumAgeDays: null)).Summary);
+    }
+
+    [TestMethod]
+    public void AccountPolicy_Never_FailsAnUpperBound_WithoutTheRuleNeedingALowerOne()
+    {
+        // "At most" alone: "never expires" and "never locks" must not slip through as zero.
+        RuleDefinition age = Account(AccountPolicyField.MaximumPasswordAgeDays, new Expectation(AtMost: 365), "365 days or fewer");
+        Assert.AreEqual(CheckStatus.Fail, Run(age, Policy(maximumAgeDays: null)).Status);
+
+        RuleDefinition threshold = Account(AccountPolicyField.LockoutThreshold, new Expectation(AtMost: 10), "10 or fewer");
+        Assert.AreEqual(CheckStatus.Fail, Run(threshold, Policy(lockoutThreshold: 0)).Status);
+        Assert.AreEqual(CheckStatus.Pass, Run(threshold, Policy(lockoutThreshold: 3)).Status);
+    }
+
+    [TestMethod]
+    public void AccountPolicy_AFieldThatIsNotKnown_IsCouldNotCheck_NeverAPass()
+    {
+        RuleDefinition rule = Account((AccountPolicyField)99, new Expectation(AtMost: 10), "10 or fewer");
+
+        Assert.AreEqual(CheckStatus.Error, Run(rule, Policy()).Status);
     }
 
     [TestMethod]
@@ -450,6 +543,33 @@ public sealed class RuleCheckTests
     {
         Assert.AreEqual(CheckStatus.Fail, Run(Asr, AsrSettings([], [])).Status);
         Assert.AreEqual(CheckStatus.Error, Run(Asr, AsrSettings([RuleA.ToString()], [])).Status);
+    }
+
+    [TestMethod]
+    public void DefenderRules_InAFormThatIsNotAList_AreCouldNotCheck_NotUnconfigured()
+    {
+        FakeProbes probes = DefenderWith(
+            ("AttackSurfaceReductionRules_Ids", RuleA.ToString()),
+            ("AttackSurfaceReductionRules_Actions", 1L));
+
+        Assert.AreEqual(CheckStatus.Error, Run(Asr, probes).Status);
+    }
+
+    [TestMethod]
+    public void DefenderRules_WithNoValueAtAll_AreUnconfigured()
+    {
+        CheckOutcome outcome = Run(Asr, DefenderWith(("AttackSurfaceReductionRules_Ids", null), ("AttackSurfaceReductionRules_Actions", null)));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.IsTrue(outcome.Findings.All(f => f.Found == "Not configured"));
+    }
+
+    [TestMethod]
+    public void DefenderRulesOfBothKinds_JoinTheAdministratorScan()
+    {
+        // Defender's settings are closed to normal users on some PCs; the administrator scan must then answer.
+        Assert.AreEqual(AdminNeed.ForFullDetail, new RuleCheck(Pua).Definition.NeedsAdmin);
+        Assert.AreEqual(AdminNeed.ForFullDetail, new RuleCheck(Asr).Definition.NeedsAdmin);
     }
 
     [TestMethod]

@@ -11,6 +11,13 @@ namespace SecReview.Rules;
 /// </summary>
 public sealed class RuleCheck : ICheck
 {
+    /// <summary>
+    /// Stands for "never" where a larger number is the stricter one, so that a rule with only
+    /// an upper bound ("at most 365 days") fails when the answer is "never", without its author
+    /// having to remember a lower bound.
+    /// </summary>
+    private const long Never = int.MaxValue;
+
     private readonly RuleDefinition _rule;
 
     public RuleCheck(RuleDefinition rule)
@@ -18,11 +25,13 @@ public sealed class RuleCheck : ICheck
         ArgumentNullException.ThrowIfNull(rule);
         _rule = rule;
 
-        // Audit policy and user rights can only be read with administrator rights. A rule
-        // about the user's own registry reads the signed-in user, so it never runs elevated.
-        AdminNeed admin = rule.AuditPolicy is not null || rule.UserRight is not null
-            ? AdminNeed.Yes
-            : rule.NeedsAdmin ?? AdminNeed.No;
+        // Audit policy and user rights can only be read with administrator rights. Microsoft
+        // Defender's settings are closed to normal users on some PCs, so those rules join the
+        // administrator scan too. A rule about the user's own registry reads the signed-in
+        // user, so it never runs elevated.
+        AdminNeed admin =
+            rule.AuditPolicy is not null || rule.UserRight is not null ? AdminNeed.Yes
+            : rule.NeedsAdmin ?? (rule.Defender is not null || rule.DefenderRules is not null ? AdminNeed.ForFullDetail : AdminNeed.No);
         CheckScope scope = rule.Registry?.Root == RegistryRoot.CurrentUser ? CheckScope.User : CheckScope.Machine;
         Definition = new CheckDefinition(rule.Id, rule.Category, rule.Severity, admin, scope);
     }
@@ -50,13 +59,32 @@ public sealed class RuleCheck : ICheck
         };
     }
 
+    /// <summary>The outcome of comparing one value: "Item: found." or "Item: found. Expected: expected."</summary>
+    private static CheckOutcome Judge(string item, string found, string expected, bool fine, string? source = null) => fine
+        ? CheckOutcome.Pass($"{item}: {found}.", Finding.Ok(item, found, expected, source))
+        : CheckOutcome.Fail($"{item}: {found}. Expected: {expected}.", Finding.Problem(item, found, expected, source));
+
     private static CheckOutcome Run(RegistryRule rule, IRegistryProbe registry)
     {
         string root = rule.Root == RegistryRoot.LocalMachine ? "HKLM" : "HKCU";
+        string what = $"the setting \"{rule.Item}\"";
+
+        if (rule.OnlyWhen is { } condition)
+        {
+            if (RegistryReader.Number(registry, rule.Root, condition.Key, condition.Value, what, out long? depends) is { } failed)
+            {
+                return failed;
+            }
+
+            if (!(depends is { } number ? condition.Expect.Matches(number) : condition.HoldsWhenAbsent))
+            {
+                return CheckOutcome.NotApplicable(condition.Otherwise);
+            }
+        }
+
         foreach (RegistryLocation location in rule.Locations)
         {
-            if (RegistryReader.Number(registry, rule.Root, location.Key, location.Value, $"the setting \"{rule.Item}\"", out long? value)
-                is { } failed)
+            if (RegistryReader.Number(registry, rule.Root, location.Key, location.Value, what, out long? value) is { } failed)
             {
                 return failed;
             }
@@ -67,23 +95,17 @@ public sealed class RuleCheck : ICheck
             }
 
             value /= location.DivideBy;
-            string found = Describe(value.Value, rule.Labels, rule.Unit);
-            string source = $@"{root}\{location.Key}\{location.Value}";
-            return (rule.Expect.Matches(value.Value)
-                ? CheckOutcome.Pass($"{rule.Item}: {found}.", Finding.Ok(rule.Item, found, rule.Expected, source))
-                : CheckOutcome.Fail(
-                    $"{rule.Item}: {found}. Expected: {rule.Expected}.", Finding.Problem(rule.Item, found, rule.Expected, source)))
-                with { ManagedByPolicy = location.Policy };
+            return Judge(
+                rule.Item,
+                Describe(value.Value, rule.Labels, rule.Unit),
+                rule.Expected,
+                rule.Expect.Matches(value.Value),
+                $@"{root}\{location.Key}\{location.Value}") with { ManagedByPolicy = location.Policy };
         }
 
         // Stored nowhere: Windows' own behaviour applies, and the rule says whether that is fine.
         RegistryLocation last = rule.Locations[^1];
-        string where = $@"{root}\{last.Key}\{last.Value}";
-        return rule.Absent.Passes
-            ? CheckOutcome.Pass($"{rule.Item}: {rule.Absent.Found}.", Finding.Ok(rule.Item, rule.Absent.Found, rule.Expected, where))
-            : CheckOutcome.Fail(
-                $"{rule.Item}: {rule.Absent.Found}. Expected: {rule.Expected}.",
-                Finding.Problem(rule.Item, rule.Absent.Found, rule.Expected, where));
+        return Judge(rule.Item, rule.Absent.Found, rule.Expected, rule.Absent.Passes, $@"{root}\{last.Key}\{last.Value}");
     }
 
     private static CheckOutcome Run(ServiceRule rule, IServiceProbe services)
@@ -107,13 +129,13 @@ public sealed class RuleCheck : ICheck
             ServiceStartType.Manual => "Starts on demand",
             _ => "Starts automatically",
         };
-        string found = service.IsRunning ? $"{startType}, running" : service.StartType == ServiceStartType.Disabled ? "Disabled" : $"{startType}, not running";
+        string found = service.IsRunning ? $"{startType}, running"
+            : service.StartType == ServiceStartType.Disabled ? "Disabled"
+            : $"{startType}, not running";
 
         bool fine = !service.IsRunning &&
             (rule.Require == ServiceRequirement.NotRunning || service.StartType == ServiceStartType.Disabled);
-        return fine
-            ? CheckOutcome.Pass($"{rule.Item}: {found}.", Finding.Ok(rule.Item, found, expected))
-            : CheckOutcome.Fail($"{rule.Item}: {found}. Expected: {expected}.", Finding.Problem(rule.Item, found, expected));
+        return Judge(rule.Item, found, expected, fine);
     }
 
     private static CheckOutcome Run(AccountPolicyRule rule, IAccountPolicyProbe probe)
@@ -125,34 +147,38 @@ public sealed class RuleCheck : ICheck
         }
 
         AccountPolicy policy = read.Value!;
-        (long value, string? words) = rule.Field switch
+        if (rule.Field == AccountPolicyField.LockoutDurationMinutes && policy.LockoutThreshold == 0)
+        {
+            return CheckOutcome.NotApplicable("Accounts never lock on this PC, so there is no lockout time to judge.");
+        }
+
+        (long Value, string? Words)? reading = rule.Field switch
         {
             AccountPolicyField.MinimumPasswordLength =>
                 (policy.MinimumPasswordLength, policy.MinimumPasswordLength == 0 ? "No minimum" : null),
             AccountPolicyField.PasswordHistoryLength =>
                 (policy.PasswordHistoryLength, policy.PasswordHistoryLength == 0 ? "None remembered" : null),
             AccountPolicyField.MaximumPasswordAgeDays => policy.MaximumPasswordAge is { } age
-                ? ((long)age.TotalDays, (string?)null)
-                : (0, "Passwords never expire"),
-            AccountPolicyField.LockoutThreshold =>
-                (policy.LockoutThreshold, policy.LockoutThreshold == 0 ? "Accounts never lock" : null),
+                ? ((long)age.TotalDays, null)
+                : (Never, "Passwords never expire"),
+            AccountPolicyField.LockoutThreshold => policy.LockoutThreshold == 0
+                ? (Never, "Accounts never lock")
+                : (policy.LockoutThreshold, null),
 
             // No duration means locked until an administrator unlocks the account: the strictest setting.
             AccountPolicyField.LockoutDurationMinutes => policy.LockoutDuration is { } duration
                 ? ((long)duration.TotalMinutes, null)
-                : (int.MaxValue, "Until an administrator unlocks it"),
-            _ => (-1, "Unknown setting"),
+                : (Never, "Until an administrator unlocks it"),
+            _ => null,
         };
 
-        if (rule.Field == AccountPolicyField.LockoutDurationMinutes && policy.LockoutThreshold == 0)
+        if (reading is not { } answer)
         {
-            return CheckOutcome.NotApplicable("Accounts never lock on this PC, so there is no lockout time to judge.");
+            return CheckOutcome.Error("This rule names a policy value SecReview does not know.");
         }
 
-        string found = words ?? Describe(value, null, rule.Unit);
-        return rule.Expect.Matches(value)
-            ? CheckOutcome.Pass($"{rule.Item}: {found}.", Finding.Ok(rule.Item, found, rule.Expected))
-            : CheckOutcome.Fail($"{rule.Item}: {found}. Expected: {rule.Expected}.", Finding.Problem(rule.Item, found, rule.Expected));
+        return Judge(
+            rule.Item, answer.Words ?? Describe(answer.Value, null, rule.Unit), rule.Expected, rule.Expect.Matches(answer.Value));
     }
 
     private static CheckOutcome Run(AuditPolicyRule rule, IAuditPolicyProbe probe)
@@ -227,56 +253,40 @@ public sealed class RuleCheck : ICheck
 
     private static CheckOutcome Run(DefenderRule rule, SystemProbes probes)
     {
-        if (DefenderCheck.ReadStatus(probes, out _) is { } notInUse)
+        if (DefenderCheck.ReadSettings(probes, [rule.Property], out WmiObject settings) is { } unread)
         {
-            return notInUse;
+            return unread;
         }
 
-        ProbeResult<IReadOnlyList<WmiObject>> read =
-            probes.Wmi.Query(DefenderCheck.WmiNamespace, DefenderCheck.PreferenceClass, [rule.Property]);
-        if (!read.IsOk)
-        {
-            return ProbeOutcomes.FromFailure(read, "Microsoft Defender's settings");
-        }
-
-        WmiObject? settings = read.Value!.Count > 0 ? read.Value[0] : null;
-        long? value = settings?.Number(rule.Property) ?? (settings?.Flag(rule.Property) is { } flag ? (flag ? 1 : 0) : null);
+        long? value = settings.Number(rule.Property) ?? (settings.Flag(rule.Property) is { } flag ? (flag ? 1 : 0) : null);
         if (value is null)
         {
             return CheckOutcome.Error($"Microsoft Defender did not report the setting \"{rule.Item}\".");
         }
 
-        string found = Describe(value.Value, rule.Labels, null);
-        return rule.Expect.Matches(value.Value)
-            ? CheckOutcome.Pass($"{rule.Item}: {found}.", Finding.Ok(rule.Item, found, rule.Expected))
-            : CheckOutcome.Fail($"{rule.Item}: {found}. Expected: {rule.Expected}.", Finding.Problem(rule.Item, found, rule.Expected));
+        return Judge(rule.Item, Describe(value.Value, rule.Labels, null), rule.Expected, rule.Expect.Matches(value.Value));
     }
 
     private static CheckOutcome Run(DefenderRulesRule rule, SystemProbes probes)
     {
-        const string Ids = "AttackSurfaceReductionRules_Ids";
-        const string Actions = "AttackSurfaceReductionRules_Actions";
+        const string Ids = DefenderCheck.AttackSurfaceIds;
+        const string Actions = DefenderCheck.AttackSurfaceActions;
         const long Block = 1;
 
-        if (DefenderCheck.ReadStatus(probes, out _) is { } notInUse)
+        if (DefenderCheck.ReadSettings(probes, [Ids, Actions], out WmiObject settings) is { } unread)
         {
-            return notInUse;
+            return unread;
         }
 
-        ProbeResult<IReadOnlyList<WmiObject>> read =
-            probes.Wmi.Query(DefenderCheck.WmiNamespace, DefenderCheck.PreferenceClass, [Ids, Actions]);
-        if (!read.IsOk)
+        // No value means no rule is configured. A value that is not a list is something this
+        // check does not understand, which is not the same thing.
+        if ((settings.Has(Ids) && !settings.IsList(Ids)) || (settings.Has(Actions) && !settings.IsList(Actions)))
         {
-            return ProbeOutcomes.FromFailure(read, "Microsoft Defender's settings");
+            return CheckOutcome.Error("Microsoft Defender reported its attack surface reduction rules in a form SecReview cannot read.");
         }
 
-        if (read.Value!.Count == 0)
-        {
-            return CheckOutcome.Error("Microsoft Defender did not report its attack surface reduction rules.");
-        }
-
-        IReadOnlyList<string> ids = read.Value[0].Texts(Ids);
-        IReadOnlyList<long> actions = read.Value[0].Numbers(Actions);
+        IReadOnlyList<string> ids = settings.Texts(Ids);
+        IReadOnlyList<long> actions = settings.Numbers(Actions);
         if (ids.Count != actions.Count)
         {
             return CheckOutcome.Error("Microsoft Defender reported its attack surface reduction rules inconsistently.");
@@ -295,17 +305,16 @@ public sealed class RuleCheck : ICheck
         int missing = 0;
         foreach (AttackSurfaceRule expected in rule.Rules)
         {
-            string found = configured.TryGetValue(expected.Id, out long action)
-                ? action switch
-                {
-                    0 => "Off",
-                    1 => "Block",
-                    2 => "Audit only",
-                    6 => "Warn",
-                    _ => action.ToString(CultureInfo.InvariantCulture),
-                }
-                : "Not configured";
-            if (configured.TryGetValue(expected.Id, out action) && action == Block)
+            string found = !configured.TryGetValue(expected.Id, out long action) ? "Not configured" : action switch
+            {
+                0 => "Off",
+                Block => "Block",
+                2 => "Audit only",
+                6 => "Warn",
+                _ => action.ToString(CultureInfo.InvariantCulture),
+            };
+
+            if (found == "Block")
             {
                 findings.Add(Finding.Ok(expected.Name, found, "Block"));
             }
