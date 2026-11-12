@@ -147,6 +147,12 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      # Last, because it changes this machine: a few settings are weakened to prove that the
+      # checks then fail for the right reason. Allowed here only, on a machine that is thrown away.
+      - name: Weaken settings on this machine and check that SecReview says so
+        shell: pwsh
+        run: ./scripts/test-posture.ps1 -Stage artifacts/stage
+
       - name: Upload the install logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

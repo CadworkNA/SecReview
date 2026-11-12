@@ -18,10 +18,11 @@ Run `build.ps1` from PowerShell 7 (`pwsh`). Its header lists every switch; the c
 .\build.ps1 -NoTests           # skip the unit tests
 .\build.ps1 -LocalCache        # keep NuGet's caches inside the repo (.nuget\)
 .\build.ps1 -Locked            # restore in locked mode, as CI does
+.\build.ps1 -Installer         # also build the setup program (needs Inno Setup 6.3+ or 7)
 ```
 
-Output: `artifacts\stage` (what ships) and `artifacts\symbols`. The script ends with a smoke test
-that opens the app window for a moment.
+Output: `artifacts\stage` (what ships), `artifacts\symbols` and, with `-Installer`,
+`artifacts\installer`. The script ends with a smoke test that opens the app window for a moment.
 
 Run the tests again without rebuilding:
 
@@ -119,6 +120,47 @@ check starts failing.
   runs on build machines only (`--tray --smoke-test`: put up the icon, run the checks once,
   save, exit); `build.ps1` skips it elsewhere, because Windows remembers every icon it has
   shown. Clicking the icon, its menu and the notification cannot be exercised by a build.
+
+## The setup program and releases
+
+`installer\SecReview.iss` (Inno Setup) packs the staged folder. Its header lists everything
+setup changes on a PC; the uninstaller removes all of it and leaves each user's own data.
+
+- **Program Files, for all users.** The folder is not asked for: the administrator checks
+  need programs an ordinary user cannot replace.
+- **Start at sign-in** is one value under `HKLM\...\Run` (`SecReview.exe --tray`), a task
+  that is on by default. Each user can still switch the icon off in Settings.
+- **Silent:** `SecReview-<version>-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; add
+  `/MERGETASKS="!autostart"` to leave out the icon at sign-in.
+- **Running copies are ended** by setup and by the uninstaller, for every signed-in user.
+- **Never run on a developer PC.** `build.ps1 -Installer` only compiles it.
+  `scripts\test-install.ps1` installs, upgrades and uninstalls it and checks each step; it
+  refuses to run anywhere but a build machine.
+- **The icon** (`resources\SecReview.ico`) is what `SecReview.Tray.IconFile` draws. A test
+  fails when the file differs and leaves the right file in the test output folder.
+- **Licences:** `THIRD-PARTY-NOTICES.md` says what the programs contain. The texts are
+  installed in `licenses\`; those that belong to a package version are copied from the
+  restored package at build time.
+
+The **Package and release** workflow (`full.yml`) is the only place a release is built:
+
+1. Official build: the newest list of known-malicious packages from the daily workflow, and
+   the error-report address from the repository's settings.
+2. The two programs are signed (Azure Artifact Signing, signed in through OpenID Connect; no
+   stored key), then the uninstaller and the setup program. A signature without a timestamp
+   fails the build.
+3. Install, upgrade and uninstall on the build machine.
+4. An SBOM of the install folder and the packages behind it (SPDX 2.2, Microsoft's SBOM tool,
+   pinned in `.config\dotnet-tools.json`).
+5. A **draft** release with the setup program and the SBOM, and, once the repository is
+   public, a Sigstore bundle proving where they were built.
+6. Last, `scripts/test-posture.ps1` weakens five settings of the build machine (firewall off
+   for one network, Remote Desktop on without Network Level Authentication, WDigest, AutoPlay,
+   a made-up npm token) and checks that each check fails for its own reason and that the
+   report holds neither the token nor a name. It refuses to run anywhere but a build machine.
+
+Start it by hand (Actions, "Package and release") to try all of this without a release. A
+release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.
 
 ## Error reports
 
@@ -219,6 +261,9 @@ The build is strict about what it downloads:
 To add or update a package: change `Directory.Packages.props`, run `.\build.ps1` (not `-Locked`)
 so the lock files update, add any new id to `allowed-packages.txt`, and commit all of it together.
 A package not published by Microsoft needs the maintainer's approval first.
+
+Tools used by workflows only (the SBOM tool) are pinned in `.config\dotnet-tools.json` and come
+from nuget.org under the same rules.
 
 To move to a new SDK: change `global.json`, rebuild so the lock files update, commit together.
 Dependabot does not propose SDK updates for that reason.

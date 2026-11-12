@@ -122,7 +122,7 @@ Write-Host "Installed programs: report with $($checks.Count) checks, window show
 $numbers = [version] (($Version -split '-', 2)[0])
 $later = '{0}.{1}.{2}' -f $numbers.Major, $numbers.Minor, ($numbers.Build + 1)
 $iscc = & (Join-Path $PSScriptRoot 'ensure-inno.ps1')
-& $iscc /Qp "/DAppVersion=$later" "/DFileVersion=$later.0" "/DStage=$stagePath" "/DOutputFolder=$work" (Join-Path $root 'installer\SecReview.iss')
+& $iscc /Q "/DAppVersion=$later" "/DFileVersion=$later.0" "/DStage=$stagePath" "/DOutputFolder=$work" (Join-Path $root 'installer\SecReview.iss')
 Assert ($LASTEXITCODE -eq 0) "building the later setup program failed ($LASTEXITCODE)."
 $laterSetup = Join-Path $work "SecReview-$later-setup.exe"
 

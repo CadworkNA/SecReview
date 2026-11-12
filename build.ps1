@@ -445,7 +445,7 @@ if ($Installer) {
     $publisher = ([xml] (Get-Content (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup.Company |
         Where-Object { $_ } | Select-Object -First 1
     $isccArgs = @(
-        '/Qp'
+        '/Q'
         "/DAppVersion=$Version"
         "/DFileVersion=$numbers.0"
         "/DStage=$stage"
