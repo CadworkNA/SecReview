@@ -23,6 +23,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private readonly UiRole _role;
     private readonly AppLog _log;
     private readonly Action<Action> _onWindowThread;
+    private readonly ErrorReporter _reporter;
+    private readonly bool _previousRunCrashed;
     private readonly SettingsStore? _settingsStore;
     private readonly ResultsStore? _resultsStore;
 
@@ -54,15 +56,20 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// <param name="role">How the window was started.</param>
     /// <param name="log">The local log.</param>
     /// <param name="onWindowThread">Runs an action on the window's thread; results arrive on others.</param>
-    public MainViewModel(UiRole role, AppLog log, Action<Action> onWindowThread)
+    /// <param name="reporter">Reports errors of SecReview itself, when that is on.</param>
+    /// <param name="previousRunCrashed">Whether the previous run never closed down.</param>
+    internal MainViewModel(UiRole role, AppLog log, Action<Action> onWindowThread, ErrorReporter reporter, bool previousRunCrashed)
     {
         ArgumentNullException.ThrowIfNull(role);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(onWindowThread);
+        ArgumentNullException.ThrowIfNull(reporter);
 
         _role = role;
         _log = log;
         _onWindowThread = onWindowThread;
+        _reporter = reporter;
+        _previousRunCrashed = previousRunCrashed;
 
         // Made-up results are never written anywhere and never mixed with real ones.
         if (!role.Demo)
@@ -176,6 +183,28 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         private set => Set(ref _showFirstRun, value, nameof(ShowFirstRun));
     }
 
+    /// <summary>What the first-run notice says. It names error reporting only when that is on.</summary>
+    public string FirstRunMessage =>
+        "It checks this PC's security settings and explains what it finds. It never changes a setting, and the results stay on this PC." +
+        (_reporter.State is ErrorReportsState.On or ErrorReportsState.NotYetKnown
+            ? " Once you close this notice, errors of SecReview itself are reported to its developers, never your results; Settings has the switch."
+            : string.Empty);
+
+    /// <summary>Whether error reports are on right now.</summary>
+    public bool ErrorReportsOn => _reporter.State == ErrorReportsState.On;
+
+    /// <summary>Whether the user's switch decides: not when the build has nowhere to send, or the organisation said no.</summary>
+    public bool CanChangeErrorReports => _reporter.State is ErrorReportsState.On or ErrorReportsState.OffBySetting or ErrorReportsState.NotYetKnown;
+
+    /// <summary>Where the user has left the switch, whether or not reports are being sent yet.</summary>
+    public bool ErrorReportsSwitch => _settings.SendErrorReports;
+
+    /// <summary>The state of error reporting in a sentence.</summary>
+    public string ErrorReportsDescription => ErrorReports.Describe(_reporter.State);
+
+    /// <summary>Whether "Send feedback" has somewhere to go. Made-up results show it so it can be looked at; nothing is sent.</summary>
+    public bool CanSendFeedback => _role.Demo || _reporter.State == ErrorReportsState.On;
+
     public string AllLabel => Label("All", ScanFilter.All);
 
     public string AttentionLabel => Label("Needs attention", ScanFilter.NeedsAttention);
@@ -220,6 +249,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
         _settings = _settingsStore!.Load(out string? problem);
         SettingsProblem = problem ?? string.Empty;
+        ApplyErrorReports();
+        if (_previousRunCrashed)
+        {
+            _reporter.ReportAbnormalEnd();
+        }
+
         ShowFirstRun = !_settings.FirstRunDone;
 
         try
@@ -268,6 +303,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 #pragma warning restore CA1031
         {
             _log.Error("The scan could not run", exception);
+            if (exception is not PlatformNotSupportedException)
+            {
+                _reporter.Report(exception);
+            }
+
             Failure = exception.Message;
             HasFailed = true;
         }
@@ -303,6 +343,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 #pragma warning restore CA1031
         {
             _log.Error($"Check '{checkId}' could not be run again", exception);
+            _reporter.Report(exception, checkId);
         }
         finally
         {
@@ -327,6 +368,28 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         Redraw();
     }
 
+    /// <summary>The user's switch for error reports. Saved, and applied at once.</summary>
+    public void SetErrorReports(bool on)
+    {
+        if (_settings.SendErrorReports == on)
+        {
+            return;
+        }
+
+        _settings = _settings with { SendErrorReports = on };
+        SaveSettings();
+        ApplyErrorReports();
+    }
+
+    /// <summary>Which checks do not pass, as it would go with feedback; null without results.</summary>
+    public string? ResultsForFeedback() => CurrentScan() is { } scan ? ErrorReports.ResultsForFeedback(scan) : null;
+
+    /// <summary>
+    /// Sends feedback with exactly the text the user was shown as included (null for nothing).
+    /// False when it was not sent. With made-up results nothing is ever sent.
+    /// </summary>
+    public bool SendFeedback(string text, string? included) => !_role.Demo && _reporter.SendFeedback(text, included);
+
     /// <summary>Closes the first-run notice for good.</summary>
     public void DismissFirstRun()
     {
@@ -335,6 +398,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             _settings = _settings with { FirstRunDone = true };
             SaveSettings();
+
+            // The notice has said that errors are reported; from now on they may be.
+            ApplyErrorReports();
         }
     }
 
@@ -377,18 +443,39 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         Redraw();
     }
 
-    private static Scanner NewScanner()
+    private Scanner NewScanner()
     {
         if (!WindowsProbes.IsSupported)
         {
             throw new PlatformNotSupportedException($"SecReview needs {WindowsProbes.MinimumWindowsName} or later.");
         }
 
-        return new Scanner(WindowsProbes.Create(), TimeProvider.System);
+        // A check that throws is a bug in SecReview: the row says "could not check", and the
+        // error (its type and where, never its message) is reported when reporting is on.
+        return new Scanner(WindowsProbes.Create(), TimeProvider.System) { OnUnexpectedError = (checkId, error) => _reporter.Report(error, checkId) };
     }
 
-    private static Task<ScanResult> ScanThisPcAsync(Action<ScannedCheck> onResult) =>
+    private Task<ScanResult> ScanThisPcAsync(Action<ScannedCheck> onResult) =>
         NewScanner().RunAsync(CheckSelection.All, WindowsProbes.IsProcessElevated(), onResult);
+
+    /// <summary>Starts or stops error reporting to match the build, the organisation's policy and the user's switch.</summary>
+    private void ApplyErrorReports()
+    {
+        if (!_role.Demo && WindowsProbes.IsSupported)
+        {
+            // Settings that could not be read say nothing about the user's choice; and until
+            // the first-run notice is closed the user has not been told.
+            var choice = new ErrorReportsChoice(_settings.SendErrorReports, SettingsWereRead: !HasSettingsProblem, NoticeSeen: _settings.FirstRunDone);
+            _reporter.Apply(choice, WindowsProbes.Create().Registry);
+        }
+
+        Changed(nameof(ErrorReportsOn));
+        Changed(nameof(ErrorReportsSwitch));
+        Changed(nameof(CanChangeErrorReports));
+        Changed(nameof(ErrorReportsDescription));
+        Changed(nameof(CanSendFeedback));
+        Changed(nameof(FirstRunMessage));
+    }
 
     /// <summary>Called on a scan's threads as each check answers.</summary>
     private void Arrived(ScannedCheck check) => _onWindowThread(() =>

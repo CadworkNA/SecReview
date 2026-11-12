@@ -41,6 +41,32 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
+    <!-- Error reporting: the library only. The package's own build steps and analyzer are
+         left out: they compile the project folder's path into the program, can link a
+         native crash handler (which would send memory dumps) and can run a command-line tool
+         that uploads symbols and sources. None of that belongs in a build of SecReview. -->
+    <PackageReference Include="Sentry" ExcludeAssets="build;buildTransitive;analyzers" />
+  </ItemGroup>
+
+  <!-- The exclusion above does not keep the package's code generator from the compiler, so it
+       is taken out here. It writes every build property into the program, the project folder
+       among them. scripts\check-stage.ps1 fails the build if that folder shows up in what ships. -->
+  <Target Name="LeaveOutErrorReportingGenerator" BeforeTargets="XamlPreCompile;CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'Sentry'" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup Condition="'$(ErrorReportAddress)' != ''">
+    <!-- Where errors of SecReview itself are reported (build.ps1 -ErrorReportAddress). Only an
+         official build has one; without it nothing is ever sent. In the app only: the
+         command-line helper has no use for it and does not carry it. -->
+    <AssemblyMetadata Include="ErrorReportAddress" Value="$(ErrorReportAddress)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The program names its symbol file without the folder it was built in. -->
+    <LinkerArg Include="/PDBALTPATH:SecReview.pdb" />
   </ItemGroup>
 
   <ItemGroup>

@@ -28,6 +28,12 @@ public sealed class Scanner
     private readonly SystemProbes _probes;
     private readonly TimeProvider _clock;
 
+    /// <summary>
+    /// Called with a check's identifier and the error when a check throws (a bug in SecReview).
+    /// The result still says "could not check"; this is for reporting the bug. It must not throw.
+    /// </summary>
+    public Action<string, Exception>? OnUnexpectedError { get; init; }
+
     public Scanner(SystemProbes probes, TimeProvider clock)
         : this(probes, clock, CheckCatalogue.Checks, CheckCatalogue.Texts)
     {
@@ -66,7 +72,7 @@ public sealed class Scanner
         CheckSelection selection, bool isElevated, Action<ScannedCheck>? onResult, CancellationToken cancellation = default)
     {
         // Readings that several checks share are taken once per scan.
-        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, selection, isElevated);
+        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, selection, isElevated, onUnexpected: OnUnexpectedError);
         Dictionary<string, CheckDefinition> definitions = _checks.ToDictionary(c => c.Definition.Id, c => c.Definition);
         ScannedCheck Scanned(CheckResult result) => new(definitions[result.CheckId], _texts[result.CheckId], result);
 
@@ -84,7 +90,7 @@ public sealed class Scanner
         ICheck check = _checks.FirstOrDefault(c => c.Definition.Id == checkId)
             ?? throw new ArgumentException($"There is no check '{checkId}'.", nameof(checkId));
 
-        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, CheckSelection.All, isElevated);
+        var runner = new CheckRunner(ScanCache.ForOneScan(_probes), _clock, CheckSelection.All, isElevated, onUnexpected: OnUnexpectedError);
         CheckResult result = await runner.RunOneAsync(check, cancellation).ConfigureAwait(false);
         return new ScannedCheck(check.Definition, _texts[checkId], result);
     }

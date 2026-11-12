@@ -53,6 +53,79 @@ public sealed class CheckRunnerTests
     }
 
     [TestMethod]
+    public async Task ACheckThatThrows_IsAlsoHandedOver_ForReportingTheBug()
+    {
+        var handed = new List<(string CheckId, Exception Error)>();
+        var runner = new CheckRunner(
+            new FakeProbes().Build(), TimeProvider.System, CheckSelection.All, isElevated: false, privacy: PrivacyFilter.None,
+            onUnexpected: (id, error) => handed.Add((id, error)));
+        ICheck[] checks =
+        [
+            new StubCheck("throws", _ => throw new InvalidOperationException("boom")),
+            new StubCheck("fails", _ => CheckOutcome.Fail("off")),
+            new StubCheck("cannot", _ => CheckOutcome.Error("Windows did not answer.")),
+        ];
+
+        await runner.RunAsync(checks);
+
+        Assert.AreEqual(1, handed.Count, "a failing check, or one that could not be answered, is not a bug in SecReview");
+        Assert.AreEqual("throws", handed[0].CheckId);
+        Assert.IsInstanceOfType<InvalidOperationException>(handed[0].Error);
+    }
+
+    [TestMethod]
+    public async Task ACheckStoppedBecauseItsTimeWasUp_IsNotABug_AndAListenerThatThrowsBreaksNothing()
+    {
+        var handed = new List<string>();
+        var runner = new CheckRunner(
+            new FakeProbes().Build(), TimeProvider.System, CheckSelection.All, isElevated: false,
+            timeout: TimeSpan.FromMilliseconds(100), privacy: PrivacyFilter.None,
+            onUnexpected: (id, _) =>
+            {
+                lock (handed)
+                {
+                    handed.Add(id);
+                }
+
+                throw new InvalidOperationException("the listener itself fails");
+            });
+        using var stopped = new ManualResetEventSlim();
+        ICheck[] checks =
+        [
+            // Honours its token: once its time is up it stops by throwing, as cancelled code does.
+            new StubCheck("slow", context =>
+            {
+                try
+                {
+                    context.Cancellation.WaitHandle.WaitOne();
+                    context.Cancellation.ThrowIfCancellationRequested();
+                    return CheckOutcome.Pass("not reached");
+                }
+                finally
+                {
+                    stopped.Set();
+                }
+            }),
+            new StubCheck("throws", _ => throw new InvalidOperationException("boom")),
+            new StubCheck("fine", _ => CheckOutcome.Pass("fine")),
+        ];
+
+        var results = await runner.RunAsync(checks);
+        Assert.IsTrue(stopped.Wait(TimeSpan.FromSeconds(10)));
+        await Task.Delay(50);
+
+        Assert.AreEqual(CheckStatus.Error, results[0].Outcome.Status);
+        StringAssert.Contains(results[0].Outcome.Summary, "did not finish");
+        Assert.AreEqual(CheckStatus.Error, results[1].Outcome.Status, "the check's own result stands although the listener threw");
+        StringAssert.Contains(results[1].Outcome.Summary, "boom");
+        Assert.AreEqual(CheckStatus.Pass, results[2].Outcome.Status);
+        lock (handed)
+        {
+            CollectionAssert.AreEqual(new[] { "throws" }, handed, "running out of time is not a bug to report");
+        }
+    }
+
+    [TestMethod]
     public async Task ACheckThatHangs_IsReportedAsNotFinished_AndTheOthersStillRun()
     {
         using var never = new ManualResetEventSlim();

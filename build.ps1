@@ -12,6 +12,8 @@
 #                                    # (after a Windows App SDK change; review the difference)
 #   .\build.ps1 -MalwareIndex <file> # ship this list of known-malicious packages (built by the
 #                                    # "Known-malicious list" workflow); without it there is none
+#   .\build.ps1 -ErrorReportAddress <dsn>   # where the app reports its own errors (official
+#                                    # builds only); without it the app never sends anything
 param(
     [string] $Version = '0.0.0-dev',
     [switch] $NoTests,
@@ -19,7 +21,8 @@ param(
     [switch] $LocalCache,
     [switch] $Locked,
     [switch] $UpdateStageList,
-    [string] $MalwareIndex
+    [string] $MalwareIndex,
+    [string] $ErrorReportAddress
 )
 $ErrorActionPreference = 'Stop'
 # Exit codes of native commands are checked explicitly below, whatever the user's profile says.
@@ -67,6 +70,13 @@ if ($MalwareIndex) {
     if ($NoPublish) { throw '-MalwareIndex ships a list with the published programs; it cannot be combined with -NoPublish.' }
     $listFile = (Resolve-Path -LiteralPath $MalwareIndex).Path
     $compileArgs += "-p:KnownMaliciousListSha256=$((Get-FileHash -LiteralPath $listFile -Algorithm SHA256).Hash.ToLowerInvariant())"
+}
+
+if ($ErrorReportAddress) {
+    if ($ErrorReportAddress -notmatch '^https://[0-9a-f]+@[A-Za-z0-9.-]+/[0-9]+$') {
+        throw '-ErrorReportAddress must look like https://<key>@<host>/<project number>.'
+    }
+    $compileArgs += "-p:ErrorReportAddress=$ErrorReportAddress"
 }
 
 Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore @compileArgs }
@@ -152,10 +162,11 @@ function Get-AppLog {
 }
 
 # Starts SecReview.exe with the given arguments. Returns its exit code, or 'timeout'.
-function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90) {
+function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90, [hashtable] $Environment = @{}) {
     $start = [System.Diagnostics.ProcessStartInfo]::new((Join-Path $stage 'SecReview.exe'))
     $start.UseShellExecute = $false
     $start.Environment['SECREVIEW_DATA_DIR'] = $appData
+    foreach ($name in $Environment.Keys) { $start.Environment[$name] = $Environment[$name] }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
 
     $process = [System.Diagnostics.Process]::Start($start)
@@ -249,6 +260,72 @@ Invoke-Step 'Smoke test' {
         }
         Write-Host "Screenshot: artifacts\screenshots\demo-$state.png ($([int]((Get-Item $picture).Length / 1KB)) KB)."
     }
+
+    # What an error report holds. The app raises made-up errors that carry this PC's user
+    # name, computer name, profile path and a made-up secret, and writes what it would have
+    # sent to a file instead of sending it. The errors must be there; none of those may be,
+    # nor anything else about the device, and nothing may be written to the user's profile.
+    # The app gets empty folders of its own as its profile's local data and its temporary
+    # folder: whatever the reporting library writes would land there, and both must stay empty.
+    $sandbox = Join-Path $root 'artifacts\error-report-sandbox'
+    if (Test-Path $sandbox) { Remove-Item $sandbox -Recurse -Force }
+    $sandboxLocal = (New-Item -ItemType Directory -Path (Join-Path $sandbox 'local')).FullName
+    $sandboxTemp = (New-Item -ItemType Directory -Path (Join-Path $sandbox 'temp')).FullName
+    $reportFile = Join-Path $root 'artifacts\error-report-test.txt'
+    if (Test-Path $reportFile) { Remove-Item $reportFile -Force }
+    $exit = Invoke-App '--error-report-test', $reportFile -Environment @{ LOCALAPPDATA = $sandboxLocal; TEMP = $sandboxTemp; TMP = $sandboxTemp }
+    if ($exit -ne 0 -or -not (Test-Path $reportFile)) {
+        throw "SecReview.exe --error-report-test ended with '$exit'.$(Get-AppLog)"
+    }
+    $reports = Get-Content $reportFile -Raw
+    foreach ($expected in 'System.InvalidOperationException', 'System.FormatException', 'System.AggregateException',
+            'System.InvalidCastException', 'System.ArgumentException', 'System.NotSupportedException', '"check":"selftest.check"',
+            "secreview@$Version", 'ended without closing down', 'Self-test feedback', 'firewall.enabled: Fail') {
+        if (-not $reports.Contains($expected)) { throw "The error-report test output lacks '$expected'." }
+    }
+
+    # Each made-up bug once (four errors and the fixed message), and the feedback: the second
+    # and third copy of a bug, in the same check or another, must not have been written.
+    $events = [regex]::Matches($reports, '"type":"event"').Count
+    $feedbacks = [regex]::Matches($reports, '"type":"feedback"').Count
+    if ($events -ne 5 -or $feedbacks -ne 1) {
+        throw "The error-report test wrote $events reports and $feedbacks feedback; 5 and 1 were expected."
+    }
+
+    $forbidden = [ordered]@{
+        'the made-up secret'          = 'made-up-token-7c1f'
+        'an error message'            = 'Self-test error:'
+        'the computer name'           = $env:COMPUTERNAME
+        'the profile path'            = $env:USERPROFILE.Replace('\', '\\')
+        'the folder SecReview is in'  = $root.Replace('\', '\\')
+        'the server name field'       = '"server_name"'
+        'a device section'            = '"device"'
+        'the time zone'               = 'timezone'
+        'the time the app started'    = 'app_start_time'
+        'a user id'                   = '"user":{"id"'
+        'a user name field'           = '"username"'
+        'an address of the PC'        = 'ip_address'
+        'the list of modules'         = '"modules"'
+        'the list of program files'   = 'debug_meta'
+        'extra data'                  = '"extra"'
+        'a trail of earlier events'   = '"breadcrumbs"'
+        'a second check tag'          = 'selftest.other'
+    }
+    # A user name such as "admin" is too ordinary a word to be told from text and is left alone
+    # by the scrubber; any other is looked for.
+    if ($env:USERNAME.Length -ge 5 -and $env:USERNAME -notmatch '^(administrator|guest|owner|default|public|system|users)$') {
+        $forbidden['the user name'] = $env:USERNAME
+    }
+    foreach ($what in $forbidden.Keys) {
+        if ($reports.IndexOf($forbidden[$what], [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            throw "The error-report test output holds $what."
+        }
+    }
+    $written = @(Get-ChildItem $sandbox -Recurse -File)
+    if ($written.Count -gt 0) {
+        throw "Reporting wrote to the user's folders, which it must not: $($written[0].FullName.Substring($sandbox.Length + 1))"
+    }
+    Write-Host "Error reports: $events made-up reports and $feedbacks feedback written to a file, none sent; no message, name, path, secret or device detail in them; nothing written to the profile."
 
     $exit = Invoke-App '--no-such-argument'
     if ($exit -ne 2) { throw "SecReview.exe with an unknown argument exited with '$exit', expected 2." }

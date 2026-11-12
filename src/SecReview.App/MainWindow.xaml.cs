@@ -33,14 +33,19 @@ public sealed partial class MainWindow : Window
     private int _frames;
     private bool _dialogOpen;
 
-    public MainWindow(UiRole role, AppLog log)
+    /// <param name="role">How the window was started.</param>
+    /// <param name="log">The local log.</param>
+    /// <param name="reporter">Reports errors of SecReview itself, when that is on.</param>
+    /// <param name="previousRunCrashed">Whether the previous run never closed down.</param>
+    /// <param name="closed">Called when the window has been closed by the user.</param>
+    internal MainWindow(UiRole role, AppLog log, ErrorReporter reporter, bool previousRunCrashed, Action? closed)
     {
         ArgumentNullException.ThrowIfNull(role);
         ArgumentNullException.ThrowIfNull(log);
 
         _role = role;
         _log = log;
-        ViewModel = new MainViewModel(role, log, action => DispatcherQueue.TryEnqueue(() => action()));
+        ViewModel = new MainViewModel(role, log, action => DispatcherQueue.TryEnqueue(() => action()), reporter, previousRunCrashed);
         InitializeComponent();
 
         AppWindow.Resize(InitialSize);
@@ -51,7 +56,11 @@ public sealed partial class MainWindow : Window
         _ticker.Interval = TimeSpan.FromMilliseconds(300);
         _ticker.Tick += (_, _) => ViewModel.Tick();
         _ticker.Start();
-        Closed += (_, _) => _ticker.Stop();
+        Closed += (_, _) =>
+        {
+            _ticker.Stop();
+            closed?.Invoke();
+        };
     }
 
     public MainViewModel ViewModel { get; }
@@ -144,7 +153,8 @@ public sealed partial class MainWindow : Window
         (ContentDialog Dialog, int Controls)[] dialogs =
         [
             (IgnoreDialog(out _), 3),   // the reason, Ignore, Cancel
-            (SettingsDialog(), 3),      // two "Stop ignoring" and Close
+            (SettingsDialog(), 4),      // the switch, two "Stop ignoring" and Close
+            (FeedbackDialog(out _, out _), 4),   // the text, the tick box, Send, Cancel
             (AboutDialog(), 1),
             (Message("Made up", "A message."), 1),
         ];
@@ -308,6 +318,74 @@ public sealed partial class MainWindow : Window
 
     private async void OnAboutClicked(object sender, RoutedEventArgs e) => await ShowAsync(AboutDialog());
 
+    private async void OnFeedbackClicked(object sender, RoutedEventArgs e)
+    {
+        if (await ShowAsync(FeedbackDialog(out TextBox text, out CheckBox include)) != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        // What goes along is the very text the dialog showed, not a fresh look at the results:
+        // a scan may have finished in between.
+        bool sent = ViewModel.SendFeedback(text.Text, include.IsChecked == true ? include.Tag as string : null);
+        await ShowAsync(sent
+            ? Message("Thank you", "Your feedback is on its way.")
+            : Message("Not sent", "Feedback could not be sent from this copy of SecReview."));
+    }
+
+    /// <summary>
+    /// What the user wants to say, and whether to add which checks do not pass. What would be
+    /// added is shown word for word before anything is sent.
+    /// </summary>
+    private ContentDialog FeedbackDialog(out TextBox text, out CheckBox include)
+    {
+        var secondary = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        var typed = new TextBox
+        {
+            Header = "What should we know?",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 120,
+            MaxLength = ErrorReports.MaximumFeedbackLength,
+        };
+        string? results = ViewModel.ResultsForFeedback();
+        var tick = new CheckBox { Content = "Include which checks do not pass", IsEnabled = results is not null, Tag = results };
+        var preview = new TextBlock
+        {
+            Text = results ?? string.Empty,
+            Foreground = secondary,
+            TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true,
+            Visibility = Visibility.Collapsed,
+        };
+        tick.Checked += (_, _) => preview.Visibility = Visibility.Visible;
+        tick.Unchecked += (_, _) => preview.Visibility = Visibility.Collapsed;
+
+        var panel = new StackPanel { Spacing = 12, MinWidth = 420 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Your text goes to the developers of SecReview with the versions of SecReview and Windows. Nothing else is added unless you tick the box, and then only what is shown below it.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(typed);
+        panel.Children.Add(tick);
+        panel.Children.Add(preview);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Send feedback",
+            Content = new ScrollViewer { Content = panel, MaxHeight = 520 },
+            PrimaryButtonText = "Send",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+        };
+        typed.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = typed.Text.Trim().Length >= 10;
+        text = typed;
+        include = tick;
+        return dialog;
+    }
+
     /// <summary>Windows' "Save as" dialog for the report.</summary>
     private FileSavePicker NewReportPicker()
     {
@@ -362,7 +440,35 @@ public sealed partial class MainWindow : Window
     {
         var secondary = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
         var panel = new StackPanel { Spacing = 12, MinWidth = 420 };
-        panel.Children.Add(new TextBlock { Text = "Ignored checks", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+
+        // Error reports: the switch, what a report holds, and why the switch is off when it is not the user's to move.
+        var reports = new ToggleSwitch
+        {
+            Header = "Report errors of SecReview to its developers",
+            IsOn = ViewModel.CanChangeErrorReports && ViewModel.ErrorReportsSwitch,
+            IsEnabled = ViewModel.CanChangeErrorReports,
+        };
+        var state = new TextBlock { Text = ViewModel.ErrorReportsDescription, TextWrapping = TextWrapping.Wrap, Foreground = secondary };
+        reports.Toggled += (_, _) =>
+        {
+            ViewModel.SetErrorReports(reports.IsOn);
+            state.Text = ViewModel.ErrorReportsDescription;
+        };
+        panel.Children.Add(reports);
+        panel.Children.Add(state);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "A report holds the kind of error, where in SecReview it happened, and the versions of SecReview and Windows. Never the error's message, your results, the name of this PC, your name or a path.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = secondary,
+        });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Ignored checks",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            Margin = new Thickness(0, 12, 0, 0),
+        });
 
         var none = new TextBlock { Text = "No check is ignored.", Foreground = secondary };
         IReadOnlyList<IgnoredRow> rows = ViewModel.IgnoredRows;
