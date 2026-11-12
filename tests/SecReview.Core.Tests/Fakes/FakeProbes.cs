@@ -3,12 +3,19 @@ using SecReview.Probing;
 namespace SecReview.Tests.Fakes;
 
 /// <summary>
-/// Stand-ins for the machine. Each returns what the test set; anything a test did not set
-/// answers "not supported", so a check that reads more than the test expects is visible.
+/// Stand-ins for the machine. Each returns what the test set. A reading the test did not set
+/// fails outright, so a check that reads more than its test expects shows up as a failure
+/// rather than as a plausible result. A registry value or service that was not added is
+/// "not found", as on a real machine.
 /// </summary>
 internal sealed class FakeProbes
 {
-    private static readonly ProbeFailure NotSetUp = ProbeFailure.NotSupported("Not set up in this test.");
+    private static readonly ProbeFailure NotSetUp = ProbeFailure.Failed("Not set up in this test.");
+
+    private readonly Dictionary<string, ProbeResult<RegistryValue>> _registryValues =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, ProbeResult<ServiceInfo>> _services = new(StringComparer.OrdinalIgnoreCase);
 
     public ProbeResult<FirewallState> Firewall { get; set; } = NotSetUp;
 
@@ -18,10 +25,39 @@ internal sealed class FakeProbes
 
     public ProbeResult<AccountPolicy> AccountPolicy { get; set; } = NotSetUp;
 
+    public ProbeResult<PowerSettings> Power { get; set; } = NotSetUp;
+
+    /// <summary>When set, every registry read ends this way (for example access denied).</summary>
+    public ProbeFailure? RegistryFailure { get; set; }
+
+    public FakeProbes WithRegistryValue(RegistryRoot root, string keyPath, string valueName, RegistryValue value)
+    {
+        _registryValues[RegistryPath(root, keyPath, valueName)] = ProbeResult<RegistryValue>.Ok(value);
+        return this;
+    }
+
+    public FakeProbes WithRegistryNumber(RegistryRoot root, string keyPath, string valueName, long value) =>
+        WithRegistryValue(root, keyPath, valueName, RegistryValue.FromNumber(value));
+
+    public FakeProbes WithService(string name, ServiceStartType startType, bool isRunning)
+    {
+        _services[name] = ProbeResult<ServiceInfo>.Ok(new ServiceInfo(name, startType, isRunning));
+        return this;
+    }
+
+    public FakeProbes WithServiceFailure(string name, ProbeFailure failure)
+    {
+        _services[name] = failure;
+        return this;
+    }
+
     public SystemProbes Build() => new(
+        Registry: new RegistryProbe(this),
+        Services: new ServiceProbe(this),
         Firewall: new FirewallProbe(this),
         SecurityCenter: new SecurityCenterProbe(this),
-        AccountPolicy: new AccountPolicyProbe(this));
+        AccountPolicy: new AccountPolicyProbe(this),
+        Power: new PowerProbe(this));
 
     /// <summary>A firewall state with all three profiles set the same way.</summary>
     public static FirewallState FirewallAll(bool enabled, bool blocksInbound = true) => new(
@@ -41,6 +77,81 @@ internal sealed class FakeProbes
         LockoutDuration: TimeSpan.FromMinutes(10),
         LockoutObservationWindow: TimeSpan.FromMinutes(10));
 
+    /// <summary>A laptop whose display turns off after the given minutes on either power source.</summary>
+    public static PowerSettings Laptop(int displayOffMinutes, bool requirePasswordOnWake = true)
+    {
+        var source = new PowerSourceSettings(
+            DisplayOff: TimeSpan.FromMinutes(displayOffMinutes),
+            Sleep: TimeSpan.FromMinutes(30),
+            RequirePasswordOnWake: requirePasswordOnWake);
+        return new PowerSettings(PluggedIn: source, OnBattery: source, HasBattery: true);
+    }
+
+    private static string RegistryPath(RegistryRoot root, string keyPath, string valueName) =>
+        $"{root}\\{keyPath.Trim('\\')}\\\\{valueName}";
+
+    private sealed class RegistryProbe(FakeProbes owner) : IRegistryProbe
+    {
+        public ProbeResult<RegistryValue> GetValue(RegistryRoot root, string keyPath, string valueName)
+        {
+            if (owner.RegistryFailure is { } failure)
+            {
+                return failure;
+            }
+
+            return owner._registryValues.TryGetValue(RegistryPath(root, keyPath, valueName), out var value)
+                ? value
+                : ProbeFailure.NotFound();
+        }
+
+        public ProbeResult<IReadOnlyList<string>> GetSubKeyNames(RegistryRoot root, string keyPath) =>
+            Names(root, keyPath, subKeys: true);
+
+        public ProbeResult<IReadOnlyList<string>> GetValueNames(RegistryRoot root, string keyPath) =>
+            Names(root, keyPath, subKeys: false);
+
+        private ProbeResult<IReadOnlyList<string>> Names(RegistryRoot root, string keyPath, bool subKeys)
+        {
+            if (owner.RegistryFailure is { } failure)
+            {
+                return failure;
+            }
+
+            // Stored paths look like "Root\key\path\\valueName".
+            string prefix = $"{root}\\{keyPath.Trim('\\')}\\";
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in owner._registryValues.Keys)
+            {
+                if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string rest = path[prefix.Length..];
+                bool isValueOfThisKey = rest.StartsWith('\\');
+                if (!subKeys && isValueOfThisKey)
+                {
+                    names.Add(rest[1..]);
+                }
+                else if (subKeys && !isValueOfThisKey)
+                {
+                    names.Add(rest[..rest.IndexOf('\\', StringComparison.Ordinal)]);
+                }
+            }
+
+            return names.Count == 0 && !owner._registryValues.Keys.Any(
+                    path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                ? ProbeFailure.NotFound()
+                : ProbeResult<IReadOnlyList<string>>.Ok([.. names]);
+        }
+    }
+
+    private sealed class ServiceProbe(FakeProbes owner) : IServiceProbe
+    {
+        public ProbeResult<ServiceInfo> GetService(string name) =>
+            owner._services.TryGetValue(name, out var service) ? service : ProbeFailure.NotFound();
+    }
+
     private sealed class FirewallProbe(FakeProbes owner) : IFirewallProbe
     {
         public ProbeResult<FirewallState> GetState() => owner.Firewall;
@@ -55,5 +166,10 @@ internal sealed class FakeProbes
     private sealed class AccountPolicyProbe(FakeProbes owner) : IAccountPolicyProbe
     {
         public ProbeResult<AccountPolicy> GetPolicy() => owner.AccountPolicy;
+    }
+
+    private sealed class PowerProbe(FakeProbes owner) : IPowerProbe
+    {
+        public ProbeResult<PowerSettings> GetSettings() => owner.Power;
     }
 }

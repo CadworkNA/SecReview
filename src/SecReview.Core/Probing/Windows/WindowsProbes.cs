@@ -15,7 +15,10 @@ public static class WindowsProbes
 
     [SupportedOSPlatform(MinimumWindows.Platform)]
     public static SystemProbes Create() => new(
+        Registry: new WindowsRegistryProbe(),
+        Services: new WindowsServiceProbe(),
         Firewall: new WindowsFirewallProbe(),
         SecurityCenter: new WindowsSecurityCenterProbe(),
-        AccountPolicy: new WindowsAccountPolicyProbe());
+        AccountPolicy: new WindowsAccountPolicyProbe(),
+        Power: new WindowsPowerProbe());
 }

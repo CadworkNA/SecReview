@@ -5,6 +5,9 @@ namespace SecReview.Probing;
 /// tests substitute fakes and never read the real machine.
 /// </summary>
 public sealed record SystemProbes(
+    IRegistryProbe Registry,
+    IServiceProbe Services,
     IFirewallProbe Firewall,
     ISecurityCenterProbe SecurityCenter,
-    IAccountPolicyProbe AccountPolicy);
+    IAccountPolicyProbe AccountPolicy,
+    IPowerProbe Power);

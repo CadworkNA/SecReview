@@ -11,8 +11,6 @@ CoInitializeEx
 CoUninitialize
 CoCreateInstance
 SysFreeString
-SysStringLen
-VariantClear
 
 // Firewall
 INetFwPolicy2
@@ -22,3 +20,20 @@ NetFwPolicy2
 IWSCProductList
 WSCProductList
 IWscProduct
+
+// Services
+OpenSCManager
+OpenService
+QueryServiceConfig
+QueryServiceStatus
+CloseServiceHandle
+SC_MANAGER_CONNECT
+SERVICE_QUERY_CONFIG
+SERVICE_QUERY_STATUS
+
+// Power settings
+PowerGetActiveScheme
+PowerReadACValueIndex
+PowerReadDCValueIndex
+GetSystemPowerStatus
+LocalFree

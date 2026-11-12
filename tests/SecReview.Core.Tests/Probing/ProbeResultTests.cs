@@ -17,6 +17,13 @@ public sealed class ProbeResultTests
     }
 
     [TestMethod]
+    public void Ok_WithoutAValue_Throws()
+    {
+        // Callers read Value whenever IsOk is true, so "ok" with nothing in it must not exist.
+        Assert.ThrowsExactly<ArgumentNullException>(() => ProbeResult<string>.Ok(null!));
+    }
+
+    [TestMethod]
     public void Failure_ConvertsToAnyResultType_AndIsNeverOk()
     {
         ProbeResult<string> result = ProbeFailure.AccessDenied();

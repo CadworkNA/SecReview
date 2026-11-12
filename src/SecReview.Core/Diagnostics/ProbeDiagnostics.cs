@@ -9,6 +9,11 @@ namespace SecReview.Diagnostics;
 /// </summary>
 public static class ProbeDiagnostics
 {
+    private const string WindowsVersionKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+
+    /// <summary>A service present on every Windows edition, to prove the service reading works.</summary>
+    private const string SampleService = "EventLog";
+
     /// <summary>Writes the report. Returns false if any probe failed outright.</summary>
     public static bool Run(SystemProbes probes, TextWriter output)
     {
@@ -17,6 +22,13 @@ public static class ProbeDiagnostics
 
         bool allFine = true;
 
+        allFine &= Report(
+            output,
+            "registry",
+            probes.Registry.GetValue(RegistryRoot.LocalMachine, WindowsVersionKey, "CurrentBuild"),
+            value => $"Windows build {value.Text}");
+        allFine &= Report(output, "services", probes.Services.GetService(SampleService), Describe);
+        allFine &= Report(output, "power plan", probes.Power.GetSettings(), Describe);
         allFine &= Report(output, "firewall", probes.Firewall.GetState(), Describe);
         allFine &= Report(
             output, "antivirus products", probes.SecurityCenter.GetProducts(SecurityProductKind.Antivirus), Describe);
@@ -44,6 +56,17 @@ public static class ProbeDiagnostics
         return result.Status != ProbeStatus.Failed;
     }
 
+    private static string Describe(ServiceInfo service) =>
+        $"{service.Name}: {service.StartType}, {(service.IsRunning ? "running" : "stopped")}";
+
+    private static string Describe(PowerSettings settings) =>
+        $"plugged in: {Describe(settings.PluggedIn)}; on battery: {Describe(settings.OnBattery)}; " +
+        $"battery: {(settings.HasBattery ? "yes" : "no")}";
+
+    private static string Describe(PowerSourceSettings source) =>
+        $"display off {Minutes(source.DisplayOff, "never")}, sleep {Minutes(source.Sleep, "never")}, " +
+        $"{(source.RequirePasswordOnWake ? "password on wake" : "no password on wake")}";
+
     private static string Describe(FirewallState state)
     {
         IEnumerable<string> profiles = state.Profiles.Select(profile =>
@@ -54,18 +77,33 @@ public static class ProbeDiagnostics
 
     private static string Describe(IReadOnlyList<SecurityProduct> products) => products.Count == 0
         ? "none registered"
-        : string.Join("; ", products.Select(product =>
-            $"{product.Name} ({product.State}, definitions {(product.SignaturesUpToDate ? "current" : "out of date")})"));
+        : string.Join("; ", products.Select(Describe));
 
-    private static string Describe(AccountPolicy policy) => string.Create(
-        CultureInfo.InvariantCulture,
-        $"minimum length {policy.MinimumPasswordLength}, history {policy.PasswordHistoryLength}, " +
-        $"maximum age {Days(policy.MaximumPasswordAge)}, lockout after {policy.LockoutThreshold} for " +
-        $"{Minutes(policy.LockoutDuration)}");
+    private static string Describe(SecurityProduct product) => product.SignaturesUpToDate switch
+    {
+        null => $"{product.Name} ({product.State})",
+        true => $"{product.Name} ({product.State}, definitions current)",
+        false => $"{product.Name} ({product.State}, definitions out of date)",
+    };
+
+    private static string Describe(AccountPolicy policy)
+    {
+        // A threshold of 0 means accounts are never locked out; the duration then means nothing.
+        string lockout = policy.LockoutThreshold == 0
+            ? "no lockout"
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"lockout after {policy.LockoutThreshold} failed sign-ins for {Minutes(policy.LockoutDuration, "ever")}");
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"minimum length {policy.MinimumPasswordLength}, history {policy.PasswordHistoryLength}, " +
+            $"maximum age {Days(policy.MaximumPasswordAge)}, {lockout}");
+    }
 
     private static string Days(TimeSpan? value) =>
         value is null ? "never" : string.Create(CultureInfo.InvariantCulture, $"{value.Value.TotalDays:0} days");
 
-    private static string Minutes(TimeSpan? value) =>
-        value is null ? "ever" : string.Create(CultureInfo.InvariantCulture, $"{value.Value.TotalMinutes:0} min");
+    private static string Minutes(TimeSpan? value, string whenNull) =>
+        value is null ? whenNull : string.Create(CultureInfo.InvariantCulture, $"{value.Value.TotalMinutes:0} min");
 }

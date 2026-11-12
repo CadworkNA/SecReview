@@ -47,7 +47,9 @@ public readonly record struct ProbeResult<T>
     public bool IsOk => Status == ProbeStatus.Ok;
 
 #pragma warning disable CA1000 // A factory on the generic type reads best at call sites.
-    public static ProbeResult<T> Ok(T value) => new(ProbeStatus.Ok, value, null);
+    public static ProbeResult<T> Ok(T value) => value is null
+        ? throw new ArgumentNullException(nameof(value), "A successful result must carry a value.")
+        : new(ProbeStatus.Ok, value, null);
 #pragma warning restore CA1000
 
 #pragma warning disable CA2225 // The named alternative is ProbeFailure itself.

@@ -145,13 +145,14 @@ Invoke-Step 'Smoke test' {
     if ($LASTEXITCODE -ne 2) { throw "An unknown command exited with $LASTEXITCODE, expected 2." }
 
     # Every probe must answer from the compiled helper on real Windows: a value, "needs
-    # administrator" or "not supported" are all fine; an outright failure is not. The values
-    # are this machine's settings, so only the status column is printed outside CI.
+    # administrator" or "not supported" are all fine; an outright failure is not. A successful
+    # line ends with this machine's settings, so outside CI those are left out; the reason on
+    # any other line is always shown.
     $report = & $cli --diagnose
     $diagnoseExit = $LASTEXITCODE
     foreach ($line in $report) {
-        if ($env:CI -eq 'true') { Write-Host "  $line" }
-        elseif ($line.Length -gt 41) { Write-Host "  $($line.Substring(0, 41).TrimEnd())" }
+        $isValue = $line.Length -gt 41 -and $line.Substring(21, 20).Trim() -eq 'ok'
+        if ($isValue -and $env:CI -ne 'true') { Write-Host "  $($line.Substring(0, 41).TrimEnd())" }
         else { Write-Host "  $line" }
     }
     if ($diagnoseExit -ne 0) { throw "SecReviewCli --diagnose exited with $diagnoseExit, expected 0." }
