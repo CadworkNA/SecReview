@@ -316,5 +316,308 @@
     "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.uv.cooldown": {
+    "name": "uv release cooldown",
+    "titlePass": "uv waits before installing new releases",
+    "titleFail": "uv installs brand-new releases",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open %APPDATA%\\uv\\uv.toml in a text editor; create the file if it is missing.",
+      "Add a line with exclude-newer = \"7 days\" and save.",
+      "Update uv if it is older than 0.9.17, with uv self update or the way you installed it."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.uv.sources": {
+    "name": "uv package sources",
+    "titlePass": "uv gets packages only from verified sources",
+    "titleFail": "uv is set to trust unsafe package sources",
+    "why": "These settings decide which servers uv believes. One weak setting lets an attacker's package stand in for the real one.",
+    "fix": [
+      "Open the file, or the environment variable, named in the details.",
+      "Remove the setting shown there, so uv's own default applies again.",
+      "For a private index, give it a name and mark it explicit rather than changing the index strategy."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.uv.credentials": {
+    "name": "uv stored sign-ins",
+    "titlePass": "uv keeps no sign-in secrets as plain text",
+    "titleFail": "uv keeps sign-in secrets as plain text",
+    "why": "A token in a plain file or a permanent variable can be read by every program you run, a malicious package's install step included.",
+    "fix": [
+      "For a sign-in in uv's credentials file, run uv auth logout with the service named in the details.",
+      "For a variable, press Windows+R, run rundll32 sysdm.cpl,EditEnvironmentVariables and delete it.",
+      "Replace the token at the service, since it was stored in the open, and keep the new one in your password manager."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pnpm.cooldown": {
+    "name": "pnpm release cooldown",
+    "titlePass": "pnpm waits before installing new releases",
+    "titleFail": "pnpm installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run pnpm config set --global minimumReleaseAge 10080.",
+      "That is 7 days in minutes; pnpm 11 and later keep it in config.yaml.",
+      "Update pnpm if it is older than 10.16."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pnpm.settings": {
+    "name": "pnpm protections",
+    "titlePass": "pnpm's protections are on",
+    "titleFail": "A pnpm protection is switched off",
+    "why": "These settings stop packages from running install scripts unasked and from arriving tampered with. Each one switched off is a way in.",
+    "fix": [
+      "Open the file named in the details in a text editor.",
+      "Remove the setting shown there, so pnpm's own default applies again.",
+      "To allow one package to run its build script, list it under allowBuilds instead of allowing all."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pnpm.credentials": {
+    "name": "pnpm stored tokens",
+    "titlePass": "pnpm keeps no registry tokens as plain text",
+    "titleFail": "pnpm keeps registry tokens as plain text",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Run pnpm logout for the registry named in the details, or delete the line shown there.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "For publishing, use a short-lived token or sign in again when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.buckets": {
+    "name": "Scoop buckets",
+    "titlePass": "Scoop's buckets come from Scoop's own sources",
+    "titleFail": "A Scoop bucket comes from another source",
+    "why": "Scoop installs whatever a bucket's manifest names, and runs its install scripts. Whoever controls a bucket controls what lands on this PC.",
+    "fix": [
+      "Decide whether you still need the bucket named in the details and trust who runs it.",
+      "If not, remove it with scoop bucket rm followed by its name.",
+      "If you keep it, tell IT, so the choice is a known one."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.apps": {
+    "name": "Scoop app downloads",
+    "titlePass": "Scoop apps were verified when installed",
+    "titleFail": "A Scoop app was not verified when installed",
+    "why": "Without a hash, Scoop cannot tell a tampered download from the real one. An app with no bucket has no source to check it against later.",
+    "fix": [
+      "Reinstall the app named in the details from one of Scoop's buckets: scoop uninstall, then scoop install.",
+      "If only a nightly or unverified build exists, weigh whether you need the app."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.updates": {
+    "name": "Scoop app updates",
+    "titlePass": "Scoop apps are up to date",
+    "titleFail": "Scoop apps have updates waiting",
+    "why": "Scoop never updates by itself. An app stays at the version you installed, with its known flaws, until you update it.",
+    "fix": [
+      "Open a terminal and run scoop update to refresh the buckets.",
+      "Run scoop update * to update every app, or scoop update followed by one app's name."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.scoop.credentials": {
+    "name": "Scoop stored tokens",
+    "titlePass": "Scoop keeps no tokens as plain text",
+    "titleFail": "Scoop keeps tokens as plain text",
+    "why": "Scoop's settings file is plain text that every program you run can read. A GitHub token in it gives them your GitHub access.",
+    "fix": [
+      "Remove the setting named in the details with scoop config rm followed by its name.",
+      "Revoke the token where it was issued, since it was stored in the open.",
+      "If Scoop hits GitHub's rate limit without a token, create one with no permissions at all."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.npm.cooldown": {
+    "name": "npm release cooldown",
+    "titlePass": "npm waits before installing new releases",
+    "titleFail": "npm installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run npm config set min-release-age 7.",
+      "That is 7 days; npm keeps it in the .npmrc file in your user folder.",
+      "Update npm if it is older than 11.10, with npm install -g npm."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.yarn.cooldown": {
+    "name": "Yarn release cooldown",
+    "titlePass": "Yarn waits before installing new releases",
+    "titleFail": "Yarn installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open .yarnrc.yml in your user folder in a text editor; create the file if it is missing.",
+      "Add a line with npmMinimalAgeGate: \"7d\" and save.",
+      "The setting needs Yarn 4.10 or later; older projects need yarn set version stable."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.bun.cooldown": {
+    "name": "Bun release cooldown",
+    "titlePass": "Bun waits before installing new releases",
+    "titleFail": "Bun installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open .bunfig.toml in your user folder in a text editor; create the file if it is missing.",
+      "Under an [install] line, add minimumReleaseAge = 604800 and save.",
+      "That is 7 days in seconds; the setting needs Bun 1.3 or later, so run bun upgrade if yours is older."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pip.cooldown": {
+    "name": "pip release cooldown",
+    "titlePass": "pip waits before installing new releases",
+    "titleFail": "pip installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run pip config set global.uploaded-prior-to P7D.",
+      "That is 7 days; pip keeps it in pip.ini under %APPDATA%\\pip.",
+      "The setting needs pip 26.1 or later in each Python: python -m pip install --upgrade pip."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.poetry.cooldown": {
+    "name": "Poetry release cooldown",
+    "titlePass": "Poetry waits before installing new releases",
+    "titleFail": "Poetry installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run poetry config solver.min-release-age 7.",
+      "That is 7 days; the setting needs Poetry 2.4 or later, so run poetry self update if yours is older."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pdm.cooldown": {
+    "name": "PDM release cooldown",
+    "titlePass": "PDM waits before installing new releases",
+    "titleFail": "PDM installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run pdm config strategy.exclude-newer 7d.",
+      "That is 7 days; the setting needs PDM 2.27 or later, so run pdm self update if yours is older."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.npm.settings": {
+    "name": "npm protections",
+    "titlePass": "npm's protections are on",
+    "titleFail": "An npm protection is switched off",
+    "why": "TLS checks and HTTPS make sure a package comes from the registry it claims. Install scripts are how most malicious packages do their damage.",
+    "fix": [
+      "Open the .npmrc file named in the details in a text editor.",
+      "Delete the line shown there, so npm's own default applies again.",
+      "To let one package run its install script, allow that package in the project, not all of them."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.npm.credentials": {
+    "name": "npm stored tokens",
+    "titlePass": "No npm registry tokens are stored as plain text",
+    "titleFail": "npm registry tokens are stored as plain text",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Run npm logout for the registry named in the details, or delete the line or variable shown there.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "For publishing, use a short-lived token or sign in again when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.yarn.settings": {
+    "name": "Yarn protections",
+    "titlePass": "Yarn's protections are on",
+    "titleFail": "A Yarn protection is switched off",
+    "why": "TLS and checksum checks make sure a package is the one the registry published. Install scripts are how most malicious packages do their damage.",
+    "fix": [
+      "Open .yarnrc.yml in your user folder in a text editor.",
+      "Delete the line shown in the details, so Yarn's own default applies again."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.yarn.credentials": {
+    "name": "Yarn stored tokens",
+    "titlePass": "No Yarn registry tokens are stored as plain text",
+    "titleFail": "Yarn registry tokens are stored as plain text",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Delete the line or variable shown in the details, or run yarn npm logout.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "If a token must be configured, write it as ${NPM_TOKEN} and set that variable only when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pip.settings": {
+    "name": "pip package sources",
+    "titlePass": "pip gets packages from one index over HTTPS",
+    "titleFail": "pip is set to trust unsafe package sources",
+    "why": "With an extra index, a public package of the same name can take a private one's place. A trusted host is one whose certificate pip no longer checks.",
+    "fix": [
+      "Open the pip.ini file named in the details in a text editor.",
+      "Delete the line shown there; for a variable, delete the variable.",
+      "For a private index, use index-url alone, pointing at an index that also serves the public packages you need."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pypi.credentials": {
+    "name": "Python index passwords",
+    "titlePass": "No Python index passwords are stored as plain text",
+    "titleFail": "A Python index password is stored as plain text",
+    "why": "A password or token in a plain file can be read by every program you run. With a publishing token, an attacker releases packages in your name.",
+    "fix": [
+      "Delete the password or token from the file named in the details.",
+      "Revoke it at the index, since it was stored in the open.",
+      "Publish with a short-lived token or trusted publishing; keep other passwords in your password manager or keyring."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }
