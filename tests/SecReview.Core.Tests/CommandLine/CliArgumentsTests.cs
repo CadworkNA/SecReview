@@ -27,6 +27,12 @@ public sealed class CliArgumentsTests
     }
 
     [TestMethod]
+    public void Diagnose_IsRecognised()
+    {
+        Assert.IsInstanceOfType<DiagnoseCommand>(CliArguments.Parse(["--diagnose"]));
+    }
+
+    [TestMethod]
     [DataRow("--Version")]
     [DataRow("version")]
     [DataRow("--report")]
@@ -92,5 +98,6 @@ public sealed class CliArgumentsTests
     {
         StringAssert.Contains(CliArguments.Usage, "--version");
         StringAssert.Contains(CliArguments.Usage, "--help");
+        StringAssert.Contains(CliArguments.Usage, "--diagnose");
     }
 }

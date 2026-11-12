@@ -9,6 +9,7 @@ public static class CliArguments
     public const string Usage = """
         Usage: SecReviewCli <command>
 
+          --diagnose   Show which readings work on this PC (for support).
           --version    Print the version.
           --help       Print this text.
         """;
@@ -26,6 +27,7 @@ public static class CliArguments
         {
             "--help" or "-h" or "/?" => new HelpCommand(),
             "--version" => new VersionCommand(),
+            "--diagnose" => new DiagnoseCommand(),
             _ => new InvalidCommand($"Unknown command '{Printable(args[0])}'."),
         };
 

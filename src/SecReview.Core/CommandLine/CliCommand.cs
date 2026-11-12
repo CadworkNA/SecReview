@@ -9,5 +9,8 @@ public sealed record HelpCommand : CliCommand;
 /// <summary>Print the version.</summary>
 public sealed record VersionCommand : CliCommand;
 
+/// <summary>Run every probe once and print which work on this PC.</summary>
+public sealed record DiagnoseCommand : CliCommand;
+
 /// <summary>The arguments were not understood; <see cref="Message"/> says why.</summary>
 public sealed record InvalidCommand(string Message) : CliCommand;
