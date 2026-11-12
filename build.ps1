@@ -59,7 +59,24 @@ $restoreArgs = @('restore', $solution, "-p:RestoreLockedMode=$($Locked.IsPresent
 Invoke-Step 'Check source text' { & (Join-Path $root 'scripts\check-source-text.ps1') }
 Invoke-Step 'Restore' { dotnet @restoreArgs }
 Invoke-Step 'Check lock files' { & (Join-Path $root 'scripts\check-lockfiles.ps1') }
-Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore "-p:Version=$Version" }
+# What every compile gets. With a list of known-malicious packages, its SHA-256 is compiled
+# into the programs, which then load that exact file and no other.
+$compileArgs = @("-p:Version=$Version")
+$listFile = $null
+if ($MalwareIndex) {
+    if ($NoPublish) { throw '-MalwareIndex ships a list with the published programs; it cannot be combined with -NoPublish.' }
+    $listFile = (Resolve-Path -LiteralPath $MalwareIndex).Path
+    $compileArgs += "-p:KnownMaliciousListSha256=$((Get-FileHash -LiteralPath $listFile -Algorithm SHA256).Hash.ToLowerInvariant())"
+}
+
+Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore @compileArgs }
+
+if ($listFile) {
+    # The list must load, come from the feed, be recent and not have lost packages.
+    Invoke-Step 'Check the list of known-malicious packages' {
+        dotnet (Join-Path $root 'tools\SecReview.IndexBuilder\bin\Release\net10.0\SecReviewIndexBuilder.dll') --check $listFile
+    }
+}
 
 if (-not $NoTests) {
     Invoke-Step 'Test' { dotnet test --solution $solution -c Release --no-build }
@@ -77,12 +94,12 @@ foreach ($dir in $publish, $stage, $symbols) {
 
 Invoke-Step 'Publish SecReviewCli (Native AOT)' {
     dotnet publish (Join-Path $root 'src\SecReview.Cli') -c Release --no-restore `
-        -o (Join-Path $publish 'cli') "-p:Version=$Version"
+        -o (Join-Path $publish 'cli') @compileArgs
 }
 
 Invoke-Step 'Publish SecReview (Native AOT)' {
     dotnet publish (Join-Path $root 'src\SecReview.App') -c Release --no-restore `
-        -o (Join-Path $publish 'app') "-p:Version=$Version"
+        -o (Join-Path $publish 'app') @compileArgs
 }
 
 # Stage only what ships: the app with the Windows App SDK files that must sit next to it, and
@@ -114,8 +131,8 @@ foreach ($file in Get-ChildItem $appPublish -Recurse -File) {
 Copy-Item (Join-Path $publish 'cli\SecReviewCli.exe') $stage
 Copy-Item (Join-Path $publish 'cli\*.pdb') $symbols -Force
 
-if ($MalwareIndex) {
-    Copy-Item -LiteralPath (Resolve-Path -LiteralPath $MalwareIndex).Path (Join-Path $stage 'known-malicious.idx')
+if ($listFile) {
+    Copy-Item -LiteralPath $listFile (Join-Path $stage 'known-malicious.idx')
 }
 
 Invoke-Step 'Check staged output' {
@@ -197,10 +214,11 @@ Invoke-Step 'Smoke test' {
     }
     Write-Host "Report: $($report.checks.Count) checks, well-formed."
 
-    # A list that was staged must load in the compiled helper: its checksum and every entry.
-    if ($MalwareIndex) {
+    # A list that was staged must load in the compiled helper: the hash compiled in, its own
+    # checksum and every entry.
+    if ($listFile) {
         $list = $report.checks | Where-Object { $_.id -eq 'sc.malware.list' }
-        if (-not $list -or $list.status -notin 'Pass', 'Fail') {
+        if (-not $list -or $list.status -ne 'Pass') {
             throw "The staged list of known-malicious packages was not usable: $($list.status), $($list.summary)"
         }
         Write-Host "Known-malicious list: $($list.summary)"

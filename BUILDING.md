@@ -56,12 +56,19 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 ## The list of known-malicious packages
 
 The list is a file beside the programs, `known-malicious.idx`. A plain build has none, and the
-three checks that need it then say so ("could not check"). To build with one:
+three checks that need it then say so ("could not check"). To build with one, take it from the
+latest scheduled run on `main` (a pull request's run builds with unreviewed code and uploads
+under another name):
 
 ```
-gh run download --name known-malicious-index --dir out    # from the latest "Known-malicious list" run
+$run = gh run list --workflow malware-index.yml --branch main --event schedule --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run download $run --name known-malicious-index --dir out
 .\build.ps1 -MalwareIndex out\known-malicious.idx
 ```
+
+The build refuses a list that does not load, does not come from the feed, is older than 7 days
+or has lost packages, and compiles the list's SHA-256 into the programs: only that exact file is
+ever loaded, so a list put beside the programs by someone else is not used.
 
 The data comes from the [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages)
 feed (Apache-2.0). Tests use made-up package names only: no real advisory and no real package is
