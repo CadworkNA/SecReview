@@ -151,6 +151,9 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
 2. The two programs are signed (Azure Artifact Signing, signed in through OpenID Connect; no
    stored key), then the uninstaller and the setup program. A signature without a timestamp
    fails the build. A run by hand signs only when asked to; a version tag always does.
+   Signing is tied to the `release` environment: Azure gives the signing identity to that
+   environment only, the environment accepts only `main` and `v*` tags, and a ruleset lets
+   only repository administrators create, move or delete `v*` tags.
 3. Install, upgrade and uninstall on the build machine, with what landed on it compared to
    the staged folder and, for a signed build, its signatures.
 4. An SBOM of the install folder and the packages behind it (SPDX 2.2, Microsoft's SBOM tool,
