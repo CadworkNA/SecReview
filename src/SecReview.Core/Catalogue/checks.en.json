@@ -316,5 +316,47 @@
     "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.uv.cooldown": {
+    "name": "uv release cooldown",
+    "titlePass": "uv waits before installing new releases",
+    "titleFail": "uv installs brand-new releases",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open %APPDATA%\\uv\\uv.toml in a text editor; create the file if it is missing.",
+      "Add a line with exclude-newer = \"7 days\" and save.",
+      "Update uv if it is older than 0.9.17, with uv self update or the way you installed it."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.uv.sources": {
+    "name": "uv package sources",
+    "titlePass": "uv gets packages only from verified sources",
+    "titleFail": "uv is set to trust unsafe package sources",
+    "why": "These settings decide which servers uv believes. One weak setting lets an attacker's package stand in for the real one.",
+    "fix": [
+      "Open the file, or the environment variable, named in the details.",
+      "Remove the setting shown there, so uv's own default applies again.",
+      "For a private index, give it a name and mark it explicit rather than changing the index strategy."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.uv.credentials": {
+    "name": "uv stored sign-ins",
+    "titlePass": "uv keeps no sign-in secrets as plain text",
+    "titleFail": "uv keeps sign-in secrets as plain text",
+    "why": "A token in a plain file or a permanent variable can be read by every program you run, a malicious package's install step included.",
+    "fix": [
+      "For a sign-in in uv's credentials file, run uv auth logout with the service named in the details.",
+      "For a variable, press Windows+R, run rundll32 sysdm.cpl,EditEnvironmentVariables and delete it.",
+      "Replace the token at the service, since it was stored in the open, and keep the new one in your password manager."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }

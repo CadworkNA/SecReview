@@ -21,7 +21,8 @@ public static class CheckCatalogue
     private static (IReadOnlyList<ICheck> Checks, CheckTexts Texts) Load()
     {
         IReadOnlyList<RuleDefinition> rules = RuleSet.Shipped;
-        IReadOnlyList<ICheck> checks = [.. BuiltInChecks.All, .. rules.Select(rule => new RuleCheck(rule))];
+        IReadOnlyList<ICheck> checks =
+            [.. BuiltInChecks.All, .. SupplyChain.SupplyChainChecks.All, .. rules.Select(rule => new RuleCheck(rule))];
         CheckTexts texts = CheckTexts.Load().With(rules.Select(rule => KeyValuePair.Create(rule.Id, rule.Text)));
         return (checks, texts);
     }
