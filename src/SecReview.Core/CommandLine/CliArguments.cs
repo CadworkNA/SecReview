@@ -37,7 +37,12 @@ public static class CliArguments
         return command;
     }
 
-    /// <summary>Keeps an echoed argument short and free of control characters.</summary>
+    /// <summary>
+    /// Keeps an echoed argument short and limited to printable ASCII. Everything else becomes
+    /// '?': control and escape characters, but also Unicode format characters (such as
+    /// right-to-left overrides), line separators and half surrogate pairs, which could reorder
+    /// or split the message.
+    /// </summary>
     private static string Printable(string argument)
     {
         const int MaxLength = 40;
@@ -45,7 +50,7 @@ public static class CliArguments
         Span<char> buffer = stackalloc char[MaxLength];
         for (int i = 0; i < text.Length; i++)
         {
-            buffer[i] = char.IsControl(text[i]) ? '?' : text[i];
+            buffer[i] = text[i] is >= ' ' and <= '~' ? text[i] : '?';
         }
 
         string shown = new(buffer[..text.Length]);

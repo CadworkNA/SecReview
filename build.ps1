@@ -1,4 +1,6 @@
+#requires -Version 7.0
 # Builds, tests and publishes SecReview. Output: artifacts\stage (what ships), artifacts\symbols.
+# Run it from PowerShell 7 (pwsh), not Windows PowerShell.
 #
 #   .\build.ps1                      # restore, build, test, publish
 #   .\build.ps1 -Version 1.2.3       # stamp a version (semantic version)
@@ -14,6 +16,8 @@ param(
     [switch] $Locked
 )
 $ErrorActionPreference = 'Stop'
+# Exit codes of native commands are checked explicitly below, whatever the user's profile says.
+$PSNativeCommandUseErrorActionPreference = $false
 $root = $PSScriptRoot
 
 if ($Version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
@@ -43,9 +47,10 @@ if ((Test-Path (Join-Path $vsInstaller 'vswhere.exe')) -and ($env:PATH -notlike 
 }
 
 $solution = Join-Path $root 'SecReview.slnx'
-$restoreArgs = @('restore', $solution)
-if ($Locked) { $restoreArgs += '--locked-mode' }
+# -Locked is the only switch for locked restore: without it the lock files may be updated.
+$restoreArgs = @('restore', $solution, "-p:RestoreLockedMode=$($Locked.IsPresent.ToString().ToLowerInvariant())")
 
+Invoke-Step 'Check source text' { & (Join-Path $root 'scripts\check-source-text.ps1') }
 Invoke-Step 'Restore' { dotnet @restoreArgs }
 Invoke-Step 'Check lock files' { & (Join-Path $root 'scripts\check-lockfiles.ps1') }
 Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore "-p:Version=$Version" }

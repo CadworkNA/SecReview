@@ -23,8 +23,9 @@ Bug reports, check requests and pull requests are welcome.
 7. **No new dependency** without prior agreement; see [BUILDING.md](BUILDING.md#dependencies).
 8. **No secrets or real data:** no reports, paths or settings from a real PC. Fixtures and
    screenshots use made-up data.
-9. **The title uses a conventional prefix** (`feat:`, `fix:`, `docs:`, `ci:`, `build(deps):`,
-   `chore:`). Pull requests are squash-merged, so the title becomes the release-notes entry.
+9. **The title uses a conventional prefix:** `feat:`, `fix:`, `docs:`, `test:`, `refactor:`,
+   `build:` (build system; `build(deps):` for dependencies), `ci:` or `chore:`. Pull requests are
+   squash-merged, so the title becomes the release-notes entry.
 
 Every pull request is reviewed by a maintainer ([CODEOWNERS](.github/CODEOWNERS)).
 

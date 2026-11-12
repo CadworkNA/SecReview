@@ -9,10 +9,13 @@
 
 ## Build
 
+Run `build.ps1` from PowerShell 7 (`pwsh`). Its header lists every switch; the common ones:
+
 ```
 .\build.ps1                    # restore, build, test, publish
 .\build.ps1 -Version 1.2.3     # stamp a semantic version
-.\build.ps1 -NoPublish         # stop after the unit tests
+.\build.ps1 -NoPublish         # no Native AOT publish (quick loop)
+.\build.ps1 -NoTests           # skip the unit tests
 .\build.ps1 -LocalCache        # keep NuGet's caches inside the repo (.nuget\)
 .\build.ps1 -Locked            # restore in locked mode, as CI does
 ```
@@ -32,7 +35,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core` | Everything without UI: checks, rules, readers, command-line parsing. All logic lives here and is unit-tested |
 | `src/SecReview.Cli` | `SecReviewCli.exe` (Native AOT console). The only binary that ever runs elevated |
 | `tests/SecReview.Core.Tests` | MSTest unit tests for `Core` |
-| `scripts/` | Build helpers: `check-lockfiles.ps1`, `allowed-packages.txt` |
+| `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo) |
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 
@@ -54,6 +57,7 @@ so the lock files update, add any new id to `allowed-packages.txt`, and commit a
 A package not published by Microsoft needs the maintainer's approval first.
 
 To move to a new SDK: change `global.json`, rebuild so the lock files update, commit together.
+Dependabot does not propose SDK updates for that reason.
 
 If restore fails with **NU3034** after nuget.org rotates its signing certificate, run
 `dotnet nuget trust sync nuget.org` and commit the updated fingerprints in `nuget.config`.
@@ -62,5 +66,5 @@ If restore fails with **NU3034** after nuget.org rotates its signing certificate
 
 - Warnings are errors, including code-style and analyzer warnings.
 - GitHub Actions are pinned by full commit SHA with the version as a comment.
-- Pull request titles use a conventional prefix (`feat:`, `fix:`, `docs:`, `ci:`,
-  `build(deps):`, `chore:`); they become the release notes. See [CONTRIBUTING.md](CONTRIBUTING.md).
+- Pull request titles use a conventional prefix and become the release notes; the list is in
+  [CONTRIBUTING.md](CONTRIBUTING.md).

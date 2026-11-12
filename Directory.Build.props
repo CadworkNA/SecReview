@@ -28,10 +28,10 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Supply chain">
-    <!-- Every project commits a packages.lock.json; CI restores in locked mode, so a restore
-         that would resolve anything else fails. Bump the SDK and the lock files together. -->
+    <!-- Every project commits a packages.lock.json. CI restores in locked mode
+         (build.ps1 -Locked), so a restore that would resolve anything else fails.
+         Bump the SDK and the lock files together. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
     <NuGetAuditLevel>low</NuGetAuditLevel>

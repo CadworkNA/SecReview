@@ -11,8 +11,17 @@ $allowedSet = [System.Collections.Generic.HashSet[string]]::new(
     [string[]] $allowed, [System.StringComparer]::OrdinalIgnoreCase)
 
 $problems = @()
-$projects = Get-ChildItem $root -Recurse -Filter *.csproj |
-    Where-Object { $_.FullName -notmatch '\\(bin|obj|artifacts|\.nuget)\\' }
+# Match on the path inside the repo, so a checkout under a folder named "obj" or "artifacts"
+# does not hide every project.
+$projects = @(Get-ChildItem $root -Recurse -Filter *.csproj | Where-Object {
+    $relative = $_.FullName.Substring($root.Length)
+    $relative -notmatch '\\(bin|obj|artifacts|\.nuget|\.dotnet)\\'
+})
+
+if ($projects.Count -eq 0) {
+    Write-Host "::error::No project files found under $root; nothing was checked."
+    exit 1
+}
 
 foreach ($project in $projects) {
     $lockFile = Join-Path $project.DirectoryName 'packages.lock.json'

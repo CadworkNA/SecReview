@@ -1,5 +1,8 @@
 # Update pull requests wait for a release to age before proposing it (security updates are not
 # delayed). Nothing is merged automatically.
+#
+# The .NET SDK is not listed: an SDK bump changes the packages the SDK adds on its own, so
+# global.json and the lock files have to change together, by hand (see BUILDING.md).
 version: 2
 updates:
   - package-ecosystem: nuget
@@ -11,13 +14,6 @@ updates:
       semver-major-days: 30
       semver-minor-days: 14
       semver-patch-days: 7
-
-  - package-ecosystem: dotnet-sdk
-    directory: /
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7
 
   - package-ecosystem: github-actions
     directory: /

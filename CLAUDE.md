@@ -32,8 +32,8 @@ done; start there when resuming work.
 
 ## Commits and pull requests
 
-- One pull request per milestone or fix, squash-merged. Title with a conventional prefix
-  (`feat:`, `fix:`, `docs:`, `ci:`, `build(deps):`, `chore:`).
+- One pull request per milestone or fix, squash-merged. Title with a conventional prefix; the
+  list is in `CONTRIBUTING.md`.
 - Body: `- ` bullets that give the reason, then **Testing** (what ran, with numbers) and
   **Not tested**.
 - Never push a version tag or publish a release; the maintainer does that.
