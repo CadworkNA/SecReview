@@ -33,6 +33,9 @@ Every pull request is reviewed by a maintainer ([CODEOWNERS](.github/CODEOWNERS)
 
 - **A new check or rule:** unit tests for pass, fail, "could not check" and "not applicable",
   against the fake system probe. Tests never read the real machine.
+- **A new rule in `rules/`:** a new kind of rule needs those tests; a rule of an existing kind
+  needs none of its own, but must name the Microsoft documentation page it rests on, the day it
+  was checked, and what Windows does when the value is absent. Do not copy benchmark text.
 - **A bug fix:** a test that fails without the fix.
 - **Code that parses a file format:** fixture files plus mutation tests showing that malformed
   input never crashes or hangs and never produces a pass.

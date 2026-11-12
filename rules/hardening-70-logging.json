@@ -1,0 +1,242 @@
+{
+  "rules": [
+    {
+      "id": "harden.log.script-blocks",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "PowerShell script logging",
+        "titlePass": "PowerShell records the scripts it runs",
+        "titleFail": "PowerShell does not record the scripts it runs",
+        "why": "Attackers do much of their work in PowerShell. Without this record nobody can tell afterwards what was run.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Turn on PowerShell Script Block Logging\" under Windows Components > Windows PowerShell."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-windowspowershell",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "PowerShell script block logging",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging", "value": "EnableScriptBlockLogging", "policy": true } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured", "passes": false }
+      }
+    },
+    {
+      "id": "harden.log.command-line",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Command lines in the security log",
+        "titlePass": "The security log records how programs were started",
+        "titleFail": "The security log does not record how programs were started",
+        "why": "Knowing that a program ran says little; its command line shows what it was told to do. Investigations depend on it.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Include command line in process creation events\" under System > Audit Process Creation."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-auditsettings",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Command line in process creation events",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit", "value": "ProcessCreationIncludeCmdLine_Enabled" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.log.security-size",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Security log size",
+        "titlePass": "The security log is large enough",
+        "titleFail": "The security log is small",
+        "why": "A small security log overwrites itself within days. By the time a break-in is noticed, its traces are gone.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open Event Viewer, right-click Windows Logs > Security > Properties and set the maximum size to 196608 KB."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-eventlogservice",
+      "verified": "2026-11-12",
+      "needsAdmin": "forFullDetail",
+      "registry": {
+        "item": "Maximum size of the security log",
+        "root": "localMachine",
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security", "value": "MaxSize", "policy": true },
+          { "key": "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Security", "value": "MaxSize", "divideBy": 1024 }
+        ],
+        "expect": { "atLeast": 196608 },
+        "expected": "196608 KB or more",
+        "unit": "KB",
+        "absent": { "found": "Not configured (Windows default: 20480 KB)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.audit.logon",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: sign-ins",
+        "titlePass": "Sign-ins and failed sign-ins are recorded",
+        "titleFail": "Sign-ins are not fully recorded",
+        "why": "The record of who signed in, and of failed attempts, is how password guessing and stolen accounts are noticed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Logon/Logoff > Audit Logon, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Logon", "subcategory": "0cce9215-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.lockout",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: account lockouts",
+        "titlePass": "Account lockouts are recorded",
+        "titleFail": "Account lockouts are not recorded",
+        "why": "A lockout is the clearest sign that someone is guessing a password. Unrecorded, it goes unnoticed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Logon/Logoff > Audit Account Lockout, with Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/azure/governance/policy/samples/guest-configuration-baseline-windows",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Account Lockout", "subcategory": "0cce9217-69ae-11d9-bed3-505054503030", "success": false, "failure": true }
+    },
+    {
+      "id": "harden.audit.process-creation",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: programs started",
+        "titlePass": "Every program start is recorded",
+        "titleFail": "Program starts are not recorded",
+        "why": "The list of programs that ran is the backbone of any investigation after a break-in.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Detailed Tracking > Audit Process Creation, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Process Creation", "subcategory": "0cce922b-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.policy-change",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: changes to auditing",
+        "titlePass": "Changes to the audit settings are recorded",
+        "titleFail": "Changes to the audit settings are not recorded",
+        "why": "An intruder's first move is often to switch logging off. This records that it happened.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Policy Change > Audit Audit Policy Change, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Audit Policy Change", "subcategory": "0cce922f-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.credential-validation",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: password checks",
+        "titlePass": "Password checks for local accounts are recorded",
+        "titleFail": "Password checks for local accounts are not fully recorded",
+        "why": "Each check of a local account's password, right or wrong, shows who is trying to get in and how often.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Account Logon > Audit Credential Validation, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/azure/governance/policy/samples/guest-configuration-baseline-windows",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Credential Validation", "subcategory": "0cce923f-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.user-accounts",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: account changes",
+        "titlePass": "Changes to user accounts are recorded",
+        "titleFail": "Changes to user accounts are not fully recorded",
+        "why": "New accounts and password resets nobody asked for are a common trace of an intruder making sure of a way back in.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Account Management > Audit User Account Management, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/azure/governance/policy/samples/guest-configuration-baseline-windows",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "User Account Management", "subcategory": "0cce9235-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.groups",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: group changes",
+        "titlePass": "Changes to security groups are recorded",
+        "titleFail": "Changes to security groups are not recorded",
+        "why": "Being added to the Administrators group is how an intruder takes over a PC. This records who was added, and by whom.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Account Management > Audit Security Group Management, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations",
+      "verified": "2026-11-12",
+      "auditPolicy": { "item": "Security Group Management", "subcategory": "0cce9237-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    }
+  ]
+}

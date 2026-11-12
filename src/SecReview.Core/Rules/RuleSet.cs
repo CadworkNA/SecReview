@@ -63,6 +63,12 @@ public static class RuleSet
             return "exactly one of registry, service, accountPolicy, auditPolicy, userRight, defender and defenderRules must be set.";
         }
 
+        // A rule about the user's own settings is never read under an administrator's account.
+        if (rule.NeedsAdmin is not null and not Checks.AdminNeed.No && rule.Registry?.Root == RegistryRoot.CurrentUser)
+        {
+            return "a rule about the user's own settings cannot need administrator rights.";
+        }
+
         if (rule.Registry is { } registry)
         {
             if (registry.Locations is not { Count: > 0 } || registry.Expect is null || registry.Absent is null ||

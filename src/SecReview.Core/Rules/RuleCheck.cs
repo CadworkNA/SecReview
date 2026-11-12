@@ -20,7 +20,9 @@ public sealed class RuleCheck : ICheck
 
         // Audit policy and user rights can only be read with administrator rights. A rule
         // about the user's own registry reads the signed-in user, so it never runs elevated.
-        AdminNeed admin = rule.AuditPolicy is not null || rule.UserRight is not null ? AdminNeed.Yes : AdminNeed.No;
+        AdminNeed admin = rule.AuditPolicy is not null || rule.UserRight is not null
+            ? AdminNeed.Yes
+            : rule.NeedsAdmin ?? AdminNeed.No;
         CheckScope scope = rule.Registry?.Root == RegistryRoot.CurrentUser ? CheckScope.User : CheckScope.Machine;
         Definition = new CheckDefinition(rule.Id, rule.Category, rule.Severity, admin, scope);
     }

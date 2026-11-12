@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SecReview.Catalogue;
-using SecReview.Checks.BuiltIn;
+using SecReview.Checks;
 
 namespace SecReview.Tests.Catalogue;
 
@@ -19,14 +19,14 @@ public sealed partial class CheckTextsTests
     private const int MaximumFixSteps = 5;
     private const int MaximumFixStepLength = 140;
 
-    private static readonly CheckTexts Texts = CheckTexts.Load();
+    private static readonly CheckTexts Texts = CheckCatalogue.Texts;
 
-    private static IEnumerable<object[]> CheckIds => BuiltInChecks.All.Select(c => new object[] { c.Definition.Id });
+    private static IEnumerable<object[]> CheckIds => CheckCatalogue.Checks.Select(c => new object[] { c.Definition.Id });
 
     [TestMethod]
     public void EveryCheckHasWording_AndNoWordingIsOrphaned()
     {
-        string[] checks = [.. BuiltInChecks.All.Select(c => c.Definition.Id).Order(StringComparer.Ordinal)];
+        string[] checks = [.. CheckCatalogue.Checks.Select(c => c.Definition.Id).Order(StringComparer.Ordinal)];
         string[] worded = [.. Texts.Ids.Order(StringComparer.Ordinal)];
 
         CollectionAssert.AreEqual(checks, worded);
@@ -35,7 +35,7 @@ public sealed partial class CheckTextsTests
     [TestMethod]
     public void CheckIdsAreUnique_AndWellFormed()
     {
-        string[] ids = [.. BuiltInChecks.All.Select(c => c.Definition.Id)];
+        string[] ids = [.. CheckCatalogue.Checks.Select(c => c.Definition.Id)];
 
         Assert.AreEqual(ids.Length, ids.Distinct(StringComparer.Ordinal).Count(), "duplicate check id");
         foreach (string id in ids)

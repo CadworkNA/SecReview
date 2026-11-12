@@ -17,7 +17,31 @@ public static class ScanCache
             WindowsUpdate = new CachedWindowsUpdateProbe(probes.WindowsUpdate),
             Power = new CachedPowerProbe(probes.Power),
             Platform = new CachedPlatformProbe(probes.Platform),
+            AccountPolicy = new CachedAccountPolicyProbe(probes.AccountPolicy),
+            Wmi = new CachedWmiProbe(probes.Wmi),
         };
+    }
+
+    private sealed class CachedAccountPolicyProbe(IAccountPolicyProbe inner) : IAccountPolicyProbe
+    {
+        private readonly Lazy<ProbeResult<AccountPolicy>> _policy = new(inner.GetPolicy);
+
+        public ProbeResult<AccountPolicy> GetPolicy() => _policy.Value;
+    }
+
+    /// <summary>The same question (namespace, class, properties, filter) is asked of WMI once.</summary>
+    private sealed class CachedWmiProbe(IWmiProbe inner) : IWmiProbe
+    {
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<ProbeResult<IReadOnlyList<WmiObject>>>> _answers =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public ProbeResult<IReadOnlyList<WmiObject>> Query(
+            string wmiNamespace, string className, IReadOnlyList<string> properties, WmiFlagFilter? only = null)
+        {
+            ArgumentNullException.ThrowIfNull(properties);
+            string question = $"{wmiNamespace}|{className}|{string.Join(',', properties)}|{only?.Property}={only?.Value}";
+            return _answers.GetOrAdd(question, _ => new(() => inner.Query(wmiNamespace, className, properties, only))).Value;
+        }
     }
 
     private sealed class CachedWindowsUpdateProbe(IWindowsUpdateProbe inner) : IWindowsUpdateProbe

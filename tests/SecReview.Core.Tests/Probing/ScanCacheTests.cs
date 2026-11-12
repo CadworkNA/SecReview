@@ -36,6 +36,35 @@ public sealed class ScanCacheTests
         Assert.AreEqual(2, counting.Calls, "checking again reads afresh");
     }
 
+    private sealed class CountingWmiProbe : IWmiProbe
+    {
+        public List<string> Questions { get; } = [];
+
+        public ProbeResult<IReadOnlyList<WmiObject>> Query(
+            string wmiNamespace, string className, IReadOnlyList<string> properties, WmiFlagFilter? only = null)
+        {
+            Questions.Add($"{className}:{string.Join('+', properties)}:{only?.Property}");
+            return ProbeResult<IReadOnlyList<WmiObject>>.Ok([]);
+        }
+    }
+
+    [TestMethod]
+    public void TheSameWmiQuestion_IsAskedOnce_AndADifferentOneSeparately()
+    {
+        var counting = new CountingWmiProbe();
+        SystemProbes scan = ScanCache.ForOneScan(new FakeProbes().Build() with { Wmi = counting });
+
+        _ = scan.Wmi.Query(@"ROOT\CIMV2", "Win32_Share", ["Name", "Type"]);
+        _ = scan.Wmi.Query(@"root\cimv2", "Win32_Share", ["Name", "Type"]);
+        _ = scan.Wmi.Query(@"ROOT\CIMV2", "Win32_Share", ["Name"]);
+        _ = scan.Wmi.Query(@"ROOT\CIMV2", "Win32_UserAccount", ["SID"], new WmiFlagFilter("LocalAccount", true));
+        _ = scan.Wmi.Query(@"ROOT\CIMV2", "Win32_UserAccount", ["SID"]);
+
+        CollectionAssert.AreEqual(
+            new[] { "Win32_Share:Name+Type:", "Win32_Share:Name:", "Win32_UserAccount:SID:LocalAccount", "Win32_UserAccount:SID:" },
+            counting.Questions);
+    }
+
     [TestMethod]
     public void TheOtherReadings_PassStraightThrough()
     {

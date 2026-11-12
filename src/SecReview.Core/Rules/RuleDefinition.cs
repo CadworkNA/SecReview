@@ -28,6 +28,10 @@ public sealed record RuleFile(IReadOnlyList<RuleDefinition> Rules);
 /// <param name="UserRight">Who holds a user right (read with administrator rights).</param>
 /// <param name="Defender">A Microsoft Defender Antivirus setting.</param>
 /// <param name="DefenderRules">Microsoft Defender attack surface reduction rules.</param>
+/// <param name="NeedsAdmin">
+/// Set when the rule reads something a normal user may not, so that the administrator scan
+/// includes it. Audit policy and user right rules always need administrator rights.
+/// </param>
 public sealed record RuleDefinition(
     string Id,
     CheckCategory Category,
@@ -41,7 +45,8 @@ public sealed record RuleDefinition(
     AuditPolicyRule? AuditPolicy = null,
     UserRightRule? UserRight = null,
     DefenderRule? Defender = null,
-    DefenderRulesRule? DefenderRules = null);
+    DefenderRulesRule? DefenderRules = null,
+    AdminNeed? NeedsAdmin = null);
 
 /// <summary>
 /// What a number must be. All parts that are set must hold; a rule with none set is invalid.

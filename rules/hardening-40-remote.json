@@ -1,0 +1,209 @@
+{
+  "rules": [
+    {
+      "id": "harden.rdp.saved-passwords",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Saved Remote Desktop passwords",
+        "titlePass": "Remote Desktop does not save passwords",
+        "titleFail": "Remote Desktop can save passwords",
+        "why": "A saved Remote Desktop password lets anyone at this PC, or malware on it, open the remote computer.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc and search Administrative Templates for Remote Desktop Connection Client.",
+          "Enable \"Do not allow passwords to be saved\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotedesktopservices",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Saving of Remote Desktop passwords blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services", "value": "DisablePasswordSaving", "policy": true } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: passwords can be saved)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.remote-assistance",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Remote Assistance",
+        "titlePass": "Remote Assistance invitations are off",
+        "titleFail": "Remote Assistance invitations are on",
+        "why": "Remote Assistance lets someone you invite see and control your screen. Scammers talk people into sending that invitation.",
+        "fix": [
+          "Press Windows+R, type SystemPropertiesRemote and press Enter.",
+          "Clear \"Allow Remote Assistance connections to this computer\" and select OK.",
+          "If the box is greyed out, the setting comes from your organisation: tell IT."
+        ],
+        "timeToFix": "1 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remoteassistance",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Remote Assistance invitations",
+        "root": "localMachine",
+        "locations": [
+          { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services", "value": "fAllowToGetHelp", "policy": true },
+          { "key": "SYSTEM\\CurrentControlSet\\Control\\Remote Assistance", "value": "fAllowToGetHelp" }
+        ],
+        "expect": { "is": 0 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.winrm.client-basic",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "WinRM client: Basic sign-in",
+        "titlePass": "Remote management never sends passwords as plain text",
+        "titleFail": "Remote management may send passwords as plain text",
+        "why": "Basic sign-in sends the password itself to the other computer, readable by anyone who can watch the connection.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc and search Administrative Templates for Windows Remote Management (WinRM) > WinRM Client.",
+          "Disable \"Allow Basic authentication\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/win32/winrm/installation-and-configuration-for-windows-remote-management",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Basic sign-in from this PC",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowBasic", "policy": true } ],
+        "expect": { "is": 0 },
+        "expected": "Not allowed",
+        "labels": { "0": "Not allowed", "1": "Allowed" },
+        "absent": { "found": "Not set by policy (WinRM default: allowed)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.winrm.client-unencrypted",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "WinRM client: unencrypted traffic",
+        "titlePass": "Remote management from this PC is always encrypted",
+        "titleFail": "Remote management from this PC may be unencrypted",
+        "why": "Unencrypted remote management shows commands, and whatever they return, to anyone who can watch the network.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc and search Administrative Templates for Windows Remote Management (WinRM) > WinRM Client.",
+          "Disable \"Allow unencrypted traffic\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Unencrypted traffic from this PC",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client", "value": "AllowUnencryptedTraffic", "policy": true } ],
+        "expect": { "not": 1 },
+        "expected": "Not allowed",
+        "labels": { "0": "Not allowed", "1": "Allowed" },
+        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.winrm.service-basic",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "WinRM service: Basic sign-in",
+        "titlePass": "This PC refuses plain-text passwords for remote management",
+        "titleFail": "This PC accepts plain-text passwords for remote management",
+        "why": "Basic sign-in sends the password itself over the network, readable by anyone who can watch the connection.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc and search Administrative Templates for Windows Remote Management (WinRM) > WinRM Service.",
+          "Disable \"Allow Basic authentication\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Basic sign-in to this PC",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowBasic", "policy": true } ],
+        "expect": { "not": 1 },
+        "expected": "Not allowed",
+        "labels": { "0": "Not allowed", "1": "Allowed" },
+        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.winrm.service-unencrypted",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "WinRM service: unencrypted traffic",
+        "titlePass": "Remote management of this PC is always encrypted",
+        "titleFail": "Remote management of this PC may be unencrypted",
+        "why": "Unencrypted remote management shows commands, and whatever they return, to anyone who can watch the network.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc and search Administrative Templates for Windows Remote Management (WinRM) > WinRM Service.",
+          "Disable \"Allow unencrypted traffic\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-remotemanagement",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Unencrypted traffic to this PC",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service", "value": "AllowUnencryptedTraffic", "policy": true } ],
+        "expect": { "not": 1 },
+        "expected": "Not allowed",
+        "labels": { "0": "Not allowed", "1": "Allowed" },
+        "absent": { "found": "Not set by policy (WinRM default: not allowed)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.remote-registry",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Remote Registry service",
+        "titlePass": "The Remote Registry service is disabled",
+        "titleFail": "The Remote Registry service is not disabled",
+        "why": "Remote Registry lets other computers read and change this PC's settings over the network. A staff PC does not need it.",
+        "fix": [
+          "Press Windows+R, type services.msc and press Enter.",
+          "Open Remote Registry, select Stop, set Startup type to Disabled and select OK.",
+          "If a management tool needs the service, tell IT instead."
+        ],
+        "timeToFix": "2 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/iot/iot-enterprise/optimize/services",
+      "verified": "2026-11-12",
+      "service": { "item": "Remote Registry", "name": "RemoteRegistry", "require": "disabled" }
+    }
+  ]
+}

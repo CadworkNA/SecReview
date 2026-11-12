@@ -1,0 +1,230 @@
+{
+  "rules": [
+    {
+      "id": "harden.smb1.client",
+      "category": "hardening",
+      "severity": "high",
+      "text": {
+        "name": "SMB 1 file sharing",
+        "titlePass": "The outdated SMB 1 protocol is off",
+        "titleFail": "The outdated SMB 1 protocol is on",
+        "why": "SMB 1 is the file-sharing protocol the WannaCry worm spread through. Microsoft no longer installs it.",
+        "fix": [
+          "Open Start, type Windows features and open Turn Windows features on or off.",
+          "Clear SMB 1.0/CIFS File Sharing Support, select OK and restart.",
+          "If an old device still needs SMB 1, tell IT: the device should be replaced or updated."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/detect-enable-and-disable-smbv1-v2-v3",
+      "verified": "2026-11-12",
+      "service": { "item": "SMB 1 client driver", "name": "mrxsmb10", "require": "disabled" }
+    },
+    {
+      "id": "harden.llmnr",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "LLMNR name lookup",
+        "titlePass": "LLMNR name lookup is off",
+        "titleFail": "LLMNR name lookup is on",
+        "why": "LLMNR asks every device nearby for a name's address and believes the first answer. An attacker on the network uses that to capture sign-ins.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Computer Configuration > Administrative Templates > Network > DNS Client.",
+          "Enable \"Turn off multicast name resolution\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-admx-dnsclient",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "LLMNR",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient", "value": "EnableMulticast", "policy": true } ],
+        "expect": { "is": 0 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.netbios.node",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "NetBIOS name lookup",
+        "titlePass": "NetBIOS names are not looked up by broadcast",
+        "titleFail": "NetBIOS names are looked up by broadcast",
+        "why": "A broadcast name lookup is answered by whoever replies first. An attacker on the network uses that to capture sign-ins.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "It is the value NodeType shown in the details; 2 means names are asked of a name server only."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/tcpip-and-nbt-configuration-parameters",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "NetBIOS node type",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters", "value": "NodeType" } ],
+        "expect": { "is": 2 },
+        "expected": "Name server only",
+        "labels": { "1": "Broadcast", "2": "Name server only", "4": "Broadcast, then name server", "8": "Name server, then broadcast" },
+        "absent": { "found": "Not configured (Windows default: uses broadcast)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.anonymous.sam",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Anonymous listing of accounts",
+        "titlePass": "Strangers cannot list the accounts on this PC",
+        "titleFail": "Strangers can list the accounts on this PC",
+        "why": "A list of account names is the first thing needed to guess passwords. Nobody should get it without signing in.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options and enable the first anonymous enumeration setting."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-access-do-not-allow-anonymous-enumeration-of-sam-accounts",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Anonymous listing of accounts blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Lsa", "value": "RestrictAnonymousSAM" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.anonymous.shares",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Anonymous listing of shares",
+        "titlePass": "Strangers cannot list accounts and shared folders",
+        "titleFail": "Strangers can list accounts and shared folders",
+        "why": "Listing shared folders without signing in shows an attacker where to look next.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options and enable the second anonymous enumeration setting."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-access-do-not-allow-anonymous-enumeration-of-sam-accounts-and-shares",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Anonymous listing of accounts and shares blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Lsa", "value": "RestrictAnonymous" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.anonymous.everyone",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Anonymous users and Everyone",
+        "titlePass": "Anonymous users do not count as \"Everyone\"",
+        "titleFail": "Anonymous users count as \"Everyone\"",
+        "why": "Many folders are open to Everyone. With this setting on, that includes people who have not signed in at all.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options and disable the Everyone permissions setting under Network access."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-access-let-everyone-permissions-apply-to-anonymous-users",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Everyone includes anonymous users",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Lsa", "value": "EveryoneIncludesAnonymous" } ],
+        "expect": { "not": 1 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.source-routing.ipv4",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "IP source routing (IPv4)",
+        "titlePass": "Source-routed IPv4 packets are dropped",
+        "titleFail": "Source-routed IPv4 packets are not dropped",
+        "why": "Source routing lets the sender choose a packet's path, which attackers use to get around network defences.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "It is the value DisableIPSourceRouting shown in the details; 2 drops every source-routed packet."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-msslegacy",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "IPv4 source routing protection",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters", "value": "DisableIPSourceRouting" } ],
+        "expect": { "is": 2 },
+        "expected": "Drops all source-routed packets",
+        "labels": { "0": "Forwards all packets", "1": "Does not forward source-routed packets", "2": "Drops all source-routed packets" },
+        "absent": { "found": "Not configured", "passes": false }
+      }
+    },
+    {
+      "id": "harden.source-routing.ipv6",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "IP source routing (IPv6)",
+        "titlePass": "Source-routed IPv6 packets are dropped",
+        "titleFail": "Source-routed IPv6 packets are not dropped",
+        "why": "Source routing lets the sender choose a packet's path, which attackers use to get around network defences.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "It is the value DisableIPSourceRouting shown in the details; 2 drops every source-routed packet."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-msslegacy",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "IPv6 source routing protection",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters", "value": "DisableIPSourceRouting" } ],
+        "expect": { "is": 2 },
+        "expected": "Drops all source-routed packets",
+        "labels": { "0": "Forwards all packets", "1": "Does not forward source-routed packets", "2": "Drops all source-routed packets" },
+        "absent": { "found": "Not configured", "passes": false }
+      }
+    }
+  ]
+}
