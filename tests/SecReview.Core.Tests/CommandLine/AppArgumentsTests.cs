@@ -31,6 +31,32 @@ public sealed class AppArgumentsTests
     }
 
     [TestMethod]
+    [DataRow("mixed", SecReview.Scanning.DemoState.Mixed)]
+    [DataRow("all-pass", SecReview.Scanning.DemoState.AllPass)]
+    [DataRow("first-run", SecReview.Scanning.DemoState.FirstRun)]
+    [DataRow("failed", SecReview.Scanning.DemoState.Failed)]
+    [DataRow("loading", SecReview.Scanning.DemoState.Loading)]
+    [DataRow("ignored", SecReview.Scanning.DemoState.Ignored)]
+    [DataRow("dialogs", SecReview.Scanning.DemoState.Dialogs)]
+    public void Demo_CanNameTheStateToShow(string name, SecReview.Scanning.DemoState state)
+    {
+        var role = Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--demo", name, "--screenshot", "a.png"]));
+
+        Assert.IsTrue(role.Demo);
+        Assert.AreEqual(state, role.DemoState);
+        Assert.AreEqual("a.png", role.ScreenshotPath);
+    }
+
+    [TestMethod]
+    public void Demo_WithAStateNobodyKnows_IsInvalid_AndAStateWithoutDemoToo()
+    {
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--demo", "sideways"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--demo", "All-Pass"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["all-pass"]));
+        Assert.AreEqual(SecReview.Scanning.DemoState.Mixed, Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--demo"])).DemoState);
+    }
+
+    [TestMethod]
     public void Screenshot_WithoutAFile_IsInvalid()
     {
         Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--screenshot"]));

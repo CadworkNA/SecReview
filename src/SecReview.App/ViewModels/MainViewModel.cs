@@ -1,39 +1,79 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
+using System.Diagnostics;
 using SecReview.Checks;
+using SecReview.CommandLine;
 using SecReview.Diagnostics;
 using SecReview.Probing.Windows;
+using SecReview.Reporting;
 using SecReview.Scanning;
+using SecReview.Settings;
 
 namespace SecReview.App.ViewModels;
 
-/// <summary>What the main window shows: a headline, the checks, and whether a scan is running.</summary>
+/// <summary>
+/// What the main window shows: a headline, the checks in groups, and whether a scan is running.
+/// The last results are shown at once; a new scan then replaces them check by check.
+/// </summary>
 public sealed partial class MainViewModel : INotifyPropertyChanged
 {
-    private readonly bool _demo;
+    /// <summary>While results arrive, the list is redrawn at most this often.</summary>
+    private static readonly TimeSpan RedrawInterval = TimeSpan.FromMilliseconds(250);
+
+    private readonly UiRole _role;
     private readonly AppLog _log;
+    private readonly Action<Action> _onWindowThread;
+    private readonly SettingsStore? _settingsStore;
+    private readonly ResultsStore? _resultsStore;
+
+    /// <summary>The newest answer per check; empty until there are results.</summary>
+    private readonly Dictionary<string, ScannedCheck> _results = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _beingChecked = new(StringComparer.Ordinal);
+
+    private AppSettings _settings = new();
+    private DateTimeOffset? _finishedAt;
+    private bool _elevated;
+    private ScanFilter _filter = ScanFilter.All;
+    private long _lastRedraw;
+
     private string _headline = "Checking this PC…";
     private string _detail = string.Empty;
     private bool _isBusy;
     private bool _hasFailed;
     private string _failure = string.Empty;
+    private string _notice = string.Empty;
+    private string _settingsProblem = string.Empty;
+    private string _emptyText = string.Empty;
+    private bool _showFirstRun;
 
-    public MainViewModel(bool demo, AppLog log)
+    /// <param name="role">How the window was started.</param>
+    /// <param name="log">The local log.</param>
+    /// <param name="onWindowThread">Runs an action on the window's thread; results arrive on others.</param>
+    public MainViewModel(UiRole role, AppLog log, Action<Action> onWindowThread)
     {
+        ArgumentNullException.ThrowIfNull(role);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(onWindowThread);
 
-        _demo = demo;
+        _role = role;
         _log = log;
+        _onWindowThread = onWindowThread;
+
+        // Made-up results are never written anywhere and never mixed with real ones.
+        if (!role.Demo)
+        {
+            _settingsStore = new SettingsStore(AppData.Directory);
+            _resultsStore = new ResultsStore(AppData.Directory);
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// The rows (<see cref="CheckItem"/>). Typed as objects because WinUI list controls reject a
+    /// The groups (<see cref="SectionItem"/>). Typed as objects because WinUI list controls reject a
     /// collection of a custom type ("not a supported vector").
     /// </summary>
-    public ObservableCollection<object> Checks { get; } = [];
+    public ObservableCollection<object> Sections { get; } = [];
 
     public string Headline
     {
@@ -55,7 +95,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             if (Set(ref _isBusy, value, nameof(IsBusy)))
             {
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRun)));
+                Changed(nameof(CanRun));
             }
         }
     }
@@ -75,66 +115,433 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         private set => Set(ref _failure, value, nameof(Failure));
     }
 
-    /// <summary>Runs a scan and shows it. Never throws: a failure is shown in the window.</summary>
+    /// <summary>What is worth saying above the list, for example that some checks wait for administrator rights.</summary>
+    public string Notice
+    {
+        get => _notice;
+        private set
+        {
+            if (Set(ref _notice, value, nameof(Notice)))
+            {
+                Changed(nameof(HasNotice));
+            }
+        }
+    }
+
+    public bool HasNotice => Notice.Length > 0;
+
+    /// <summary>Why the saved settings could not be used or written; empty when all is well.</summary>
+    public string SettingsProblem
+    {
+        get => _settingsProblem;
+        private set
+        {
+            if (Set(ref _settingsProblem, value, nameof(SettingsProblem)))
+            {
+                Changed(nameof(HasSettingsProblem));
+            }
+        }
+    }
+
+    public bool HasSettingsProblem => SettingsProblem.Length > 0;
+
+    /// <summary>Shown in place of the list when the chosen filter has nothing to show.</summary>
+    public string EmptyText
+    {
+        get => _emptyText;
+        private set
+        {
+            if (Set(ref _emptyText, value, nameof(EmptyText)))
+            {
+                Changed(nameof(IsEmpty));
+            }
+        }
+    }
+
+    public bool IsEmpty => EmptyText.Length > 0;
+
+    /// <summary>Whether there are results to filter and list.</summary>
+    public bool HasResults => _results.Count > 0;
+
+    /// <summary>Whether the notice of the very first start is on screen.</summary>
+    public bool ShowFirstRun
+    {
+        get => _showFirstRun;
+        private set => Set(ref _showFirstRun, value, nameof(ShowFirstRun));
+    }
+
+    public string AllLabel => Label("All", ScanFilter.All);
+
+    public string AttentionLabel => Label("Needs attention", ScanFilter.NeedsAttention);
+
+    public string AdminLabel => Label("Needs administrator", ScanFilter.NeedsAdmin);
+
+    public string PassedLabel => Label("Passed", ScanFilter.Passed);
+
+    public string IgnoredLabel => Label("Ignored", ScanFilter.Ignored);
+
+    public ScanFilter Filter
+    {
+        get => _filter;
+        set
+        {
+            if (_filter != value)
+            {
+                _filter = value;
+                Redraw();
+            }
+        }
+    }
+
+    /// <summary>The ignored checks, for the settings dialog.</summary>
+    public IReadOnlyList<IgnoredRow> IgnoredRows =>
+        _settings.Ignored.Select(entry => new IgnoredRow(
+            entry.CheckId,
+            CheckCatalogue.Texts.Contains(entry.CheckId) ? CheckCatalogue.Texts[entry.CheckId].Name : entry.CheckId,
+            entry.Reason.Length > 0 ? entry.Reason : "No reason given")).ToArray();
+
+    /// <summary>
+    /// Shows what is known already (settings, the last results), then scans. Never throws: a
+    /// failure is shown in the window.
+    /// </summary>
+    public async Task StartAsync()
+    {
+        if (_role.Demo)
+        {
+            ShowDemo();
+            return;
+        }
+
+        _settings = _settingsStore!.Load(out string? problem);
+        SettingsProblem = problem ?? string.Empty;
+        ShowFirstRun = !_settings.FirstRunDone;
+
+        try
+        {
+            if (_resultsStore!.Load(CheckCatalogue.Checks, CheckCatalogue.Texts) is { } last)
+            {
+                Take(last);
+                Redraw();
+            }
+        }
+#pragma warning disable CA1031 // Old results are a convenience; whatever is wrong with them, the scan goes ahead.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            _log.Error("The last results could not be shown", exception);
+        }
+
+        await RunAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Runs a scan and shows it as it answers. Never throws: a failure is shown in the window.</summary>
     public async Task RunAsync()
     {
-        if (IsBusy)
+        if (IsBusy || _role.Demo)
         {
             return;
         }
 
         IsBusy = true;
         HasFailed = false;
-        Headline = "Checking this PC…";
-        Detail = string.Empty;
+        if (_results.Count == 0)
+        {
+            Headline = "Checking this PC…";
+            Detail = string.Empty;
+        }
+        else
+        {
+            ShowHeadline(checking: true);
+        }
 
         try
         {
-            ScanResult scan = _demo
-                ? DemoScan.Create(TimeProvider.System)
-                : await Task.Run(ScanThisPcAsync).ConfigureAwait(true);
-            Show(scan);
+            ScanResult scan = await Task.Run(() => ScanThisPcAsync(Arrived)).ConfigureAwait(true);
+            _results.Clear();
+            Take(scan);
+            if (!_resultsStore!.Save(scan))
+            {
+                _log.Error("The results could not be saved", new IOException("Writing results.json failed."));
+            }
         }
 #pragma warning disable CA1031 // The window must stay usable whatever goes wrong in a scan.
         catch (Exception exception)
 #pragma warning restore CA1031
         {
             _log.Error("The scan could not run", exception);
-            Checks.Clear();
-            Headline = "The checks could not run";
             Failure = exception.Message;
             HasFailed = true;
         }
         finally
         {
             IsBusy = false;
+            Redraw();
         }
     }
 
-    private static Task<ScanResult> ScanThisPcAsync()
+    /// <summary>Runs one check again and shows its new answer.</summary>
+    public async Task CheckAgainAsync(string checkId)
+    {
+        if (_role.Demo || IsBusy || !_results.ContainsKey(checkId) || !_beingChecked.Add(checkId))
+        {
+            return;
+        }
+
+        Redraw();
+        try
+        {
+            ScannedCheck again = await Task.Run(() => NewScanner().RunOneAsync(checkId, WindowsProbes.IsProcessElevated())).ConfigureAwait(true);
+            _results[checkId] = again;
+            if (CurrentScan() is { } scan)
+            {
+                _resultsStore!.Save(scan);
+            }
+        }
+#pragma warning disable CA1031 // One check failing to run again must not take the window down.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            _log.Error($"Check '{checkId}' could not be run again", exception);
+        }
+        finally
+        {
+            _beingChecked.Remove(checkId);
+            Redraw();
+        }
+    }
+
+    /// <summary>Leaves a check out of every count, with the user's reason.</summary>
+    public void Ignore(string checkId, string reason)
+    {
+        _settings = _settings.WithIgnored(checkId, reason, DateTimeOffset.UtcNow);
+        SaveSettings();
+        Redraw();
+    }
+
+    public void StopIgnoring(string checkId)
+    {
+        _settings = _settings.WithoutIgnored(checkId);
+        SaveSettings();
+        Redraw();
+    }
+
+    /// <summary>Closes the first-run notice for good.</summary>
+    public void DismissFirstRun()
+    {
+        ShowFirstRun = false;
+        if (!_settings.FirstRunDone)
+        {
+            _settings = _settings with { FirstRunDone = true };
+            SaveSettings();
+        }
+    }
+
+    /// <summary>Everything about one check as text, for the clipboard; null when it has no result.</summary>
+    public string? DetailsOf(string checkId) =>
+        _results.TryGetValue(checkId, out ScannedCheck? check) ? ScanPresentation.Details(check, _settings.IgnoredOf(checkId)) : null;
+
+    /// <summary>The current results as a report; null when there are none.</summary>
+    public string? ReportJson() => CurrentScan() is { } scan ? ReportFile.ToJson(ReportBuilder.Build(scan)) : null;
+
+    private static Scanner NewScanner()
     {
         if (!WindowsProbes.IsSupported)
         {
             throw new PlatformNotSupportedException($"SecReview needs {WindowsProbes.MinimumWindowsName} or later.");
         }
 
-        return new Scanner(WindowsProbes.Create(), TimeProvider.System)
-            .RunAsync(CheckSelection.All, WindowsProbes.IsProcessElevated());
+        return new Scanner(WindowsProbes.Create(), TimeProvider.System);
     }
 
-    private void Show(ScanResult scan)
+    private static Task<ScanResult> ScanThisPcAsync(Action<ScannedCheck> onResult) =>
+        NewScanner().RunAsync(CheckSelection.All, WindowsProbes.IsProcessElevated(), onResult);
+
+    /// <summary>Called on a scan's threads as each check answers.</summary>
+    private void Arrived(ScannedCheck check) => _onWindowThread(() =>
     {
-        Checks.Clear();
-        foreach (ScannedCheck check in ScanPresentation.InDisplayOrder(scan))
+        if (!IsBusy)
         {
-            Checks.Add(new CheckItem(check));
+            return; // the scan is over and its full result is already shown
         }
 
-        Headline = ScanPresentation.Headline(scan);
-        Detail = string.Create(
-            CultureInfo.CurrentCulture,
-            $"{ScanPresentation.Counts(scan)} · checked at {scan.FinishedAt.ToLocalTime():t}");
+        _results[check.Definition.Id] = check;
+        if (Stopwatch.GetElapsedTime(_lastRedraw) >= RedrawInterval)
+        {
+            Redraw();
+        }
+    });
+
+    private void ShowDemo()
+    {
+        TimeProvider clock = TimeProvider.System;
+        ScanResult scan = DemoScan.Create(clock, _role.DemoState);
+
+        switch (_role.DemoState)
+        {
+            case DemoState.Failed:
+                Headline = "The checks could not run";
+                Failure = "SecReview needs Windows 10 version 22H2 or later.";
+                HasFailed = true;
+                return;
+
+            case DemoState.FirstRun:
+                ShowFirstRun = true;
+                break;
+
+            case DemoState.Ignored or DemoState.Dialogs:
+                _settings = _settings with { Ignored = DemoScan.Ignored(clock) };
+                break;
+
+            case DemoState.Loading:
+                // Yesterday's results stay on screen while the new scan runs.
+                scan = scan with { FinishedAt = scan.FinishedAt.AddHours(-26) };
+                IsBusy = true;
+                break;
+        }
+
+        Take(scan);
+        Redraw();
     }
+
+    private void Take(ScanResult scan)
+    {
+        foreach (ScannedCheck check in scan.Checks)
+        {
+            _results[check.Definition.Id] = check;
+        }
+
+        _finishedAt = scan.FinishedAt;
+        _elevated = scan.Elevated;
+    }
+
+    /// <summary>What is known right now as one scan, in catalogue order; null without results.</summary>
+    private ScanResult? CurrentScan() =>
+        _results.Count == 0
+            ? null
+            : new ScanResult(
+                CheckCatalogue.Checks.Where(check => _results.ContainsKey(check.Definition.Id)).Select(check => _results[check.Definition.Id]).ToArray(),
+                _finishedAt ?? DateTimeOffset.UtcNow,
+                _elevated);
+
+    /// <summary>
+    /// Brings the groups and counts in line with what is known. Only what changed is touched: a
+    /// row whose result is the same stays the same object, so nothing on screen flickers or
+    /// closes while results arrive.
+    /// </summary>
+    private void Redraw()
+    {
+        _lastRedraw = Stopwatch.GetTimestamp();
+        Dictionary<string, CheckItem> shown = Sections.OfType<SectionItem>()
+            .SelectMany(section => section.Checks.OfType<CheckItem>())
+            .ToDictionary(item => item.Id, StringComparer.Ordinal);
+
+        Changed(nameof(HasResults));
+        Changed(nameof(AllLabel));
+        Changed(nameof(AttentionLabel));
+        Changed(nameof(AdminLabel));
+        Changed(nameof(PassedLabel));
+        Changed(nameof(IgnoredLabel));
+
+        if (CurrentScan() is not { } scan)
+        {
+            Sections.Clear();
+            EmptyText = string.Empty;
+            Notice = string.Empty;
+            if (HasFailed)
+            {
+                Headline = "The checks could not run";
+                Detail = string.Empty;
+            }
+
+            return;
+        }
+
+        IReadOnlySet<string> ignored = _settings.IgnoredIds();
+        IReadOnlyList<ScanSection> wanted = ScanPresentation.Sections(scan, ignored, _filter);
+        Dictionary<string, SectionItem> sections = Sections.OfType<SectionItem>().ToDictionary(section => section.Title, StringComparer.Ordinal);
+        var groups = new List<object>(wanted.Count);
+        foreach (ScanSection section in wanted)
+        {
+            SectionItem group = sections.TryGetValue(section.Title, out SectionItem? existing) ? existing : new SectionItem(section.Title);
+            group.Detail = section.Detail;
+            ListSync.Apply(group.Checks, section.Checks.Select(object (check) =>
+            {
+                string id = check.Definition.Id;
+                IgnoredCheck? entry = _settings.IgnoredOf(id);
+                bool beingChecked = _beingChecked.Contains(id);
+                if (shown.TryGetValue(id, out CheckItem? row) && row.IsStill(check, entry, beingChecked))
+                {
+                    return row;
+                }
+
+                // A check that needs attention starts open, so the reason is visible without a
+                // click; everything the headline leaves out starts closed. A row that was
+                // already on screen keeps the state the user left it in, unless it was just
+                // ignored: then it closes.
+                bool expanded = row is { IsIgnored: false } && entry is null
+                    ? row.IsExpanded
+                    : entry is null && ScanPresentation.StandingOf(check) == Standing.NeedsAttention;
+                return new CheckItem(check, entry, expanded, beingChecked);
+            }).ToList());
+            groups.Add(group);
+        }
+
+        ListSync.Apply(Sections, groups);
+
+        EmptyText = Sections.Count > 0
+            ? string.Empty
+            : _filter switch
+            {
+                ScanFilter.NeedsAttention => "Nothing needs attention.",
+                ScanFilter.NeedsAdmin => "No check is waiting for administrator rights.",
+                ScanFilter.Passed => "No check has passed yet.",
+                ScanFilter.Ignored => "No check is ignored. Use Ignore on a failing check to leave it out of the count, with a reason.",
+                _ => "No checks were run.",
+            };
+
+        int needAdmin = ScanPresentation.CountFor(scan, ignored, ScanFilter.NeedsAdmin);
+        Notice = needAdmin switch
+        {
+            0 => string.Empty,
+            1 => "1 check needs administrator rights. It is not counted as failing.",
+            _ => $"{needAdmin} checks need administrator rights. They are not counted as failing.",
+        };
+
+        ShowHeadline(checking: IsBusy);
+    }
+
+    private void ShowHeadline(bool checking)
+    {
+        if (CurrentScan() is not { } scan)
+        {
+            return;
+        }
+
+        IReadOnlySet<string> ignored = _settings.IgnoredIds();
+        Headline = ScanPresentation.Headline(scan, ignored);
+        string age = ScanPresentation.Age(scan.FinishedAt, DateTimeOffset.UtcNow);
+        Detail = checking
+            ? $"{ScanPresentation.Counts(scan, ignored)} · checked {age} · checking again…"
+            : $"{ScanPresentation.Counts(scan, ignored)} · checked {age}";
+    }
+
+    private string Label(string name, ScanFilter filter) =>
+        CurrentScan() is { } scan ? $"{name} ({ScanPresentation.CountFor(scan, _settings.IgnoredIds(), filter)})" : name;
+
+    private void SaveSettings()
+    {
+        if (_settingsStore is null)
+        {
+            return; // made-up results: nothing is written
+        }
+
+        if (!_settingsStore.Save(_settings, out string? problem))
+        {
+            SettingsProblem = problem ?? "The settings could not be saved.";
+        }
+    }
+
+    private void Changed(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
     private bool Set<T>(ref T field, T value, string name)
     {
@@ -144,7 +551,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        Changed(name);
         return true;
     }
 }

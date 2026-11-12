@@ -3,7 +3,34 @@ using SecReview.Checks;
 using SecReview.Checks.BuiltIn;
 using SecReview.Checks.BuiltIn.Ssh;
 
+using SecReview.Settings;
+
 namespace SecReview.Scanning;
+
+/// <summary>Which state of the window the made-up results show.</summary>
+public enum DemoState
+{
+    /// <summary>Every kind of outcome.</summary>
+    Mixed,
+
+    /// <summary>Nothing to fix.</summary>
+    AllPass,
+
+    /// <summary>As <see cref="Mixed"/>, on the very first start.</summary>
+    FirstRun,
+
+    /// <summary>The scan itself could not run.</summary>
+    Failed,
+
+    /// <summary>The last results on screen while a new scan runs.</summary>
+    Loading,
+
+    /// <summary>As <see cref="Mixed"/>, with two checks ignored.</summary>
+    Ignored,
+
+    /// <summary>As <see cref="Ignored"/>; an automated run then opens every dialog once.</summary>
+    Dialogs,
+}
 
 /// <summary>
 /// A made-up scan result that shows every kind of outcome. Used to look at, test and
@@ -36,7 +63,31 @@ public static class DemoScan
         [SshConfigCheck.Id] = CheckOutcome.NotApplicable("No SSH client settings file."),
     };
 
-    public static ScanResult Create(TimeProvider clock)
+    /// <summary>The names the command line knows the states by.</summary>
+    public static IReadOnlyDictionary<string, DemoState> StateNames { get; } = new Dictionary<string, DemoState>(StringComparer.Ordinal)
+    {
+        ["mixed"] = DemoState.Mixed,
+        ["all-pass"] = DemoState.AllPass,
+        ["first-run"] = DemoState.FirstRun,
+        ["failed"] = DemoState.Failed,
+        ["loading"] = DemoState.Loading,
+        ["ignored"] = DemoState.Ignored,
+        ["dialogs"] = DemoState.Dialogs,
+    };
+
+    /// <summary>The checks the <see cref="DemoState.Ignored"/> state leaves out, with made-up reasons.</summary>
+    public static IReadOnlyList<IgnoredCheck> Ignored(TimeProvider clock)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        DateTimeOffset since = clock.GetUtcNow().AddDays(-12);
+        return
+        [
+            new IgnoredCheck(SshKeyPassphraseCheck.Id, "Lab key for the build bench, replaced every week", since),
+            new IgnoredCheck(AutomaticLogonCheck.Id, "Kiosk PC in the workshop", since),
+        ];
+    }
+
+    public static ScanResult Create(TimeProvider clock, DemoState state = DemoState.Mixed)
     {
         ArgumentNullException.ThrowIfNull(clock);
 
@@ -47,7 +98,7 @@ public static class DemoScan
             [.. CheckCatalogue.Checks.Select(check =>
             {
                 string id = check.Definition.Id;
-                CheckOutcome outcome = Outcomes.TryGetValue(id, out CheckOutcome? made)
+                CheckOutcome outcome = state != DemoState.AllPass && Outcomes.TryGetValue(id, out CheckOutcome? made)
                     ? made
                     : CheckOutcome.Pass(texts[id].TitlePass + ".");
                 return new ScannedCheck(

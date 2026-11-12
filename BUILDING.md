@@ -40,7 +40,8 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/Config` | Readers for the settings files of developer tools: TOML, YAML, INI, Git's settings format, XML and Java-style properties. Each covers what settings files use and stops at the first thing it does not understand, with the line number: a file is read in full or not judged at all. Seeded mutation tests keep them from crashing or hanging |
 | `src/SecReview.Core/SupplyChain` | The developer supply-chain checks, a folder per tool or topic (uv, pnpm, Scoop, npm, Yarn, pip, NuGet, Cargo, Go, Git, editors, AI agents and MCP servers, Docker, winget, Chocolatey, environment variables, stored credentials): release cooldowns, unsafe package sources, switched-off protections, secrets stored as plain text. No tool is ever run: versions come from files, and where none records one the result says so. A check does not apply when its tool is absent |
 | `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
-| `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording; the display order and headline; the made-up results behind `--demo` |
+| `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording, handing each result over as it arrives; filters, groups and the headline; the last scan kept in `results.json`; the made-up results behind `--demo` |
+| `src/SecReview.Core/Settings` | What is remembered between runs (`settings.json`): ignored checks with their reasons. A damaged file is set aside and never stops the app |
 | `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
 | `src/SecReview.Core/Diagnostics` | `--diagnose`, the local error log (size-capped, names removed) and where SecReview keeps its files |
 | `src/SecReview.Core/Probing` | How the machine is read. Interfaces and result types at the top; `Windows/` holds the real implementations (the only place with Windows API calls and unsafe code). `NativeMethods.txt` lists the Windows APIs that CsWin32 generates declarations for |
@@ -79,15 +80,25 @@ in the repository.
 ```
 SecReview.exe                                  # scan this PC and show the results
 SecReview.exe --demo                           # made-up results covering every kind of outcome
+SecReview.exe --demo all-pass                  # one state of the window: mixed, all-pass, first-run,
+                                               # ignored, loading, failed, dialogs
 SecReview.exe --demo --screenshot shot.png     # save a picture of the window, then exit
 ```
 
-Use `--demo` for screenshots in documentation and pull requests: it shows no real PC's results.
-The build saves one to `artifacts\screenshots\demo.png`.
+Use `--demo` for screenshots in documentation and pull requests: it shows no real PC's results
+and writes nothing. The build saves one picture per state to `artifacts\screenshots`.
 
-Set `SECREVIEW_DATA_DIR` to keep the app's files (its log, for now) out of your profile while
+Every automated start of the window (`--smoke-test`, `--screenshot`) also walks what Windows
+hands to screen readers: each button, box and tab must have a name and be reachable with the
+keyboard, or the run ends with exit code 10 and the log names the control. `--demo dialogs`
+opens every dialog once and checks those too. Give a new control a name
+(`AutomationProperties.Name`) when its content is not plain text.
+
+The app keeps three things in its data folder (`%LOCALAPPDATA%\SecReview`): `settings.json`
+(ignored checks and their reasons), `results.json` (the last scan, shown at once on the next
+start) and `logs\SecReview.log`. Set `SECREVIEW_DATA_DIR` to keep them out of your profile while
 developing; `build.ps1` points it at `artifacts\appdata` for its smoke tests. If the window
-fails to start, the reason is in `logs\SecReview.log` there.
+fails to start, the reason is in the log there.
 
 The app project needs `AllowUnsafeBlocks` although it has no unsafe code: the WinRT interop
 generator emits nothing without it, and bound lists then fail at run time with "not a supported

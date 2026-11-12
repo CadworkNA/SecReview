@@ -91,7 +91,7 @@ public sealed class ScanPresentationTests
 
         Assert.AreEqual("2 things need attention", ScanPresentation.Headline(scan, ignored));
         Assert.AreEqual("3 things need attention", ScanPresentation.Headline(scan));
-        Assert.AreEqual("2 of 6 checks pass, 1 needs administrator rights, 1 thing worth knowing, 2 ignored", ScanPresentation.Counts(scan, ignored));
+        Assert.AreEqual("2 of 6 checks pass, 1 could not be checked, 1 needs administrator rights, 1 thing worth knowing, 2 ignored", ScanPresentation.Counts(scan, ignored));
 
         CollectionAssert.AreEqual(
             new[]

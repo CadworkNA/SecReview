@@ -238,12 +238,17 @@ Invoke-Step 'Smoke test' {
     $shots = Join-Path $root 'artifacts\screenshots'
     if (Test-Path $shots) { Remove-Item $shots -Recurse -Force }
     New-Item -ItemType Directory -Path $shots | Out-Null
-    $demo = Join-Path $shots 'demo.png'
-    $exit = Invoke-App '--demo', '--screenshot', $demo
-    if ($exit -ne 0 -or -not (Test-Path $demo) -or (Get-Item $demo).Length -lt 10KB) {
-        throw "SecReview.exe --demo --screenshot ended with '$exit' and no usable picture.$(Get-AppLog)"
+    # One picture per state of the window. Each run also checks that everything on screen has
+    # a name for a screen reader and can be reached with the keyboard (exit code 10 if not).
+    # The last state also opens every dialog once and checks it the same way.
+    foreach ($state in 'mixed', 'all-pass', 'first-run', 'ignored', 'loading', 'failed', 'dialogs') {
+        $picture = Join-Path $shots "demo-$state.png"
+        $exit = Invoke-App '--demo', $state, '--screenshot', $picture
+        if ($exit -ne 0 -or -not (Test-Path $picture) -or (Get-Item $picture).Length -lt 10KB) {
+            throw "SecReview.exe --demo $state --screenshot ended with '$exit' and no usable picture.$(Get-AppLog)"
+        }
+        Write-Host "Screenshot: artifacts\screenshots\demo-$state.png ($([int]((Get-Item $picture).Length / 1KB)) KB)."
     }
-    Write-Host "Screenshot: artifacts\screenshots\demo.png ($([int]((Get-Item $demo).Length / 1KB)) KB)."
 
     $exit = Invoke-App '--no-such-argument'
     if ($exit -ne 2) { throw "SecReview.exe with an unknown argument exited with '$exit', expected 2." }

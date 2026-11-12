@@ -7,7 +7,12 @@ public abstract record AppRole;
 /// <param name="SmokeTest">Close the window once it has drawn (used by the build).</param>
 /// <param name="Demo">Show made-up results instead of scanning this PC.</param>
 /// <param name="ScreenshotPath">Save a picture of the window to this PNG file, then close.</param>
-public sealed record UiRole(bool SmokeTest = false, bool Demo = false, string? ScreenshotPath = null) : AppRole;
+/// <param name="DemoState">Which state of the window the made-up results show.</param>
+public sealed record UiRole(
+    bool SmokeTest = false,
+    bool Demo = false,
+    string? ScreenshotPath = null,
+    Scanning.DemoState DemoState = Scanning.DemoState.Mixed) : AppRole;
 
 /// <summary>The arguments were not understood (unknown, repeated or incomplete).</summary>
 public sealed record InvalidRole : AppRole;

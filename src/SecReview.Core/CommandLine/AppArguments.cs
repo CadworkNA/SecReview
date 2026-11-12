@@ -6,7 +6,10 @@ public static class AppArguments
     /// <summary>Used by the build: load the window, draw it, exit 0.</summary>
     public const string SmokeTestSwitch = "--smoke-test";
 
-    /// <summary>Show made-up results that cover every kind of outcome.</summary>
+    /// <summary>
+    /// Show made-up results. May be followed by the state to show (<see cref="Scanning.DemoScan.StateNames"/>);
+    /// without one, results that cover every kind of outcome.
+    /// </summary>
     public const string DemoSwitch = "--demo";
 
     /// <summary>Followed by a file: save a picture of the window there, then exit.</summary>
@@ -18,6 +21,7 @@ public static class AppArguments
 
         bool smokeTest = false;
         bool demo = false;
+        Scanning.DemoState state = Scanning.DemoState.Mixed;
         string? screenshot = null;
 
         for (int index = 0; index < args.Count; index++)
@@ -30,6 +34,11 @@ public static class AppArguments
 
                 case DemoSwitch when !demo:
                     demo = true;
+                    if (index + 1 < args.Count && Scanning.DemoScan.StateNames.TryGetValue(args[index + 1], out state))
+                    {
+                        index++;
+                    }
+
                     break;
 
                 case ScreenshotSwitch when screenshot is null && index + 1 < args.Count && IsFileArgument(args[index + 1]):
@@ -41,7 +50,7 @@ public static class AppArguments
             }
         }
 
-        return new UiRole(smokeTest, demo, screenshot);
+        return new UiRole(smokeTest, demo, screenshot, state);
     }
 
     private static bool IsFileArgument(string text) =>

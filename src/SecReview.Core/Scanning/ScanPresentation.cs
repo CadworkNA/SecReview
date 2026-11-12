@@ -209,6 +209,12 @@ public static class ScanPresentation
         int counted = scan.Checks.Count - Count(scan, ignored, Standing.DoesNotApply) - worthKnowing - ignoredCount;
         string text = $"{Count(scan, ignored, Standing.Passed)} of {counted} checks pass";
 
+        int errors = Count(scan, ignored, Standing.CouldNotCheck);
+        if (errors > 0)
+        {
+            text += $", {errors} could not be checked";
+        }
+
         int needAdmin = Count(scan, ignored, Standing.NeedsAdmin);
         if (needAdmin > 0)
         {
