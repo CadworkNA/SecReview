@@ -1,4 +1,5 @@
 using SecReview.Checks;
+using SecReview.SupplyChain.Cooldowns;
 using SecReview.SupplyChain.Pnpm;
 using SecReview.SupplyChain.Scoop;
 using SecReview.SupplyChain.Uv;
@@ -24,5 +25,11 @@ public static class SupplyChainChecks
         new ScoopAppsCheck(),
         new ScoopUpdatesCheck(),
         new ScoopCredentialsCheck(),
+        new NpmCooldownCheck(),
+        new YarnCooldownCheck(),
+        new BunCooldownCheck(),
+        new PipCooldownCheck(),
+        new PoetryCooldownCheck(),
+        new PdmCooldownCheck(),
     ];
 }
