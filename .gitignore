@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+/artifacts/
+/installer/Output/
+TestResults/
+
+# Local tooling kept inside the repo (package cache, unpacked SDK, CLI home)
+/.nuget/
+/.dotnet/
+/.dotnet-home/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# Reports and screenshots produced by local runs: never commit real machine data
+/out/
+*.report.json
