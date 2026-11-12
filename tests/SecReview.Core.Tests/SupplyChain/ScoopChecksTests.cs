@@ -165,7 +165,7 @@ public sealed class ScoopChecksTests
         CheckOutcome outcome = Apps.Run(WithApp(WithApp(Scoop(), "good", GoodManifest), "weak", manifest));
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
-        Assert.AreEqual("1 app installed with Scoop was not verified or has no known source.", outcome.Summary);
+        Assert.AreEqual("1 Scoop app has a weakness in how it was downloaded or where it comes from.", outcome.Summary);
         Assert.AreEqual($"weak: {found} (expected Verified download from a bucket) [problem]", outcome.Rows()[0]);
     }
 

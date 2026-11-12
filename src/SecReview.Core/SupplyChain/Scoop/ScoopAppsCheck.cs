@@ -89,8 +89,8 @@ public sealed class ScoopAppsCheck : ICheck
         {
             return CheckOutcome.Fail(
                 withProblems == 1
-                    ? "1 app installed with Scoop was not verified or has no known source."
-                    : $"{withProblems} apps installed with Scoop were not verified or have no known source.",
+                    ? "1 Scoop app has a weakness in how it was downloaded or where it comes from."
+                    : $"{withProblems} Scoop apps have a weakness in how they were downloaded or where they come from.",
                 findings);
         }
 
