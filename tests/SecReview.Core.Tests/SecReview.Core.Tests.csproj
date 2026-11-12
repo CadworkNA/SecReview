@@ -23,4 +23,9 @@
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The icon file, for the test that holds it to what the code draws. -->
+    <EmbeddedResource Include="..\..\resources\SecReview.ico" LogicalName="SecReview.ico" Condition="Exists('..\..\resources\SecReview.ico')" />
+  </ItemGroup>
+
 </Project>

@@ -14,6 +14,10 @@
 #                                    # "Known-malicious list" workflow); without it there is none
 #   .\build.ps1 -ErrorReportAddress <dsn>   # where the app reports its own errors (official
 #                                    # builds only); without it the app never sends anything
+#   .\build.ps1 -Installer           # also build the setup program (needs Inno Setup 6.3+ or 7):
+#                                    # artifacts\installer\SecReview-<version>-setup.exe
+#   .\build.ps1 -Installer -Sign     # sign the two programs, the setup program and the
+#                                    # uninstaller (release workflow only; see scripts\sign.ps1)
 param(
     [string] $Version = '0.0.0-dev',
     [switch] $NoTests,
@@ -22,7 +26,9 @@ param(
     [switch] $Locked,
     [switch] $UpdateStageList,
     [string] $MalwareIndex,
-    [string] $ErrorReportAddress
+    [string] $ErrorReportAddress,
+    [switch] $Installer,
+    [switch] $Sign
 )
 $ErrorActionPreference = 'Stop'
 # Exit codes of native commands are checked explicitly below, whatever the user's profile says.
@@ -145,8 +151,48 @@ if ($listFile) {
     Copy-Item -LiteralPath $listFile (Join-Path $stage 'known-malicious.idx')
 }
 
+# The licences of SecReview and of what it contains (THIRD-PARTY-NOTICES.md says which is
+# which). Texts that belong to a package version are taken from the restored package, so they
+# always match what was compiled in.
+$licenses = New-Item -ItemType Directory -Path (Join-Path $stage 'licenses')
+$packages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
+function Get-PackageFolder([string] $Id) {
+    $lock = Get-Content (Join-Path $root 'src\SecReview.App\packages.lock.json') -Raw | ConvertFrom-Json -AsHashtable
+    foreach ($framework in $lock.dependencies.Values) {
+        if ($framework.ContainsKey($Id)) { return Join-Path $packages "$($Id.ToLowerInvariant())\$($framework[$Id].resolved)" }
+    }
+    throw "Package $Id is not in the app's lock file."
+}
+$windowsAppSdk = Get-PackageFolder 'Microsoft.WindowsAppSDK.Runtime'
+$winUi = Get-PackageFolder 'Microsoft.WindowsAppSDK.WinUI'
+$compiler = Get-PackageFolder 'runtime.win-x64.Microsoft.DotNet.ILCompiler'
+$licenseFiles = [ordered]@{
+    'SecReview-LICENSE.txt'            = Join-Path $root 'LICENSE'
+    'THIRD-PARTY-NOTICES.txt'          = Join-Path $root 'THIRD-PARTY-NOTICES.md'
+    'dotnet-runtime-LICENSE.txt'       = Join-Path $root 'notices\dotnet-runtime-LICENSE.txt'
+    'dotnet-THIRD-PARTY-NOTICES.txt'   = Join-Path $compiler 'THIRD-PARTY-NOTICES.TXT'
+    'WindowsAppSDK-license.txt'        = Join-Path $windowsAppSdk 'license.txt'
+    'WindowsAppSDK-NOTICE.txt'         = Join-Path $windowsAppSdk 'NOTICE.txt'
+    'WindowsAppSDK-WinUI-NOTICE.txt'   = Join-Path $winUi 'NOTICE.txt'
+    'CsWinRT-LICENSE.txt'              = Join-Path $root 'notices\CsWinRT-LICENSE.txt'
+    'sentry-dotnet-LICENSE.txt'        = Join-Path $root 'notices\sentry-dotnet-LICENSE.txt'
+    'Ben.Demystifier-LICENSE.txt'      = Join-Path $root 'notices\Ben.Demystifier-LICENSE.txt'
+    'malicious-packages-LICENSE.txt'   = Join-Path $root 'notices\malicious-packages-LICENSE.txt'
+    'InnoSetup-license.txt'            = Join-Path $root 'notices\InnoSetup-license.txt'
+}
+foreach ($name in $licenseFiles.Keys) {
+    Copy-Item -LiteralPath $licenseFiles[$name] (Join-Path $licenses $name)
+}
+
+if ($Sign) {
+    # Before anything looks at the programs: what is checked, tried and packed is what ships.
+    Invoke-Step 'Sign the programs' {
+        & (Join-Path $root 'scripts\sign.ps1') (Join-Path $stage 'SecReview.exe') (Join-Path $stage 'SecReviewCli.exe')
+    }
+}
+
 Invoke-Step 'Check staged output' {
-    & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -Update:$UpdateStageList
+    & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -Update:$UpdateStageList -OursSigned:$Sign
 }
 
 # The app keeps its log (and later its results and settings) in the build output while it is
@@ -394,3 +440,43 @@ Invoke-Step 'Smoke test' {
 
 $files = Get-ChildItem $stage -Recurse -File
 'Staged: {0} files, {1:N1} MB' -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB)
+
+if ($Installer) {
+    # The setup program: the staged folder, packed. Compiled here, never run here.
+    $installerOut = Join-Path $root 'artifacts\installer'
+    if (Test-Path $installerOut) { Remove-Item $installerOut -Recurse -Force }
+    $iscc = & (Join-Path $root 'scripts\ensure-inno.ps1')
+
+    # The folder was checked before the programs were tried out. Checked again here, so that
+    # what is packed is exactly what was checked, whatever ran in between.
+    Invoke-Step 'Check staged output again' {
+        & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -OursSigned:$Sign
+    }
+    $numbers = ($Version -split '-', 2)[0]
+    $publisher = ([xml] (Get-Content (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup.Company |
+        Where-Object { $_ } | Select-Object -First 1
+    $isccArgs = @(
+        '/Q'
+        "/DAppVersion=$Version"
+        "/DFileVersion=$numbers.0"
+        "/DStage=$stage"
+        "/DOutputFolder=$installerOut"
+        "/DPublisher=$publisher"
+    )
+    if ($Sign) {
+        # Inno Setup calls this for the uninstaller and for the setup program itself.
+        $isccArgs += '/DSIGN'
+        # ($q is Inno Setup's way of writing a quotation mark; $f is the file to sign.)
+        $isccArgs += '/Sartifactsigning=pwsh -NoProfile -File $q' + (Join-Path $root 'scripts\sign.ps1') + '$q $f'
+    }
+    Invoke-Step 'Build the setup program' { & $iscc @isccArgs (Join-Path $root 'installer\SecReview.iss') }
+
+    $setup = Get-Item (Join-Path $installerOut "SecReview-$Version-setup.exe")
+    if ($Sign) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $setup.FullName
+        if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
+            throw "The setup program is not validly signed and timestamped ($($signature.Status))."
+        }
+    }
+    'Setup: {0}, {1:N1} MB, SHA-256 {2}' -f $setup.Name, ($setup.Length / 1MB), (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}

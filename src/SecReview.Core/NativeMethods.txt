@@ -131,3 +131,6 @@ IsIconic
 ShowWindow
 GetTokenInformation
 TOKEN_ELEVATION_TYPE
+LoadImage
+SendMessage
+WM_SETICON

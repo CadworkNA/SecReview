@@ -6,6 +6,8 @@
     <RootNamespace>SecReview.Cli</RootNamespace>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- The icon is drawn by code (SecReview.Tray.IconFile); a test holds the file to it. -->
+    <ApplicationIcon Condition="Exists('$(MSBuildThisFileDirectory)..\..\resources\SecReview.ico')">$(MSBuildThisFileDirectory)..\..\resources\SecReview.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- Native AOT: one small exe with no .NET runtime and no JIT. This is the only binary that

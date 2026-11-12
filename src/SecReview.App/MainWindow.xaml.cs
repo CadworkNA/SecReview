@@ -51,6 +51,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         AppWindow.Resize(InitialSize);
+        ProgramIcon.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this));
         Root.Loaded += OnLoaded;
 
         // Draws results that arrived between redraws and keeps "checked 5 minutes ago" true.

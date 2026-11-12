@@ -9,7 +9,9 @@
 #   scripts\check-stage.ps1 -Stage artifacts\stage -Update    # rewrite stage-files.txt
 param(
     [Parameter(Mandatory)] [string] $Stage,
-    [switch] $Update
+    [switch] $Update,
+    # A release: our own two programs must carry a valid, timestamped signature as well.
+    [switch] $OursSigned
 )
 $ErrorActionPreference = 'Stop'
 
@@ -125,6 +127,19 @@ foreach ($file in $files) {
     $signed++
     $reason = Test-MicrosoftSignature $file.FullName
     if ($reason) { $problems.Add("$(Get-RelativePath $file): $reason") }
+}
+
+if ($OursSigned) {
+    foreach ($name in 'SecReview.exe', 'SecReviewCli.exe') {
+        $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $stagePath $name)
+        if ($signature.Status -ne 'Valid') {
+            $problems.Add("${name}: not validly signed ($($signature.Status))")
+        } elseif (-not $signature.TimeStamperCertificate) {
+            $problems.Add("${name}: the signature has no timestamp, so it would lapse with the certificate")
+        } else {
+            Write-Host "${name}: signed by $($signature.SignerCertificate.GetNameInfo('SimpleName', $false))."
+        }
+    }
 }
 
 # Our own programs, read as bytes. Neither may carry the folder it was built in (under a
