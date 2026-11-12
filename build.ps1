@@ -74,9 +74,30 @@ Invoke-Step 'Publish SecReviewCli (Native AOT)' {
         -o (Join-Path $publish 'cli') "-p:Version=$Version"
 }
 
-# Stage only what ships; symbols are kept apart.
+Invoke-Step 'Publish SecReview (Native AOT)' {
+    dotnet publish (Join-Path $root 'src\SecReview.App') -c Release --no-restore `
+        -o (Join-Path $publish 'app') "-p:Version=$Version"
+}
+
+# Stage only what ships: the app with the Windows App SDK files that must sit next to it, and
+# the command-line exe. Symbols are kept apart; XML doc files are dropped.
+Copy-Item (Join-Path $publish 'app\*') $stage -Recurse -Exclude '*.pdb', '*.xml'
 Copy-Item (Join-Path $publish 'cli\SecReviewCli.exe') $stage
-Copy-Item (Join-Path $publish 'cli\*.pdb') $symbols
+Copy-Item (Join-Path $publish 'app\*.pdb'), (Join-Path $publish 'cli\*.pdb') $symbols -Force
+
+Invoke-Step 'Check staged output' {
+    & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage
+}
+
+# Starts SecReview.exe with the given arguments and returns its exit code (null on timeout).
+function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 60) {
+    $process = Start-Process -FilePath (Join-Path $stage 'SecReview.exe') -ArgumentList $Arguments -PassThru
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+        $process.Kill()
+        return $null
+    }
+    return $process.ExitCode
+}
 
 Invoke-Step 'Smoke test' {
     $cli = Join-Path $stage 'SecReviewCli.exe'
@@ -88,7 +109,21 @@ Invoke-Step 'Smoke test' {
 
     & $cli --no-such-command 2>$null | Out-Null
     if ($LASTEXITCODE -ne 2) { throw "An unknown command exited with $LASTEXITCODE, expected 2." }
+
+    # The window must load and render a frame from the staged folder (catches a missing DLL or
+    # resource file, which only shows at start-up).
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    $exit = Invoke-App '--smoke-test'
+    if ($exit -ne 0) {
+        throw "SecReview.exe --smoke-test exited with '$exit', expected 0 (3 = no frame within the limit)."
+    }
+    Write-Host "SecReview.exe: window shown and closed in $($timer.ElapsedMilliseconds) ms."
+
+    $exit = Invoke-App '--no-such-argument'
+    if ($exit -ne 2) { throw "SecReview.exe with an unknown argument exited with '$exit', expected 2." }
+
     $global:LASTEXITCODE = 0
 }
 
-Get-ChildItem $stage | Select-Object Name, Length
+$files = Get-ChildItem $stage -Recurse -File
+'Staged: {0} files, {1:N1} MB' -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB)

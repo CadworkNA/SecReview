@@ -7,6 +7,16 @@ Microsoft.DotNet.ILCompiler
 Microsoft.NET.ILLink.Tasks
 runtime.win-x64.Microsoft.DotNet.ILCompiler
 
+# Windows App SDK (WinUI) for the app; WebView2 is a dependency of WinUI and is not used
+Microsoft.WindowsAppSDK.Base
+Microsoft.WindowsAppSDK.Foundation
+Microsoft.WindowsAppSDK.InteractiveExperiences
+Microsoft.WindowsAppSDK.Runtime
+Microsoft.WindowsAppSDK.WinUI
+Microsoft.Windows.SDK.BuildTools
+Microsoft.Windows.SDK.BuildTools.MSIX
+Microsoft.Web.WebView2
+
 # Tests only (MSTest on Microsoft.Testing.Platform)
 MSTest.Analyzers
 MSTest.TestAdapter
