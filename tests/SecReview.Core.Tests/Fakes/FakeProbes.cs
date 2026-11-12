@@ -73,6 +73,7 @@ internal sealed class FakeProbes
     private readonly Dictionary<string, ProbeResult<string>> _files = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, ProbeFailure> _folderFailures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _links = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, string> _variables = new(StringComparer.OrdinalIgnoreCase);
 
@@ -105,6 +106,13 @@ internal sealed class FakeProbes
     public FakeProbes WithFileFailure(string path, ProbeFailure failure)
     {
         _files[path] = failure;
+        return this;
+    }
+
+    /// <summary>Marks a folder (one that has files in it) as a link to somewhere else.</summary>
+    public FakeProbes WithLink(string directory)
+    {
+        _links.Add(directory.TrimEnd((char)92));
         return this;
     }
 
@@ -398,7 +406,7 @@ internal sealed class FakeProbes
                 entries[name] = new FileEntry(
                     name,
                     IsDirectory: separator >= 0,
-                    IsLink: false,
+                    IsLink: owner._links.Contains(prefix + name),
                     Length: separator >= 0 ? 0 : file.IsOk ? file.Value!.Length : 100,
                     LastWrite: owner.FileTime);
             }

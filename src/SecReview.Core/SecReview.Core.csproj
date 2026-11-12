@@ -24,6 +24,13 @@
                       LogicalName="SecReview.Rules.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(KnownMaliciousListSha256)' != ''">
+    <!-- The SHA-256 of the list of known-malicious packages this build ships with
+         (build.ps1 -MalwareIndex). Only a file with that hash is ever loaded, which ties the
+         unsigned list to the signed programs. Without it the build has no list. -->
+    <AssemblyMetadata Include="KnownMaliciousListSha256" Value="$(KnownMaliciousListSha256)" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />
   </ItemGroup>

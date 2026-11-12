@@ -954,5 +954,47 @@
     "timeToFix": "5 min",
     "settingsLink": "ms-settings:windowsdefender",
     "references": []
+  },
+  "sc.malware.installed": {
+    "name": "Known-malicious packages (installed)",
+    "titlePass": "No installed package is known to be malicious",
+    "titleFail": "A known-malicious package is installed",
+    "why": "Malicious packages steal tokens and keys from the PC they run on. One that is installed has most likely already run.",
+    "fix": [
+      "Look up the id from the details at osv.dev to see what the package does.",
+      "Remove the package or extension with the tool that installed it.",
+      "Change every password, token and key this PC could reach, starting with those the advisory names.",
+      "Tell your IT or security contact."
+    ],
+    "timeToFix": "1 hour or more",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.malware.downloaded": {
+    "name": "Known-malicious packages (downloaded)",
+    "titlePass": "No downloaded package is known to be malicious",
+    "titleFail": "A known-malicious package was downloaded",
+    "why": "A package in a download cache was fetched at some point and may have run. Malicious packages steal tokens and keys from the PC they run on.",
+    "fix": [
+      "Look up the id from the details at osv.dev to see what the package does.",
+      "Find the project that asked for it and remove or pin the dependency.",
+      "Clear the cache named in the details with its own tool, for example uv cache clean.",
+      "If it may have run, change the passwords, tokens and keys this PC could reach and tell IT."
+    ],
+    "timeToFix": "1 hour or more",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.malware.list": {
+    "name": "List of known-malicious packages",
+    "titlePass": "The list of known-malicious packages is recent",
+    "titleFail": "The list of known-malicious packages is out of date",
+    "why": "New malicious packages are reported every day. An old list misses the ones most likely to reach you now.",
+    "fix": [
+      "Install the latest version of SecReview, which carries a current list."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Builds the list of known-malicious packages that ships with SecReview from a checkout of
+       the OpenSSF malicious-packages feed. Run by .github/workflows/malware-index.yml on a
+       Linux runner; it is not part of what ships. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SecReviewIndexBuilder</AssemblyName>
+    <RootNamespace>SecReview.IndexBuilder</RootNamespace>
+    <!-- No Windows APIs here, so not the Windows target the apps use. The runner has the
+         runtime of the pinned SDK, which may be newer than .NET 10. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same source the apps read the list with, compiled in: SecReview.Core itself
+         targets Windows. These files depend on nothing else in it. -->
+    <Compile Include="..\..\src\SecReview.Core\Malware\PackageEcosystem.cs" Link="Shared\PackageEcosystem.cs" />
+    <Compile Include="..\..\src\SecReview.Core\Malware\PackageVersions.cs" Link="Shared\PackageVersions.cs" />
+    <Compile Include="..\..\src\SecReview.Core\Malware\MalwareIndex.cs" Link="Shared\MalwareIndex.cs" />
+    <Compile Include="..\..\src\SecReview.Core\Malware\AdvisoryReader.cs" Link="Shared\AdvisoryReader.cs" />
+    <Compile Include="..\..\src\SecReview.Core\Malware\MalwareIndexBuild.cs" Link="Shared\MalwareIndexBuild.cs" />
+  </ItemGroup>
+
+</Project>

@@ -10,13 +10,16 @@
 #   .\build.ps1 -Locked              # restore in locked mode, as CI does
 #   .\build.ps1 -UpdateStageList     # rewrite scripts\stage-files.txt from this build's output
 #                                    # (after a Windows App SDK change; review the difference)
+#   .\build.ps1 -MalwareIndex <file> # ship this list of known-malicious packages (built by the
+#                                    # "Known-malicious list" workflow); without it there is none
 param(
     [string] $Version = '0.0.0-dev',
     [switch] $NoTests,
     [switch] $NoPublish,
     [switch] $LocalCache,
     [switch] $Locked,
-    [switch] $UpdateStageList
+    [switch] $UpdateStageList,
+    [string] $MalwareIndex
 )
 $ErrorActionPreference = 'Stop'
 # Exit codes of native commands are checked explicitly below, whatever the user's profile says.
@@ -56,7 +59,24 @@ $restoreArgs = @('restore', $solution, "-p:RestoreLockedMode=$($Locked.IsPresent
 Invoke-Step 'Check source text' { & (Join-Path $root 'scripts\check-source-text.ps1') }
 Invoke-Step 'Restore' { dotnet @restoreArgs }
 Invoke-Step 'Check lock files' { & (Join-Path $root 'scripts\check-lockfiles.ps1') }
-Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore "-p:Version=$Version" }
+# What every compile gets. With a list of known-malicious packages, its SHA-256 is compiled
+# into the programs, which then load that exact file and no other.
+$compileArgs = @("-p:Version=$Version")
+$listFile = $null
+if ($MalwareIndex) {
+    if ($NoPublish) { throw '-MalwareIndex ships a list with the published programs; it cannot be combined with -NoPublish.' }
+    $listFile = (Resolve-Path -LiteralPath $MalwareIndex).Path
+    $compileArgs += "-p:KnownMaliciousListSha256=$((Get-FileHash -LiteralPath $listFile -Algorithm SHA256).Hash.ToLowerInvariant())"
+}
+
+Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore @compileArgs }
+
+if ($listFile) {
+    # The list must load, come from the feed, be recent and not have lost packages.
+    Invoke-Step 'Check the list of known-malicious packages' {
+        dotnet (Join-Path $root 'tools\SecReview.IndexBuilder\bin\Release\net10.0\SecReviewIndexBuilder.dll') --check $listFile
+    }
+}
 
 if (-not $NoTests) {
     Invoke-Step 'Test' { dotnet test --solution $solution -c Release --no-build }
@@ -74,12 +94,12 @@ foreach ($dir in $publish, $stage, $symbols) {
 
 Invoke-Step 'Publish SecReviewCli (Native AOT)' {
     dotnet publish (Join-Path $root 'src\SecReview.Cli') -c Release --no-restore `
-        -o (Join-Path $publish 'cli') "-p:Version=$Version"
+        -o (Join-Path $publish 'cli') @compileArgs
 }
 
 Invoke-Step 'Publish SecReview (Native AOT)' {
     dotnet publish (Join-Path $root 'src\SecReview.App') -c Release --no-restore `
-        -o (Join-Path $publish 'app') "-p:Version=$Version"
+        -o (Join-Path $publish 'app') @compileArgs
 }
 
 # Stage only what ships: the app with the Windows App SDK files that must sit next to it, and
@@ -110,6 +130,10 @@ foreach ($file in Get-ChildItem $appPublish -Recurse -File) {
 }
 Copy-Item (Join-Path $publish 'cli\SecReviewCli.exe') $stage
 Copy-Item (Join-Path $publish 'cli\*.pdb') $symbols -Force
+
+if ($listFile) {
+    Copy-Item -LiteralPath $listFile (Join-Path $stage 'known-malicious.idx')
+}
 
 Invoke-Step 'Check staged output' {
     & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -Update:$UpdateStageList
@@ -189,6 +213,16 @@ Invoke-Step 'Smoke test' {
         if ($env:CI -eq 'true') { Write-Host ("  {0,-20} {1,-14} {2}" -f $check.id, $check.status, $check.summary) }
     }
     Write-Host "Report: $($report.checks.Count) checks, well-formed."
+
+    # A list that was staged must load in the compiled helper: the hash compiled in, its own
+    # checksum and every entry.
+    if ($listFile) {
+        $list = $report.checks | Where-Object { $_.id -eq 'sc.malware.list' }
+        if (-not $list -or $list.status -ne 'Pass') {
+            throw "The staged list of known-malicious packages was not usable: $($list.status), $($list.summary)"
+        }
+        Write-Host "Known-malicious list: $($list.summary)"
+    }
 
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.
