@@ -536,5 +536,88 @@
     "timeToFix": "2 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.npm.settings": {
+    "name": "npm protections",
+    "titlePass": "npm's protections are on",
+    "titleFail": "An npm protection is switched off",
+    "why": "TLS checks and HTTPS make sure a package comes from the registry it claims. Install scripts are how most malicious packages do their damage.",
+    "fix": [
+      "Open the .npmrc file named in the details in a text editor.",
+      "Delete the line shown there, so npm's own default applies again.",
+      "To let one package run its install script, allow that package in the project, not all of them."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.npm.credentials": {
+    "name": "npm stored tokens",
+    "titlePass": "Your .npmrc holds no registry tokens",
+    "titleFail": "Your .npmrc holds registry tokens as plain text",
+    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Run npm logout for the registry named in the details, or delete the line shown there.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "For publishing, use a short-lived token or sign in again when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.yarn.settings": {
+    "name": "Yarn protections",
+    "titlePass": "Yarn's protections are on",
+    "titleFail": "A Yarn protection is switched off",
+    "why": "TLS and checksum checks make sure a package is the one the registry published. Install scripts are how most malicious packages do their damage.",
+    "fix": [
+      "Open .yarnrc.yml in your user folder in a text editor.",
+      "Delete the line shown in the details, so Yarn's own default applies again."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.yarn.credentials": {
+    "name": "Yarn stored tokens",
+    "titlePass": "Your .yarnrc.yml holds no registry tokens",
+    "titleFail": "Your .yarnrc.yml holds registry tokens as plain text",
+    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Delete the line shown in the details from .yarnrc.yml, or run yarn npm logout.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "If a token must be configured, write it as ${NPM_TOKEN} and set that variable only when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pip.settings": {
+    "name": "pip package sources",
+    "titlePass": "pip gets packages from one index over HTTPS",
+    "titleFail": "pip is set to trust unsafe package sources",
+    "why": "With an extra index, a public package of the same name can take a private one's place. A trusted host is one whose certificate pip no longer checks.",
+    "fix": [
+      "Open the pip.ini file named in the details in a text editor.",
+      "Delete the line shown there; for a variable, delete the variable.",
+      "For a private index, use index-url alone, pointing at an index that also serves the public packages you need."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pypi.credentials": {
+    "name": "Python index passwords",
+    "titlePass": "No Python index passwords are stored as plain text",
+    "titleFail": "A Python index password is stored as plain text",
+    "why": "A password or token in a plain file can be read by every program you run. With a publishing token, an attacker releases packages in your name.",
+    "fix": [
+      "Delete the password or token from the file named in the details.",
+      "Revoke it at the index, since it was stored in the open.",
+      "Publish with a short-lived token or trusted publishing; keep other passwords in your password manager or keyring."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }
