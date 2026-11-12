@@ -125,9 +125,12 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SIGN: ${{ steps.version.outputs.sign }}
           ERROR_REPORT_ADDRESS: ${{ secrets.SENTRY_DSN || vars.SENTRY_DSN }}
+          # Where the programs look for updates: the address of latest.json. Unset, they never look.
+          UPDATE_URL: ${{ vars.UPDATE_URL }}
         run: |
           $more = @{}
           if ($env:ERROR_REPORT_ADDRESS) { $more.ErrorReportAddress = $env:ERROR_REPORT_ADDRESS }
+          if ($env:UPDATE_URL) { $more.UpdateUrl = $env:UPDATE_URL }
           ./build.ps1 -Locked -Version $env:VERSION -MalwareIndex artifacts/list/known-malicious.idx -Installer -Sign:($env:SIGN -eq 'true') @more
 
       - name: Install, upgrade and uninstall on this machine
@@ -298,6 +301,19 @@ jobs:
           [[ "$GITHUB_REF_TYPE" == "tag" ]] && flags+=(--verify-tag)
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "SecReview $VERSION" --notes-file notes.md --generate-notes "${flags[@]}" "${files[@]}"
+
+          # latest.json: what installed copies read to learn of this version, and what the
+          # update helper reads again before it installs. Once the release is published and
+          # is the newest, GitHub serves this file at releases/latest/download/latest.json.
+          notes=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body | sed -n '/^## What.s Changed/,$p' | head -c 1800)
+          jq -n --arg version "$VERSION" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$setup" \
+            --arg sha256 "$(sha256sum "release/$setup" | cut -d' ' -f1)" \
+            --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes "$notes" \
+            '{version: $version, url: $url, sha256: $sha256, published: $published, notes: $notes}' > latest.json
+          cat latest.json
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" latest.json
 
       # So that errors reported by this version are grouped under it. Only for a real version;
       # a problem here does not hold up the release.

@@ -10,6 +10,7 @@ using SecReview.Probing.Windows;
 using SecReview.Reporting;
 using SecReview.Scanning;
 using SecReview.Settings;
+using SecReview.Updates;
 
 namespace SecReview.App.ViewModels;
 
@@ -60,6 +61,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     private bool _showFirstRun;
     private bool _administratorBusy;
     private string _administratorProblem = string.Empty;
+    private readonly UpdateService? _updates;
+    private UpdateState _update = new();
+    private string _updateMessage = string.Empty;
+    private string _updateProblem = string.Empty;
+    private bool _updateBusy;
 
     /// <summary>Why the administrator checks cannot be run from this copy; null when they can.</summary>
     private readonly string? _administratorUnavailable;
@@ -87,6 +93,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             _settingsStore = new SettingsStore(AppData.Directory);
             _resultsStore = new ResultsStore(AppData.Directory);
+            if (WindowsProbes.IsSupported)
+            {
+                _updates = UpdateService.ForThisBuild(AppData.Directory, WindowsProbes.Create().Registry);
+            }
+
             _administratorUnavailable = AdministratorScan.WhyUnavailable(
                 AppContext.BaseDirectory,
                 new[]
@@ -293,6 +304,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         _settings = _settingsStore!.Load(out string? problem);
         SettingsProblem = problem ?? string.Empty;
         ApplyErrorReports();
+
+        // An installed SecReview keeps its icon in the notification area when that is switched
+        // on: after an update, or when the icon was quit, opening the window brings it back.
+        // (A copy that is not installed never starts one by itself.)
+        if (_settings.RunInNotificationArea && _administratorUnavailable is null && !StartsIconLater)
+        {
+            StartTray();
+        }
+
+        // What is known about updates is shown at once; looking again, when it is time, goes on beside the scan.
+        _ = LookForUpdatesAsync(now: false);
         if (_previousRunCrashed)
         {
             _reporter.ReportAbnormalEnd();
@@ -443,6 +465,180 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             SetAdministratorBusy(false);
             Redraw();
         }
+    }
+
+    /// <summary>Whether the notice of a newer version is on screen.</summary>
+    public bool HasUpdate => _updateMessage.Length > 0;
+
+    /// <summary>"Version 1.4.0 is available, released 3 days ago.", or how far installing it is.</summary>
+    public string UpdateMessage
+    {
+        get => _updateMessage;
+        private set
+        {
+            if (Set(ref _updateMessage, value, nameof(UpdateMessage)))
+            {
+                Changed(nameof(HasUpdate));
+            }
+        }
+    }
+
+    /// <summary>What is new in the newer version; empty when the release says nothing.</summary>
+    public string UpdateNotes => _update.Notes ?? string.Empty;
+
+    public bool HasUpdateNotes => UpdateNotes.Length > 0;
+
+    /// <summary>
+    /// Whether "Update now" is offered: this build installs updates, the organisation allows
+    /// it, and SecReview is installed (the helper that installs runs from Program Files only).
+    /// Made-up results show the button so it can be looked at; pressing it does nothing there.
+    /// </summary>
+    public bool ShowUpdateNow =>
+        _role.Demo || (_updates is { MayInstall: true } && PublisherIdentity.Compiled.IsConfigured && _administratorUnavailable is null);
+
+    public bool CanUpdateNow => ShowUpdateNow && !_updateBusy && _update.Outcome == UpdateOutcome.Available;
+
+    /// <summary>Why an update was not installed; empty when nothing went wrong.</summary>
+    public string UpdateProblem
+    {
+        get => _updateProblem;
+        private set
+        {
+            if (Set(ref _updateProblem, value, nameof(UpdateProblem)))
+            {
+                Changed(nameof(HasUpdateProblem));
+            }
+        }
+    }
+
+    public bool HasUpdateProblem => UpdateProblem.Length > 0;
+
+    public void DismissUpdateProblem() => UpdateProblem = string.Empty;
+
+    /// <summary>Where SecReview stands on updates, in a sentence, for the About dialog.</summary>
+    public string UpdateStatus
+    {
+        get
+        {
+            if (_updates is not { IsOn: true })
+            {
+                return UpdateSource.Compiled.IsConfigured ? "Your organisation has switched off the look for updates." : "This build does not look for updates.";
+            }
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            return _update.Outcome switch
+            {
+                UpdateOutcome.Available => UpdateService.Notice(_update, now)!,
+                UpdateOutcome.UpToDate => $"SecReview is up to date (looked {ScanPresentation.Age(_update.CheckedAt!.Value, now)}).",
+                UpdateOutcome.Failed => _update.Problem ?? "SecReview could not look for updates.",
+                _ => "SecReview has not looked for updates yet.",
+            };
+        }
+    }
+
+    /// <summary>Whether looking for updates is possible at all, for the button in the About dialog.</summary>
+    public bool CanLookForUpdates => _updates is { IsOn: true };
+
+    /// <summary>
+    /// Shows what is known about updates and looks again when it is time (or at once, when
+    /// <paramref name="now"/> is set). Never throws.
+    /// </summary>
+    public async Task LookForUpdatesAsync(bool now)
+    {
+        if (_updates is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ShowUpdate(_updates.Known());
+            UpdateState found = await Task.Run(() => _updates.LookAsync(now)).ConfigureAwait(true);
+            ShowUpdate(found);
+
+            // The check "SecReview is up to date" reads what was just found.
+            WakeTray();
+        }
+#pragma warning disable CA1031 // Looking for updates must never be what breaks the window.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            _log.Error("Looking for updates failed", exception);
+            _reporter.Report(exception);
+        }
+    }
+
+    /// <summary>
+    /// Installs the newer version: Windows asks for permission, then SecReview's helper
+    /// downloads the setup program, checks it and starts it. Setup closes SecReview and opens
+    /// it again. Saying no at the prompt changes nothing. Never throws.
+    /// </summary>
+    public async Task UpdateNowAsync()
+    {
+        if (_role.Demo || !CanUpdateNow)
+        {
+            return;
+        }
+
+        string notice = UpdateMessage;
+        _updateBusy = true;
+        Changed(nameof(CanUpdateNow));
+        UpdateProblem = string.Empty;
+        try
+        {
+            var launcher = new WindowsElevatedLauncher(Path.Combine(AppContext.BaseDirectory, AdministratorScan.HelperFileName), WindowsElevatedLauncher.UpdateCommand);
+            (UpdateInstallOutcome outcome, string? problem) = await UpdateInstall
+                .RunAsync(launcher, progress => _onWindowThread(() => UpdateMessage = Describe(progress, _update.Available)))
+                .ConfigureAwait(true);
+
+            switch (outcome)
+            {
+                case UpdateInstallOutcome.Installing:
+                    UpdateMessage = $"Installing version {_update.Available}. SecReview closes and opens again when it is done.";
+                    return; // the button stays off: setup is running
+
+                case UpdateInstallOutcome.Failed:
+                    UpdateProblem = problem ?? "The update could not be installed.";
+                    _log.Error("The update was not installed", new InvalidOperationException(UpdateProblem));
+                    break;
+            }
+        }
+#pragma warning disable CA1031 // Whatever goes wrong here, the window and its results stay.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            _log.Error("The update could not be started", exception);
+            _reporter.Report(exception);
+            UpdateProblem = "The update could not be started.";
+        }
+
+        UpdateMessage = notice;
+        _updateBusy = false;
+        Changed(nameof(CanUpdateNow));
+    }
+
+    private static string Describe(UpdateProgress progress, string? version) => progress.Stage switch
+    {
+        UpdateStage.Checking => $"Getting version {version}…",
+        UpdateStage.Downloading when progress.Total > 0 => $"Downloading version {version} ({100 * progress.Done / progress.Total} %)…",
+        UpdateStage.Downloading => $"Downloading version {version}…",
+        UpdateStage.Verifying => $"Checking version {version}…",
+        UpdateStage.Installing => $"Installing version {version}. SecReview closes and opens again when it is done.",
+        _ => $"Version {version} is available.",
+    };
+
+    private void ShowUpdate(UpdateState state)
+    {
+        _update = state;
+        if (!_updateBusy)
+        {
+            UpdateMessage = UpdateService.Notice(state, DateTimeOffset.UtcNow) ?? string.Empty;
+        }
+
+        Changed(nameof(UpdateNotes));
+        Changed(nameof(HasUpdateNotes));
+        Changed(nameof(CanUpdateNow));
+        Changed(nameof(UpdateStatus));
     }
 
     /// <summary>Closes the note about what went wrong with the administrator checks.</summary>
@@ -703,6 +899,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         TimeProvider clock = TimeProvider.System;
         ScanResult scan = DemoScan.Create(clock, _role.DemoState);
+
+        // The notice of a newer version, where there is room to look at it.
+        if (_role.DemoState is DemoState.Mixed or DemoState.Dialogs)
+        {
+            ShowUpdate(new UpdateState
+            {
+                Outcome = UpdateOutcome.Available,
+                Available = "9.9.9",
+                CheckedAt = clock.GetUtcNow(),
+                Published = clock.GetUtcNow().AddDays(-3),
+                Notes = "Made-up notes: two new checks, and a clearer message when a check needs administrator rights.",
+            });
+        }
 
         switch (_role.DemoState)
         {

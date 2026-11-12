@@ -173,12 +173,17 @@ public sealed class ScanTests
         Assert.IsFalse(scan.Elevated);
 
         // A check that only an administrator scan can answer waits for one; everything else
-        // could not be checked. Nothing passes, fails or "does not apply".
+        // could not be checked. Nothing passes, fails or "does not apply". One exception, which
+        // does not depend on the PC: a build without an update address (as in these tests) has
+        // no update check, whatever can or cannot be read.
         string[] answered = [.. scan.Checks
+            .Where(c => c.Definition.Id != SecReview.Updates.SecReviewUpdateCheck.Id)
             .Where(c => c.Result.Outcome.Status != (c.Definition.NeedsAdmin == AdminNeed.Yes ? CheckStatus.NeedsAdmin : CheckStatus.Error))
             .Select(c => $"{c.Definition.Id}: {c.Result.Outcome.Status}")];
         Assert.AreEqual(0, answered.Length, "unreadable is never a pass: " + string.Join(", ", answered));
         Assert.IsTrue(scan.Checks.All(c => c.Text.Name == c.Title), "an unanswered check is named neutrally");
+        Assert.AreEqual(
+            CheckStatus.NotApplicable, scan.Checks.Single(c => c.Definition.Id == SecReview.Updates.SecReviewUpdateCheck.Id).Result.Outcome.Status);
     }
 
     [TestMethod]

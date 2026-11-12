@@ -150,6 +150,19 @@
     "settingsLink": "ms-settings:windowsupdate",
     "references": []
   },
+  "updates.secreview": {
+    "name": "SecReview up to date",
+    "titlePass": "SecReview is up to date",
+    "titleFail": "A newer version of SecReview is available",
+    "why": "New versions add checks and fix mistakes in old ones. An old SecReview can call a PC safe that is not.",
+    "fix": [
+      "Open SecReview and choose Update now on the notice at the top.",
+      "If there is no such button, your organisation installs updates: tell IT."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
   "firewall.enabled": {
     "name": "Firewall",
     "titlePass": "Firewall is on",

@@ -210,24 +210,7 @@ public static class AdministratorScan
     /// </summary>
     private static async Task<byte[]?> ReadFromAsync(NamedPipeServerStream pipe, int helperProcessId, CancellationToken cancellation)
     {
-        while (true)
-        {
-            try
-            {
-                await pipe.WaitForConnectionAsync(cancellation).ConfigureAwait(false);
-                if (ClientProcessId(pipe) == helperProcessId)
-                {
-                    break;
-                }
-            }
-            catch (IOException)
-            {
-                // Something connected and left again before it was looked at. Not the helper,
-                // which stays until it has written its answer; the wait goes on.
-            }
-
-            pipe.Disconnect();
-        }
+        await WaitForHelperAsync(pipe, helperProcessId, cancellation).ConfigureAwait(false);
 
         using var received = new MemoryStream();
         byte[] buffer = new byte[64 * 1024];
@@ -245,6 +228,32 @@ public static class AdministratorScan
             }
 
             received.Write(buffer, 0, read);
+        }
+    }
+
+    /// <summary>
+    /// Waits until the helper itself has connected. A connection from any other process is
+    /// hung up on and the wait goes on.
+    /// </summary>
+    internal static async Task WaitForHelperAsync(NamedPipeServerStream pipe, int helperProcessId, CancellationToken cancellation)
+    {
+        while (true)
+        {
+            try
+            {
+                await pipe.WaitForConnectionAsync(cancellation).ConfigureAwait(false);
+                if (ClientProcessId(pipe) == helperProcessId)
+                {
+                    return;
+                }
+            }
+            catch (IOException)
+            {
+                // Something connected and left again before it was looked at. Not the helper,
+                // which stays until it has written its answer; the wait goes on.
+            }
+
+            pipe.Disconnect();
         }
     }
 
@@ -274,14 +283,19 @@ public static class AdministratorScan
 /// changes?"). The helper is named by its full path; the pipe name is the only argument that
 /// varies, and it is checked before use.
 /// </summary>
-public sealed class WindowsElevatedLauncher(string helperPath) : IElevatedLauncher
+/// <param name="helperPath">The helper's full path.</param>
+/// <param name="command">What the helper is asked to do: one of the two things it does with administrator rights.</param>
+public sealed class WindowsElevatedLauncher(string helperPath, string command = WindowsElevatedLauncher.ScanCommand) : IElevatedLauncher
 {
+    public const string ScanCommand = "--elevated-scan";
+    public const string UpdateCommand = "--apply-update";
+
     /// <summary>Windows' code for "the user cancelled".</summary>
     private const int Cancelled = 1223;
 
     public ElevatedProcess? Start(string pipeName)
     {
-        if (!ElevationPipe.IsValidName(pipeName) || !Path.IsPathFullyQualified(helperPath))
+        if (!ElevationPipe.IsValidName(pipeName) || !Path.IsPathFullyQualified(helperPath) || command is not (ScanCommand or UpdateCommand))
         {
             throw new InvalidOperationException("The helper cannot be started with that.");
         }
@@ -290,7 +304,7 @@ public sealed class WindowsElevatedLauncher(string helperPath) : IElevatedLaunch
         {
             UseShellExecute = true,
             Verb = "runas",
-            Arguments = $"--elevated-scan --pipe {pipeName}",
+            Arguments = $"{command} --pipe {pipeName}",
             WindowStyle = ProcessWindowStyle.Hidden,
 
             // Not the folder the app happened to be started in, which a user may be able to write to.

@@ -21,6 +21,7 @@ public static class BuiltInChecks
         new RecentUpdatesCheck(),
         new RestartCheck(),
         new WindowsSupportedCheck(),
+        new Updates.SecReviewUpdateCheck(),
 
         // Firewall and sharing
         new FirewallCheck(),

@@ -32,6 +32,9 @@ public static class ExitCode
     /// <summary><c>SecReviewCli --elevated-scan</c>: the results could not be sent to the app.</summary>
     public const int ElevatedScanFailed = 11;
 
+    /// <summary><c>SecReviewCli --apply-update</c>: no update was installed; the app was told why on the pipe.</summary>
+    public const int UpdateNotInstalled = 12;
+
     /// <summary>
     /// An automated run of the window: something a person can press has no name for a screen
     /// reader or cannot be reached with the keyboard; the local log names it.

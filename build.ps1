@@ -14,6 +14,8 @@
 #                                    # "Known-malicious list" workflow); without it there is none
 #   .\build.ps1 -ErrorReportAddress <dsn>   # where the app reports its own errors (official
 #                                    # builds only); without it the app never sends anything
+#   .\build.ps1 -UpdateUrl <url>     # where the programs look for updates: the https address of
+#                                    # latest.json (official builds only); without it they never look
 #   .\build.ps1 -Installer           # also build the setup program (needs Inno Setup 6.3+ or 7):
 #                                    # artifacts\installer\SecReview-<version>-setup.exe
 #   .\build.ps1 -Installer -Sign     # sign the two programs, the setup program and the
@@ -27,6 +29,7 @@ param(
     [switch] $UpdateStageList,
     [string] $MalwareIndex,
     [string] $ErrorReportAddress,
+    [string] $UpdateUrl,
     [switch] $Installer,
     [switch] $Sign
 )
@@ -83,6 +86,18 @@ if ($ErrorReportAddress) {
         throw '-ErrorReportAddress must look like https://<key>@<host>/<project number>.'
     }
     $compileArgs += "-p:ErrorReportAddress=$ErrorReportAddress"
+}
+
+if ($UpdateUrl) {
+    if ($UpdateUrl -notmatch '^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+\.json$') {
+        throw '-UpdateUrl must be the https address of a .json file, without a query or a port.'
+    }
+    $compileArgs += "-p:UpdateManifestUrl=$UpdateUrl"
+}
+
+if ($Sign) {
+    # A signed build knows its publisher (signing\Publisher.props) and so may install updates.
+    $compileArgs += '-p:SignedBuild=true'
 }
 
 Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore @compileArgs }
@@ -476,6 +491,11 @@ if ($Installer) {
         $signature = Get-AuthenticodeSignature -LiteralPath $setup.FullName
         if ($signature.Status -ne 'Valid' -or -not $signature.TimeStamperCertificate) {
             throw "The setup program is not validly signed and timestamped ($($signature.Status))."
+        }
+        # By the publisher installed copies accept updates from, or they would refuse this one.
+        $expected = ([xml] (Get-Content (Join-Path $root 'signing\Publisher.props') -Raw)).Project.PropertyGroup.PublisherSubject
+        if ($signature.SignerCertificate.Subject -cne $expected) {
+            throw "The setup program is signed by '$($signature.SignerCertificate.Subject)', not by the publisher in signing\Publisher.props."
         }
     }
     'Setup: {0}, {1:N1} MB, SHA-256 {2}' -f $setup.Name, ($setup.Length / 1MB), (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

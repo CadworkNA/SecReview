@@ -101,6 +101,14 @@ Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Flags: nowait runasoriginalus
 ; The window is opened through the desktop, so it runs as the signed-in user without
 ; administrator rights, however setup itself was started.
 Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Description: "Open {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; After an update that SecReview installed itself (silent, with /RELAUNCH=1): the window opens
+; again, the same way. SecReview's helper asks for this only when the user who asked for the
+; update is the one whose administrator rights are used.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Flags: nowait runasoriginaluser; Check: RelaunchAsked
+
+[UninstallDelete]
+; Where SecReview's own updates are downloaded to (administrators only): what the last one left.
+Type: filesandordirs; Name: "{autopf}\{#AppName}.Update"
 
 [UninstallRun]
 ; A running copy would keep its files from being removed.
@@ -163,6 +171,12 @@ begin
       FindClose(Found);
     end;
   end;
+end;
+
+// Whether SecReview's own update asked for the window to be opened again (/RELAUNCH=1).
+function RelaunchAsked(): Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

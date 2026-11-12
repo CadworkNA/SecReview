@@ -9,6 +9,7 @@ using SecReview.Scanning;
 using SecReview.Settings;
 using SecReview.Tray;
 using SecReview.Tray.Windows;
+using SecReview.Updates;
 
 namespace SecReview.App;
 
@@ -105,7 +106,18 @@ internal static class TrayApp
 
         IRegistryProbe registry = WindowsProbes.Create().Registry;
         TraySession? session = null;
-        using var icon = new NotificationAreaIcon(command => session?.Handle(command));
+
+        // Once a day the icon also looks for a newer SecReview. What it finds is kept for the
+        // window, and the check "SecReview is up to date" reads it at the next scan.
+        UpdateService updates = UpdateService.ForThisBuild(data, registry);
+        using var icon = new NotificationAreaIcon(command =>
+        {
+            session?.Handle(command);
+            if (command == TrayCommand.Tick && !role.SmokeTest)
+            {
+                _ = updates.LookAsync();
+            }
+        });
 
         session = new TraySession(icon, new TrayEnvironment
         {

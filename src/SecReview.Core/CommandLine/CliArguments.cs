@@ -33,6 +33,7 @@ public static class CliArguments
             "--diagnose" => WithoutArguments(args, new DiagnoseCommand()),
             "--report" => Report(args),
             "--elevated-scan" => ElevatedScan(args),
+            "--apply-update" => ApplyUpdate(args),
             _ => new InvalidCommand($"Unknown command '{Printable(args[0])}'."),
         };
     }
@@ -49,6 +50,12 @@ public static class CliArguments
         args is [_, "--pipe", var name] && Elevation.ElevationPipe.IsValidName(name)
             ? new ElevatedScanCommand(name)
             : new InvalidCommand("--elevated-scan is started by SecReview itself.");
+
+    /// <summary>"--apply-update --pipe name", exactly, for the same reason: no address, no file, no version.</summary>
+    private static CliCommand ApplyUpdate(IReadOnlyList<string> args) =>
+        args is [_, "--pipe", var name] && Elevation.ElevationPipe.IsValidName(name)
+            ? new ApplyUpdateCommand(name)
+            : new InvalidCommand("--apply-update is started by SecReview itself.");
 
     private static CliCommand Report(IReadOnlyList<string> args)
     {

@@ -43,6 +43,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
 | `src/SecReview.Core/Elevation` | The administrator checks: the pipe's name and rules, what the helper does when started elevated, and the app's side (make the pipe, start the helper through the Windows prompt, verify who answers, read the answer) |
 | `src/SecReview.Core/Tray` | The notification-area icon: when the checks run again, what the icon, its tooltip and a notification say (`TrayLogic`), the icon's picture drawn in code (`TrayIconImage`), what the process behind it does (`TraySession`), and under `Windows/` the icon itself |
+| `src/SecReview.Core/Updates` | Looking for a newer version (`latest.json`, the allowed addresses, what was found), the check "SecReview is up to date", and installing an update: the helper's rules, the window's side, and under `Windows/` the signature check and the administrators-only folder |
 | `src/SecReview.Core/Instances` | How SecReview's processes find each other: one window and one icon per user, the signal from the window to the icon, and a second start handing over to the open window |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording, handing each result over as it arrives; filters, groups and the headline; the last scan kept in `results.json`; the made-up results behind `--demo` |
 | `src/SecReview.Core/Settings` | What is remembered between runs (`settings.json`): ignored checks with their reasons. A damaged file is set aside and never stops the app |
@@ -169,6 +170,52 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
 
 Start it by hand (Actions, "Package and release") to try all of this without a release. A
 release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.
+
+## Updates
+
+SecReview says when there is a newer version and installs it when the user asks. There is no
+silent updater.
+
+- **One address, compiled in.** Official builds get the address of `latest.json`
+  (`build.ps1 -UpdateUrl`, from the repository variable `UPDATE_URL`). Nothing on a PC can
+  point SecReview elsewhere. A build without it never looks and never installs.
+- **Looking** (once a day, by the window or the icon; the answer is kept in `update.json`
+  for both): one anonymous request that carries the product's name and version and nothing
+  about the PC. HTTPS only, on the manifest's own host (for GitHub, also where it serves
+  release files from); every address a server sends SecReview on to is checked the same way.
+  A look that fails is shown as such, with the reason, and never reads as "up to date".
+- **`latest.json`** is written by the release workflow and attached to the release:
+  version, the setup program's address and SHA-256, the date, what is new. Anything not
+  wholly right makes the manifest unusable. A version is three numbers and, optionally, a
+  pre-release part, and nothing else; no text from the server takes part in a file name.
+- **"Update now"** starts `SecReviewCli.exe --apply-update --pipe <name>` through the Windows
+  prompt. The helper takes only the pipe to report on. It reads the manifest again itself,
+  downloads the setup program into a folder only administrators can touch, holds the file
+  open, and starts it only when all of this holds:
+  - the server's version is higher than the one running;
+  - the file has the SHA-256 the manifest names;
+  - Windows accepts its signature, with revocation checked, and it is timestamped;
+  - it is signed by the publisher in `signing\Publisher.props`, which is compiled into
+    signed builds only: the certificate's subject, the signing service's identifier for
+    this publisher, and the root certificate the chain ends in. The root matters because
+    the helper runs as the user who asked, and a user's own trusted roots can be added to
+    without administrator rights;
+  - the file's own version, which the signature covers, is exactly the announced one (so a
+    signed pre-release cannot pass for the release).
+  A file that fails any of this is deleted.
+  Then setup runs silently, with the administrators-only folder as its temporary folder,
+  closes SecReview, and opens the window again for the user who asked. With another
+  account's administrator rights the user opens it again themselves.
+- **The organisation decides** (`HKLM\Software\Policies\SecReview`): `NoUpdateCheck`
+  switches looking off; `NoSelfUpdate` leaves the notice and takes away "Update now". A
+  policy that cannot be read counts as set.
+- **The publisher** in `signing\Publisher.props` is also what the release build holds its own
+  signatures to. Signing with another certificate means changing that file in a reviewed
+  pull request, and installed copies will only take updates signed as it said when they
+  were built.
+- **Testing:** the rules run in unit tests with a made-up server, including the real pipe
+  and Windows' real signature check on a Microsoft-signed file. A whole update, from the
+  prompt to the reopened window, needs a published release and is on the manual list.
 
 ## Error reports
 

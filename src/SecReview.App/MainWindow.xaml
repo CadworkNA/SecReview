@@ -110,6 +110,38 @@
                 </InfoBar.ActionButton>
             </InfoBar>
             <InfoBar
+                Title="Update"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasUpdate, Mode=OneWay}"
+                Message="{x:Bind ViewModel.UpdateMessage, Mode=OneWay}"
+                Severity="Informational"
+                Visibility="{x:Bind ViewModel.HasUpdate, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        x:Name="UpdateButton"
+                        Click="OnUpdateNowClicked"
+                        Content="Update now"
+                        IsEnabled="{x:Bind ViewModel.CanUpdateNow, Mode=OneWay}"
+                        ToolTipService.ToolTip="Windows will ask for permission."
+                        Visibility="{x:Bind ViewModel.ShowUpdateNow, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+                <InfoBar.Content>
+                    <HyperlinkButton
+                        Margin="0,0,0,8"
+                        Padding="0"
+                        Click="OnWhatIsNewClicked"
+                        Content="What's new"
+                        Visibility="{x:Bind ViewModel.HasUpdateNotes, Mode=OneWay}" />
+                </InfoBar.Content>
+            </InfoBar>
+            <InfoBar
+                Title="Update"
+                CloseButtonClick="OnUpdateProblemClosed"
+                IsOpen="{x:Bind ViewModel.HasUpdateProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.UpdateProblem, Mode=OneWay}"
+                Severity="Warning"
+                Visibility="{x:Bind ViewModel.HasUpdateProblem, Mode=OneWay}" />
+            <InfoBar
                 Title="Administrator checks"
                 CloseButtonClick="OnAdministratorProblemClosed"
                 IsOpen="{x:Bind ViewModel.HasAdministratorProblem, Mode=OneWay}"
