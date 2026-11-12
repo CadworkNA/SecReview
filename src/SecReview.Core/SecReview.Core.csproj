@@ -6,6 +6,10 @@
     <!-- Windows APIs are called through pointers (no runtime marshalling), which keeps the
          calls identical under Native AOT. Unsafe code stays inside Probing/Windows. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- SecReview ships for x64 only. Some Windows structures (the notification-area icon's)
+         are laid out differently per processor type, so their declarations are generated
+         for that one. -->
+    <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>

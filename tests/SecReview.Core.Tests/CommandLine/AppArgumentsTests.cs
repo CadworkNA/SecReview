@@ -106,4 +106,29 @@ public sealed class AppArgumentsTests
     {
         Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--smoke-test", "extra"]));
     }
+
+    [TestMethod]
+    public void Tray_IsARoleOfItsOwn_AndTakesOnlyTheSmokeTest()
+    {
+        Assert.AreEqual(new TrayRole(SmokeTest: false), AppArguments.Parse(["--tray"]));
+        Assert.AreEqual(new TrayRole(SmokeTest: true), AppArguments.Parse(["--tray", "--smoke-test"]));
+
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--smoke-test", "--tray"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--tray", "--demo"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--tray", "--tray"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--tray", "--show", "firewall.enabled"]));
+    }
+
+    [TestMethod]
+    public void Show_NamesTheCheckToOpenTheWindowOn_AndNothingButACheck()
+    {
+        Assert.AreEqual("firewall.enabled", Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--show", "firewall.enabled"])).ShowCheck);
+        Assert.IsNull(Assert.IsInstanceOfType<UiRole>(AppArguments.Parse([])).ShowCheck);
+
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--show"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--show", "--demo"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--show", "C:/made/up"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--show", "two words"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--show", "a", "--show", "b"]));
+    }
 }

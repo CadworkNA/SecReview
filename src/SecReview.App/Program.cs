@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using SecReview.Checks;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
+using SecReview.Instances;
 
 namespace SecReview.App;
 
@@ -16,6 +17,9 @@ internal static class Program
     /// <summary>An automated run (smoke test, screenshot) that has not finished by then has failed.</summary>
     private static readonly TimeSpan AutomatedRunLimit = TimeSpan.FromSeconds(60);
 
+    /// <summary>A second start waits this long for the open window to answer before opening its own.</summary>
+    private static readonly TimeSpan HandOverLimit = TimeSpan.FromSeconds(8);
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -23,6 +27,9 @@ internal static class Program
         {
             case UiRole ui:
                 return RunWindow(ui);
+
+            case TrayRole tray:
+                return TrayApp.Run(tray);
 
             case ErrorReportTestRole test:
                 return ErrorReportSelfTest.Run(test.OutputPath);
@@ -43,6 +50,30 @@ internal static class Program
             ? new Timer(
                 _ => Environment.Exit(ExitCode.SmokeTestTimedOut), null, AutomatedRunLimit, Timeout.InfiniteTimeSpan)
             : null;
+
+        // Started from the notification-area icon, the window would inherit that process's
+        // low priority. A window somebody is looking at runs at the ordinary one.
+        try
+        {
+            using var self = System.Diagnostics.Process.GetCurrentProcess();
+            if (self.PriorityClass != System.Diagnostics.ProcessPriorityClass.Normal)
+            {
+                self.PriorityClass = System.Diagnostics.ProcessPriorityClass.Normal;
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // It then runs at the priority it was given.
+        }
+
+        // One window per user: a second start (from the notification-area icon, or the Start
+        // menu) brings the open one forward, on the check it was asked to show, and ends.
+        // Made-up results and automated runs are windows of their own.
+        using SingleInstance? claim = role.Demo || automated ? null : ClaimOrHandOver(role);
+        if (claim is null && !role.Demo && !automated)
+        {
+            return ExitCode.Ok;
+        }
 
         AppLog log = AppLog.ForThisProcess();
 
@@ -93,5 +124,36 @@ internal static class Program
 
         marker?.End();
         return ExitCode.Ok;
+    }
+
+    /// <summary>
+    /// The claim to be the window, or null after handing over to the window that is open. When
+    /// that window does not answer (it is closing, or stuck), this start opens its own.
+    /// </summary>
+    private static SingleInstance? ClaimOrHandOver(UiRole role)
+    {
+        string data = AppData.Directory;
+        long started = Environment.TickCount64;
+        while (true)
+        {
+            if (SingleInstance.TryClaim(InstanceNames.Window(data)) is { } claim)
+            {
+                return claim;
+            }
+
+            Foreground.HandOver();
+            if (ShowRequests.Send(InstanceNames.WindowShow(data), InstanceNames.WindowRequest(data), role.ShowCheck))
+            {
+                return null;
+            }
+
+            if (Environment.TickCount64 - started > HandOverLimit.TotalMilliseconds)
+            {
+                // Nobody answered: a window of its own, without the claim, beats no window.
+                return SingleInstance.Unclaimed;
+            }
+
+            Thread.Sleep(100);
+        }
     }
 }

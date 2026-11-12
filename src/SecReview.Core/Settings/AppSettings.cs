@@ -33,6 +33,28 @@ public sealed record AppSettings
     /// <summary>The ignored checks, oldest first.</summary>
     public IReadOnlyList<IgnoredCheck> Ignored { get; init; } = [];
 
+    /// <summary>How often the checks may be run again by themselves, in hours.</summary>
+    public static IReadOnlyList<int> RecheckChoices { get; } = [1, 4, 12, 24];
+
+    /// <summary>The interval used when none was chosen.</summary>
+    public const int DefaultRecheckHours = 4;
+
+    /// <summary>
+    /// Whether SecReview sits in the notification area and runs the checks again by itself.
+    /// On by default; it only takes effect where SecReview is started at sign-in (an installed
+    /// copy) or the user starts it from the window.
+    /// </summary>
+    public bool RunInNotificationArea { get; init; } = true;
+
+    /// <summary>How often the checks are run again there, in hours: one of <see cref="RecheckChoices"/>.</summary>
+    public int RecheckHours { get; init; } = DefaultRecheckHours;
+
+    /// <summary>Whether a notification is shown when a check starts failing.</summary>
+    public bool NotifyNewFailures { get; init; } = true;
+
+    /// <summary>Until when the checks and notifications are paused; null when they are not.</summary>
+    public DateTimeOffset? SnoozedUntil { get; init; }
+
     /// <summary>The entry for an ignored check; null when it is not ignored.</summary>
     public IgnoredCheck? IgnoredOf(string checkId) =>
         Ignored.FirstOrDefault(entry => entry.CheckId.Equals(checkId, StringComparison.Ordinal));
@@ -113,7 +135,7 @@ public sealed class SettingsStore
                 return SetAside();
             }
 
-            AppSettings? read = JsonSerializer.Deserialize(File.ReadAllBytes(_path), SettingsJson.Default.AppSettings);
+            AppSettings? read = JsonSerializer.Deserialize(AtomicFile.Read(_path), SettingsJson.Default.AppSettings);
             if (read is null || read.Version != AppSettings.CurrentVersion)
             {
                 problem = "The settings file is from another version of SecReview.";
@@ -178,7 +200,32 @@ public sealed class SettingsStore
             }
         }
 
-        return settings with { Version = AppSettings.CurrentVersion, Ignored = ignored };
+        return settings with
+        {
+            Version = AppSettings.CurrentVersion,
+            Ignored = ignored,
+            RecheckHours = AppSettings.RecheckChoices.Contains(settings.RecheckHours) ? settings.RecheckHours : AppSettings.DefaultRecheckHours,
+        };
+    }
+
+    /// <summary>
+    /// Changes the settings: reads them as they are on disk now, applies the change and saves.
+    /// The window and the notification-area icon both write this file; each changes only its
+    /// own part this way, instead of writing back a copy it read earlier.
+    /// </summary>
+    /// <param name="change">The change, applied to the settings as they are now.</param>
+    /// <param name="problem">Why the settings could not be read or saved; null when they were.</param>
+    /// <returns>The settings after the change; when they could not be saved, the change is in them all the same.</returns>
+    public AppSettings Update(Func<AppSettings, AppSettings> change, out string? problem)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        AppSettings changed = change(Load(out problem));
+        if (problem is null || !_mustNotOverwrite)
+        {
+            Save(changed, out problem);
+        }
+
+        return changed;
     }
 
     /// <summary>Moves a file that cannot be used out of the way and returns the defaults.</summary>

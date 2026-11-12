@@ -315,4 +315,38 @@ public sealed class ScanPresentationTests
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scanner.RunOneAsync("no.such.check", isElevated: false));
     }
+
+    [TestMethod]
+    public void WhatTheOtherProcessSaved_IsTakenInWhereItIsNewer()
+    {
+        DateTimeOffset now = new(2026, 11, 12, 15, 0, 0, TimeSpan.Zero);
+        static ScannedCheck At(string id, CheckOutcome outcome, DateTimeOffset when, AdminNeed needsAdmin = AdminNeed.No, bool elevated = false) => new(
+            new CheckDefinition(id, CheckCategory.Access, Severity.Medium, needsAdmin),
+            Texts[FirewallCheck.Id],
+            new CheckResult(id, outcome, when, elevated, TimeSpan.Zero));
+
+        ScannedCheck mineOlder = At("firewall", CheckOutcome.Pass("On."), now.AddHours(-5));
+        ScannedCheck mineNewer = At("logon", CheckOutcome.Fail("On."), now.AddMinutes(-1));
+        ScannedCheck mineAdministrator = At("audit", CheckOutcome.Fail("Off."), now.AddDays(-2), AdminNeed.Yes, elevated: true);
+        var known = new Dictionary<string, ScannedCheck>(StringComparer.Ordinal)
+        {
+            ["firewall"] = mineOlder,
+            ["logon"] = mineNewer,
+            ["audit"] = mineAdministrator,
+        };
+
+        ScannedCheck theirsNewer = At("firewall", CheckOutcome.Fail("Off."), now.AddMinutes(-10));
+        ScannedCheck theirsOlder = At("logon", CheckOutcome.Pass("Off."), now.AddHours(-1));
+        ScannedCheck theirsAsking = At("audit", CheckOutcome.NeedsAdmin("Needs administrator rights."), now.AddMinutes(-10), AdminNeed.Yes);
+        ScannedCheck theirsOnly = At("new", CheckOutcome.Pass("Fine."), now.AddMinutes(-10));
+        var saved = new ScanResult([theirsNewer, theirsOlder, theirsAsking, theirsOnly], now.AddMinutes(-10), Elevated: false);
+
+        Assert.IsTrue(ScanPresentation.TakeNewer(known, saved, now));
+
+        Assert.AreSame(theirsNewer, known["firewall"], "the icon found it off after this window last looked");
+        Assert.AreSame(mineNewer, known["logon"], "this window's answer is the newer one");
+        Assert.AreSame(mineAdministrator, known["audit"], "an administrator answer is not lost to 'needs administrator'");
+        Assert.AreSame(theirsOnly, known["new"]);
+        Assert.IsFalse(ScanPresentation.TakeNewer(known, saved, now), "nothing new the second time");
+    }
 }

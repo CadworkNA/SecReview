@@ -41,6 +41,8 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/SupplyChain` | The developer supply-chain checks, a folder per tool or topic (uv, pnpm, Scoop, npm, Yarn, pip, NuGet, Cargo, Go, Git, editors, AI agents and MCP servers, Docker, winget, Chocolatey, environment variables, stored credentials): release cooldowns, unsafe package sources, switched-off protections, secrets stored as plain text. No tool is ever run: versions come from files, and where none records one the result says so. A check does not apply when its tool is absent |
 | `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
 | `src/SecReview.Core/Elevation` | The administrator checks: the pipe's name and rules, what the helper does when started elevated, and the app's side (make the pipe, start the helper through the Windows prompt, verify who answers, read the answer) |
+| `src/SecReview.Core/Tray` | The notification-area icon: when the checks run again, what the icon, its tooltip and a notification say (`TrayLogic`), the icon's picture drawn in code (`TrayIconImage`), what the process behind it does (`TraySession`), and under `Windows/` the icon itself |
+| `src/SecReview.Core/Instances` | How SecReview's processes find each other: one window and one icon per user, the signal from the window to the icon, and a second start handing over to the open window |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording, handing each result over as it arrives; filters, groups and the headline; the last scan kept in `results.json`; the made-up results behind `--demo` |
 | `src/SecReview.Core/Settings` | What is remembered between runs (`settings.json`): ignored checks with their reasons. A damaged file is set aside and never stops the app |
 | `src/SecReview.Core/Reporting` | The report written by `SecReviewCli --report` |
@@ -81,6 +83,42 @@ answer from a pipe.
 - The build runs the compiled helper over a real pipe (`build.ps1` stands in for the app). On
   a build machine that runs with administrator rights, as hosted runners do, the checks are
   really answered. The Windows prompt itself cannot be exercised by a build.
+
+## The notification-area icon
+
+`SecReview.exe --tray` is the icon: no window, and the UI framework is never started. It runs
+the checks again when they are due, keeps `results.json` for the window, and says so when a
+check starts failing.
+
+- **Schedule:** one interval (1, 4, 12 or 24 hours; 4 by default) after the last scan,
+  whoever ran it; not in the first minute after starting; not while paused. After a scan that
+  could not run, the next try is 15 minutes later.
+- **A notification** only for a check that was known not to fail and now does. The first scan
+  of a PC, an ignored check and one that was already failing are not news. Clicking it opens
+  the window on that check (`SecReview.exe --show <check>`).
+- **The icon** is green only when everything checked is in order; orange when something
+  needs attention; grey when nothing is known, something could not be checked, or the checks
+  are paused. A scan older than two intervals and a day no longer makes it green. Checks that
+  wait for administrator rights do not count against green, as in the window; the tooltip
+  then says "No problems found so far". It is drawn in code, so there are no image files.
+- **Shared files:** the window and the icon both read and write `settings.json` and
+  `results.json`. Each changes the settings as they are on disk, never a copy it read
+  earlier. Before saving results each takes in the other's newer answers, check by check,
+  and an open window shows what the icon found within seconds. The window signals the icon
+  after writing. A file the other process has open for a moment is written on a later try.
+- **Never as administrator through the prompt:** the icon stays all day and opens the
+  window, so with those rights it would pass them on. It does not run then, and an elevated
+  window does not start it. Where administrators are always elevated it runs as they do.
+- **One of each:** a second icon ends at once; a second window brings the open one forward.
+  The names they find each other by are local to the user's Windows session and carry the
+  data folder, so a copy run with `SECREVIEW_DATA_DIR` is a set of its own.
+- **Nothing is registered with Windows by the app.** Starting at sign-in is the installer's
+  entry; the switch in Settings is what the icon looks at when it starts, and it ends itself
+  when the switch is off. The notification is the icon's own (no app registration).
+- **Testing:** the rules run in unit tests against a fake icon and a clock. The icon itself
+  runs on build machines only (`--tray --smoke-test`: put up the icon, run the checks once,
+  save, exit); `build.ps1` skips it elsewhere, because Windows remembers every icon it has
+  shown. Clicking the icon, its menu and the notification cannot be exercised by a build.
 
 ## Error reports
 

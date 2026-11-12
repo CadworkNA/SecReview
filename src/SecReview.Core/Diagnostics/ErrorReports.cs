@@ -113,7 +113,7 @@ public static class ErrorReports
     /// Whether a tag value is a check's identifier ("firewall.enabled"): letters, digits, dots,
     /// dashes and underscores. Anything else is not sent as one.
     /// </summary>
-    public static bool IsCheckId(string? value) =>
+    public static bool IsCheckId([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) =>
         value is { Length: > 0 and <= 100 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');
 
     /// <summary>

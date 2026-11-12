@@ -279,6 +279,30 @@ Invoke-Step 'Smoke test' {
     }
     Write-Host "SecReview.exe: this PC scanned, window shown and closed in $($timer.ElapsedMilliseconds) ms."
 
+    # The notification-area icon: it must start without the UI framework, put up its icon,
+    # run the checks once and save what the window shows. On build machines only: an icon in
+    # the notification area is something Windows remembers, and a developer's PC is not for
+    # that. A build machine may have no notification area; the icon's log says which it was.
+    if ($env:CI -eq 'true') {
+        $results = Join-Path $appData 'results.json'
+        if (Test-Path $results) { Remove-Item $results -Force }
+        $timer.Restart()
+        $exit = Invoke-App '--tray', '--smoke-test' -TimeoutSeconds 120
+        if ($exit -ne 0 -or -not (Test-Path $results)) {
+            throw "SecReview.exe --tray --smoke-test ended with '$exit' (results saved: $(Test-Path $results)).$(Get-AppLog)"
+        }
+        $said = Get-Content (Join-Path $appData 'logs\SecReview.log') | Where-Object { $_ -match 'Smoke test: (.+)$' } | ForEach-Object { $Matches[1] } | Select-Object -Last 1
+        if (-not $said) { throw "The notification-area icon did not say whether it was shown.$(Get-AppLog)" }
+        Write-Host "SecReview.exe --tray: checks run and results saved in $($timer.ElapsedMilliseconds) ms. $said"
+
+        # A second icon for the same user ends at once, and the window asked to show a check
+        # it does not have is still a window.
+        $exit = Invoke-App '--show', 'no.such.check', '--smoke-test'
+        if ($exit -ne 0) { throw "SecReview.exe --show no.such.check --smoke-test ended with '$exit', expected 0.$(Get-AppLog)" }
+    } else {
+        Write-Host 'SecReview.exe --tray: not run here (build machines only).'
+    }
+
     # A picture of the window with made-up results covering every kind of outcome: proof that
     # the rows, tables and fix steps draw, and something to look at without any real PC's data.
     $shots = Join-Path $root 'artifacts\screenshots'

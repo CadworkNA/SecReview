@@ -142,7 +142,7 @@
                     TextWrapping="Wrap"
                     Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}" />
 
-                <ItemsRepeater ItemsSource="{x:Bind ViewModel.Sections}">
+                <ItemsRepeater x:Name="SectionsList" ItemsSource="{x:Bind ViewModel.Sections}">
                     <ItemsRepeater.Layout>
                         <StackLayout Spacing="8" />
                     </ItemsRepeater.Layout>

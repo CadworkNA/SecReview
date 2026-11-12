@@ -48,6 +48,20 @@ public sealed class ResultsStore
         }
     }
 
+    /// <summary>When the results file was last written; null when there is none. Tells a reader whether to read it again.</summary>
+    public DateTimeOffset? Stamp()
+    {
+        try
+        {
+            var file = new FileInfo(_path);
+            return file.Exists ? file.LastWriteTimeUtc : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// A scan as the bytes it is kept or handed over in. The same form serves the results file
     /// and what the administrator helper sends back.
@@ -86,7 +100,7 @@ public sealed class ResultsStore
         try
         {
             var file = new FileInfo(_path);
-            return file.Exists && file.Length <= MaximumBytes ? FromBytes(File.ReadAllBytes(_path), checks, texts) : null;
+            return file.Exists && file.Length <= MaximumBytes ? FromBytes(AtomicFile.Read(_path), checks, texts) : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
