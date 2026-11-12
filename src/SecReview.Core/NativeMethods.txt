@@ -134,3 +134,13 @@ TOKEN_ELEVATION_TYPE
 LoadImage
 SendMessage
 WM_SETICON
+WinVerifyTrust
+WINTRUST_DATA
+WINTRUST_FILE_INFO
+WTHelperProvDataFromStateData
+WTHelperGetProvSignerFromChain
+WTHelperGetProvCertFromChain
+GetNamedPipeServerProcessId
+OpenProcess
+OpenProcessToken
+CloseHandle
