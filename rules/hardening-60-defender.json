@@ -1,0 +1,136 @@
+{
+  "rules": [
+    {
+      "id": "harden.defender.behavior",
+      "category": "hardening",
+      "severity": "high",
+      "text": {
+        "name": "Defender behaviour monitoring",
+        "titlePass": "Microsoft Defender watches what programs do",
+        "titleFail": "Microsoft Defender does not watch what programs do",
+        "why": "Behaviour monitoring catches malware by what it does, which is the only way to stop malware nobody has seen before.",
+        "fix": [
+          "Tell IT: Microsoft Defender's behaviour monitoring is switched off.",
+          "The policy is \"Turn on behavior monitoring\" under Real-time Protection."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/desktop/defender/msft-mppreference",
+      "verified": "2026-11-12",
+      "defender": { "item": "Behaviour monitoring", "property": "DisableBehaviorMonitoring", "expect": { "is": 0 }, "expected": "On", "labels": { "0": "On", "1": "Off" } }
+    },
+    {
+      "id": "harden.defender.downloads",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Defender scan of downloads",
+        "titlePass": "Microsoft Defender scans downloads and attachments",
+        "titleFail": "Microsoft Defender does not scan downloads and attachments",
+        "why": "Most malware arrives as a download or an attachment. Scanning it on arrival stops it before it is ever opened.",
+        "fix": [
+          "Tell IT: Microsoft Defender's scanning of downloaded files and attachments is switched off.",
+          "The policy is \"Scan all downloaded files and attachments\" under Real-time Protection."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/desktop/defender/msft-mppreference",
+      "verified": "2026-11-12",
+      "defender": { "item": "Scanning of downloads and attachments", "property": "DisableIOAVProtection", "expect": { "is": 0 }, "expected": "On", "labels": { "0": "On", "1": "Off" } }
+    },
+    {
+      "id": "harden.defender.scripts",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Defender script scanning",
+        "titlePass": "Microsoft Defender scans scripts",
+        "titleFail": "Microsoft Defender does not scan scripts",
+        "why": "Much current malware is a script, not a program file. Without script scanning it runs unseen.",
+        "fix": [
+          "Tell IT: Microsoft Defender's script scanning is switched off.",
+          "The policy is \"Turn on script scanning\" under Real-time Protection."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/desktop/defender/msft-mppreference",
+      "verified": "2026-11-12",
+      "defender": { "item": "Script scanning", "property": "DisableScriptScanning", "expect": { "is": 0 }, "expected": "On", "labels": { "0": "On", "1": "Off" } }
+    },
+    {
+      "id": "harden.defender.pua",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Blocking of unwanted apps",
+        "titlePass": "Microsoft Defender blocks unwanted apps",
+        "titleFail": "Microsoft Defender does not block unwanted apps",
+        "why": "Unwanted apps are the adware and bundled extras that come with free downloads. They slow the PC and often open the door to worse.",
+        "fix": [
+          "Open Windows Security > App & browser control > Reputation-based protection settings.",
+          "Turn on Potentially unwanted app blocking, with Block apps ticked."
+        ],
+        "timeToFix": "1 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-defender",
+      "verified": "2026-11-12",
+      "defender": { "item": "Blocking of unwanted apps", "property": "PUAProtection", "expect": { "is": 1 }, "expected": "Block", "labels": { "0": "Off", "1": "Block", "2": "Audit only" } }
+    },
+    {
+      "id": "harden.defender.network-protection",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Defender network protection",
+        "titlePass": "Microsoft Defender blocks connections to known bad sites",
+        "titleFail": "Microsoft Defender does not block connections to bad sites",
+        "why": "Network protection stops any program, not just the browser, from reaching sites known for malware and phishing.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Prevent users and apps from accessing dangerous websites\", set to Block."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-defender",
+      "verified": "2026-11-12",
+      "defender": { "item": "Network protection", "property": "EnableNetworkProtection", "expect": { "is": 1 }, "expected": "Block", "labels": { "0": "Off", "1": "Block", "2": "Audit only" } }
+    },
+    {
+      "id": "harden.defender.asr",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Attack surface reduction",
+        "titlePass": "Defender's standard attack surface reduction rules block",
+        "titleFail": "Defender's standard attack surface reduction rules are off",
+        "why": "These three rules block techniques that attackers use and ordinary programs do not. Microsoft recommends them for every PC.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Configure Attack Surface Reduction rules\"; each rule shown in the details is set to Block."
+        ],
+        "timeToFix": "10 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference",
+      "verified": "2026-11-12",
+      "defenderRules": {
+        "rules": [
+          { "id": "56a863a9-875e-4185-98a7-b882c64b5ce5", "name": "Block abuse of exploited vulnerable signed drivers" },
+          { "id": "9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2", "name": "Block credential stealing from LSASS" },
+          { "id": "e6db77e5-3df2-4cf1-b95a-636979351e5b", "name": "Block persistence through WMI event subscription" }
+        ]
+      }
+    }
+  ]
+}

@@ -40,11 +40,11 @@ public static class DemoScan
     {
         ArgumentNullException.ThrowIfNull(clock);
 
-        CheckTexts texts = CheckTexts.Load();
+        CheckTexts texts = CheckCatalogue.Texts;
         DateTimeOffset now = clock.GetUtcNow();
 
         return new ScanResult(
-            [.. BuiltInChecks.All.Select(check =>
+            [.. CheckCatalogue.Checks.Select(check =>
             {
                 string id = check.Definition.Id;
                 CheckOutcome outcome = Outcomes.TryGetValue(id, out CheckOutcome? made)

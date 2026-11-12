@@ -55,6 +55,23 @@ public sealed class CheckTexts
 
     public bool Contains(string checkId) => _texts.ContainsKey(checkId);
 
+    /// <summary>This wording plus that of more checks. An identifier may have wording only once.</summary>
+    public CheckTexts With(IEnumerable<KeyValuePair<string, CheckText>> more)
+    {
+        ArgumentNullException.ThrowIfNull(more);
+
+        var texts = new Dictionary<string, CheckText>(_texts, StringComparer.Ordinal);
+        foreach ((string id, CheckText text) in more)
+        {
+            if (!texts.TryAdd(id, text))
+            {
+                throw new ArgumentException($"The check '{id}' has wording twice.", nameof(more));
+            }
+        }
+
+        return new CheckTexts(texts);
+    }
+
     /// <summary>Loads the embedded English wording.</summary>
     public static CheckTexts Load()
     {

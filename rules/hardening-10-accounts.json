@@ -1,0 +1,226 @@
+{
+  "rules": [
+    {
+      "id": "harden.password.length",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Minimum password length",
+        "titlePass": "Passwords must be at least 14 characters",
+        "titleFail": "Short passwords are allowed",
+        "why": "Short passwords are guessed quickly once an attacker has the password file. This applies to accounts kept on this PC.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Account Policies > Password Policy and set Minimum password length to 14."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings",
+      "verified": "2026-11-12",
+      "accountPolicy": { "item": "Minimum password length", "field": "minimumPasswordLength", "expect": { "atLeast": 14 }, "expected": "14 characters or more", "unit": "characters" }
+    },
+    {
+      "id": "harden.password.history",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Password history",
+        "titlePass": "Old passwords cannot be reused",
+        "titleFail": "Old passwords can be reused",
+        "why": "Without a password history, a changed password can be switched straight back to the old, possibly leaked, one.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Account Policies > Password Policy and set Enforce password history to 24."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings",
+      "verified": "2026-11-12",
+      "accountPolicy": { "item": "Passwords remembered", "field": "passwordHistoryLength", "expect": { "atLeast": 24 }, "expected": "24 or more" }
+    },
+    {
+      "id": "harden.lockout.threshold",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Account lockout",
+        "titlePass": "Accounts lock after repeated wrong passwords",
+        "titleFail": "Accounts do not lock after wrong passwords",
+        "why": "Without lockout, a program can try passwords against this PC without end until one works.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Account Policies > Account Lockout Policy and set the threshold to 10."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/account-lockout-threshold",
+      "verified": "2026-11-12",
+      "accountPolicy": { "item": "Wrong passwords before lockout", "field": "lockoutThreshold", "expect": { "atLeast": 1, "atMost": 10 }, "expected": "10 or fewer" }
+    },
+    {
+      "id": "harden.lockout.duration",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Lockout time",
+        "titlePass": "Locked accounts stay locked long enough",
+        "titleFail": "Locked accounts unlock too soon",
+        "why": "A lockout that ends after a moment barely slows down password guessing.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Account Policies > Account Lockout Policy and set the duration to 10 minutes or more."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/book/identity-protection-advanced-credential-protection",
+      "verified": "2026-11-12",
+      "accountPolicy": { "item": "Lockout time", "field": "lockoutDurationMinutes", "expect": { "atLeast": 10 }, "expected": "10 minutes or more", "unit": "minutes" }
+    },
+    {
+      "id": "harden.blank-passwords",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Accounts without a password",
+        "titlePass": "Accounts without a password cannot sign in over the network",
+        "titleFail": "Accounts without a password can sign in over the network",
+        "why": "An account with no password is harmless only as long as it can be used at the keyboard alone.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options and enable the blank passwords setting under Accounts."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/accounts-limit-local-account-use-of-blank-passwords-to-console-logon-only",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Blank passwords limited to the keyboard",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Lsa", "value": "LimitBlankPasswordUse" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.uac.admin-prompt",
+      "category": "hardening",
+      "severity": "high",
+      "text": {
+        "name": "Administrator prompt",
+        "titlePass": "Windows asks before giving administrator rights",
+        "titleFail": "Administrator rights are given without asking",
+        "why": "When Windows elevates without a prompt, any program run by an administrator silently gets full control of the PC.",
+        "fix": [
+          "Open Start, type UAC and open Change User Account Control settings.",
+          "Move the slider up from the bottom position and select OK.",
+          "If the slider is locked, the setting comes from your organisation: tell IT."
+        ],
+        "timeToFix": "2 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/settings-and-configuration",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Prompt for administrators",
+        "root": "localMachine",
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so no prompt is shown at all; see the User Account Control check."
+        },
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "ConsentPromptBehaviorAdmin" } ],
+        "expect": { "not": 0 },
+        "expected": "Asks for consent or a password",
+        "labels": {
+          "0": "Elevates without asking",
+          "1": "Asks for a password on the secure desktop",
+          "2": "Asks for consent on the secure desktop",
+          "3": "Asks for a password",
+          "4": "Asks for consent",
+          "5": "Asks for consent for programs that are not part of Windows"
+        },
+        "absent": { "found": "Not configured (Windows default: asks for consent)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.uac.secure-desktop",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Secure desktop for prompts",
+        "titlePass": "Administrator prompts appear on the secure desktop",
+        "titleFail": "Administrator prompts appear on the normal desktop",
+        "why": "On the normal desktop, another program can click or imitate the administrator prompt. The secure desktop shuts every other program out.",
+        "fix": [
+          "Open Start, type UAC and open Change User Account Control settings.",
+          "Choose one of the two upper positions, which dim the desktop, and select OK."
+        ],
+        "timeToFix": "2 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/settings-and-configuration",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Prompts on the secure desktop",
+        "root": "localMachine",
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so no prompt is shown at all; see the User Account Control check."
+        },
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "PromptOnSecureDesktop" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.uac.builtin-admin",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Built-in Administrator and prompts",
+        "titlePass": "The built-in Administrator is asked before elevation too",
+        "titleFail": "The built-in Administrator is never asked before elevation",
+        "why": "If the built-in Administrator account is ever enabled, everything it runs has full control at once. It matters little while that account is off.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options and enable Admin Approval Mode for the Built-in Administrator account."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/settings-and-configuration",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Prompts for the built-in Administrator",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "FilterAdministratorToken" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": false }
+      }
+    }
+  ]
+}

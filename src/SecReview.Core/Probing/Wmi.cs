@@ -39,6 +39,12 @@ public sealed class WmiObject
     /// <summary>The property as a list of texts; empty if absent or not such a list.</summary>
     public IReadOnlyList<string> Texts(string name) => Value(name) as IReadOnlyList<string> ?? [];
 
+    /// <summary>Whether the property has a value at all; WMI's "null" is no value.</summary>
+    public bool Has(string name) => Value(name) is not null;
+
+    /// <summary>Whether the property is a list, of numbers or of texts.</summary>
+    public bool IsList(string name) => Value(name) is IReadOnlyList<long> or IReadOnlyList<string>;
+
     private object? Value(string name) => _values.GetValueOrDefault(name);
 }
 

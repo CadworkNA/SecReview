@@ -169,10 +169,13 @@ public sealed class ScanTests
 
         ScanResult scan = await scanner.RunAsync(CheckSelection.All, isElevated: false);
 
-        Assert.AreEqual(BuiltInChecks.All.Count, scan.Checks.Count);
+        Assert.AreEqual(CheckCatalogue.Checks.Count, scan.Checks.Count);
         Assert.IsFalse(scan.Elevated);
+
+        // A check that only an administrator scan can answer waits for one; everything else
+        // could not be checked. Nothing passes, fails or "does not apply".
         string[] answered = [.. scan.Checks
-            .Where(c => c.Result.Outcome.Status != CheckStatus.Error)
+            .Where(c => c.Result.Outcome.Status != (c.Definition.NeedsAdmin == AdminNeed.Yes ? CheckStatus.NeedsAdmin : CheckStatus.Error))
             .Select(c => $"{c.Definition.Id}: {c.Result.Outcome.Status}")];
         Assert.AreEqual(0, answered.Length, "unreadable is never a pass: " + string.Join(", ", answered));
         Assert.IsTrue(scan.Checks.All(c => c.Text.Name == c.Title), "an unanswered check is named neutrally");
@@ -184,7 +187,7 @@ public sealed class ScanTests
         ScanResult demo = DemoScan.Create(TimeProvider.System);
 
         CollectionAssert.AreEquivalent(
-            BuiltInChecks.All.Select(c => c.Definition.Id).ToArray(),
+            CheckCatalogue.Checks.Select(c => c.Definition.Id).ToArray(),
             demo.Checks.Select(c => c.Definition.Id).ToArray());
         Assert.IsTrue(demo.Checks.Select(c => c.Result.Outcome.Status).Distinct().Count() >= 4);
         Assert.IsTrue(demo.Checks.All(c => !string.IsNullOrWhiteSpace(c.Result.Outcome.Summary)));

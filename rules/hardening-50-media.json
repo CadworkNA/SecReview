@@ -1,0 +1,149 @@
+{
+  "rules": [
+    {
+      "id": "harden.autoplay",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "AutoPlay",
+        "titlePass": "AutoPlay is off for all drives",
+        "titleFail": "AutoPlay is on",
+        "why": "AutoPlay opens or runs what is on a USB stick or disc as soon as it is plugged in, before you have looked at it.",
+        "fix": [
+          "Open Settings > Bluetooth & devices > AutoPlay and turn AutoPlay off for yourself.",
+          "For the whole PC, tell IT: the policy is \"Turn off Autoplay\", set to All drives."
+        ],
+        "timeToFix": "1 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-autoplay",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "AutoPlay switched off for",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "value": "NoDriveTypeAutoRun" } ],
+        "expect": { "is": 255 },
+        "expected": "All drives",
+        "labels": { "255": "All drives" },
+        "absent": { "found": "Not configured for the whole PC (Windows default: AutoPlay on)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.autorun",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "AutoRun commands",
+        "titlePass": "Drives cannot start programs by themselves",
+        "titleFail": "Drives can offer to start programs by themselves",
+        "why": "An autorun command on a USB stick or disc names a program to start. Malware on removable drives relies on it.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Set the default behavior for AutoRun\", set to \"Do not execute any autorun commands\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-autoplay",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Autorun commands blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "value": "NoAutorun" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: the user is asked)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.installer.elevated",
+      "category": "hardening",
+      "severity": "high",
+      "text": {
+        "name": "Elevated installs (PC)",
+        "titlePass": "Installers do not get administrator rights by default",
+        "titleFail": "The PC lets installers run with administrator rights",
+        "why": "With this policy on, any user or any malware can install software with full control of the PC by wrapping it in an installer.",
+        "fix": [
+          "Tell IT: the policy \"Always install with elevated privileges\" must be disabled.",
+          "It is set for the PC in the key shown in the details."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/win32/msi/alwaysinstallelevated",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Always install with elevated privileges (PC)",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\Installer", "value": "AlwaysInstallElevated", "policy": true } ],
+        "expect": { "not": 1 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.installer.elevated-user",
+      "category": "hardening",
+      "severity": "high",
+      "text": {
+        "name": "Elevated installs (user)",
+        "titlePass": "Your installers do not get administrator rights by default",
+        "titleFail": "Your account lets installers run with administrator rights",
+        "why": "Together with the same policy for the PC, any program you run can install software with full control of the PC.",
+        "fix": [
+          "Tell IT: the policy \"Always install with elevated privileges\" must be disabled.",
+          "It is set for your account in the key shown in the details."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/win32/msi/alwaysinstallelevated",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Always install with elevated privileges (user)",
+        "root": "currentUser",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\Installer", "value": "AlwaysInstallElevated", "policy": true } ],
+        "expect": { "not": 1 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.printer-drivers",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Printer driver installs",
+        "titlePass": "Only administrators can install printer drivers",
+        "titleFail": "Anyone can install printer drivers",
+        "why": "A printer driver runs deep inside Windows. Letting any user install one was the opening for the PrintNightmare attacks.",
+        "fix": [
+          "Tell IT: the value RestrictDriverInstallationToAdministrators shown in the details must be 1 or absent.",
+          "If printers stop installing afterwards, IT can pre-install their drivers."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://support.microsoft.com/en-us/topic/kb5005652-manage-new-point-and-print-default-driver-installation-behavior-cve-2021-34481-873642bf-2634-49c5-a23b-6d8e9a302872",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Printer drivers need an administrator",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint", "value": "RestrictDriverInstallationToAdministrators", "policy": true } ],
+        "expect": { "not": 0 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    }
+  ]
+}

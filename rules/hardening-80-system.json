@@ -1,0 +1,131 @@
+{
+  "rules": [
+    {
+      "id": "harden.dll-search",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Safe DLL search",
+        "titlePass": "Programs load their libraries from safe places first",
+        "titleFail": "Programs look for libraries in the current folder first",
+        "why": "With safe search off, a program opened from a folder with a planted library loads the attacker's code instead of its own.",
+        "fix": [
+          "Tell IT: the value SafeDllSearchMode shown in the details must be 1 or absent."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Safe DLL search mode",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Session Manager", "value": "SafeDllSearchMode" } ],
+        "expect": { "not": 0 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.elam",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Drivers loaded at start-up",
+        "titlePass": "Windows does not load drivers known to be bad at start-up",
+        "titleFail": "Windows loads every driver at start-up, even known bad ones",
+        "why": "The antivirus rates each driver before Windows starts. Loading the ones it rates as bad gives malware control before anything can stop it.",
+        "fix": [
+          "Tell IT: the policy is \"Boot-Start Driver Initialization Policy\" under System > Early Launch Antimalware.",
+          "It must not be set to \"All\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/elam-driver-requirements",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Drivers loaded at start-up",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Policies\\EarlyLaunch", "value": "DriverLoadPolicy" } ],
+        "expect": { "not": 7 },
+        "expected": "Not all drivers",
+        "labels": { "1": "Good and unknown", "3": "Good, unknown and bad but needed to start", "7": "All, including bad" },
+        "absent": { "found": "Not configured (Windows default: good, unknown and bad but needed to start)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.sehop",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Exception chain protection (SEHOP)",
+        "titlePass": "Exception chain protection is switched on",
+        "titleFail": "Exception chain protection is not switched on",
+        "why": "SEHOP blocks an old way of taking over 32-bit programs through their error handling. Microsoft's baseline switches it on for all programs.",
+        "fix": [
+          "Tell IT: the value DisableExceptionChainValidation shown in the details must be 0."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://support.microsoft.com/en-us/topic/how-to-enable-structured-exception-handling-overwrite-protection-sehop-in-windows-operating-systems-8d4595f7-827f-72ee-8c34-fa8e0fe7b915",
+      "verified": "2026-11-12",
+      "registry": {
+        "item": "Exception chain protection",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel", "value": "DisableExceptionChainValidation" } ],
+        "expect": { "is": 0 },
+        "expected": "On",
+        "labels": { "0": "On", "1": "Off" },
+        "absent": { "found": "Not configured", "passes": false }
+      }
+    },
+    {
+      "id": "harden.rights.debug",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Right to debug programs",
+        "titlePass": "Only administrators may debug other programs",
+        "titleFail": "Others than administrators may debug other programs",
+        "why": "Whoever may debug any program can read its memory, passwords included, and take over Windows itself.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Debug programs and leave only Administrators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/debug-programs",
+      "verified": "2026-11-12",
+      "userRight": { "item": "Debug programs", "right": "SeDebugPrivilege", "allowed": [ "S-1-5-32-544" ] }
+    },
+    {
+      "id": "harden.rights.network-logon",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to connect over the network",
+        "titlePass": "Only administrators and remote users may connect to this PC",
+        "titleFail": "Everyone may connect to this PC over the network",
+        "why": "This right decides who may reach shared folders and services on this PC at all. Windows gives it to everyone by default.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is User Rights Assignment > Access this computer from the network: Administrators and Remote Desktop Users only."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings",
+      "verified": "2026-11-12",
+      "userRight": { "item": "Access this computer from the network", "right": "SeNetworkLogonRight", "allowed": [ "S-1-5-32-544", "S-1-5-32-555" ] }
+    }
+  ]
+}
