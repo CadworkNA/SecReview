@@ -54,6 +54,26 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 | `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
 
+## Error reports
+
+The app can report its own errors (an unhandled error, a check that threw, a run that never
+closed down) and send feedback the user types. It uses the Sentry SDK, in the app only: the
+command-line helper, the only binary that runs elevated, has no such code.
+
+- Nothing is sent unless the build was given an address (`.\build.ps1 -ErrorReportAddress`),
+  the organisation has not set `NoErrorReports` under `HKLM\SOFTWARE\Policies\SecReview`, and
+  the user has left the switch in Settings on. A plain build has no address.
+- A report holds the error's type, where in SecReview it happened, and the versions of
+  SecReview, Windows and .NET. The message of an error inside a check is dropped: it can quote
+  what the check read. Other messages lose the user's and the computer's name. No results, no
+  device details, no installation identifier, no trail of earlier events, nothing on disk, and
+  no memory dumps (the SDK's native crash handler is not compiled in).
+- `SecReview.exe --error-report-test <file>` raises made-up errors carrying this PC's real
+  names and a made-up secret and writes what would have been sent to the file. The build reads
+  it and fails if any of that is in there, or if the SDK wrote into the user's profile.
+- The package's own build steps (uploading symbols or sources with its command-line tool) are
+  switched off in the app's project file.
+
 ## The list of known-malicious packages
 
 The list is a file beside the programs, `known-malicious.idx`. A plain build has none, and the

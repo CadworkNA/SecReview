@@ -53,6 +53,27 @@ public sealed class CheckRunnerTests
     }
 
     [TestMethod]
+    public async Task ACheckThatThrows_IsAlsoHandedOver_ForReportingTheBug()
+    {
+        var handed = new List<(string CheckId, Exception Error)>();
+        var runner = new CheckRunner(
+            new FakeProbes().Build(), TimeProvider.System, CheckSelection.All, isElevated: false, privacy: PrivacyFilter.None,
+            onUnexpected: (id, error) => handed.Add((id, error)));
+        ICheck[] checks =
+        [
+            new StubCheck("throws", _ => throw new InvalidOperationException("boom")),
+            new StubCheck("fails", _ => CheckOutcome.Fail("off")),
+            new StubCheck("cannot", _ => CheckOutcome.Error("Windows did not answer.")),
+        ];
+
+        await runner.RunAsync(checks);
+
+        Assert.AreEqual(1, handed.Count, "a failing check, or one that could not be answered, is not a bug in SecReview");
+        Assert.AreEqual("throws", handed[0].CheckId);
+        Assert.IsInstanceOfType<InvalidOperationException>(handed[0].Error);
+    }
+
+    [TestMethod]
     public async Task ACheckThatHangs_IsReportedAsNotFinished_AndTheOthersStillRun()
     {
         using var never = new ManualResetEventSlim();

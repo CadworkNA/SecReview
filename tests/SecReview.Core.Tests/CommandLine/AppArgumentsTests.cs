@@ -57,6 +57,18 @@ public sealed class AppArgumentsTests
     }
 
     [TestMethod]
+    public void TheErrorReportTest_TakesAFile_AndNothingElse()
+    {
+        var role = Assert.IsInstanceOfType<ErrorReportTestRole>(AppArguments.Parse(["--error-report-test", "out.txt"]));
+        Assert.AreEqual("out.txt", role.OutputPath);
+
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--error-report-test"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--error-report-test", "--demo"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--error-report-test", "out.txt", "--demo"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--demo", "--error-report-test", "out.txt"]));
+    }
+
+    [TestMethod]
     public void Screenshot_WithoutAFile_IsInvalid()
     {
         Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--screenshot"]));

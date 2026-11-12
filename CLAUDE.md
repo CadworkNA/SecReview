@@ -25,8 +25,13 @@ done; start there when resuming work.
 - **Secrets:** report file and key, never the value; nothing secret in logs or error reports.
 - **Elevated code** (`SecReviewCli --elevated-scan`, `--apply-update`) takes only a pipe name of a
   fixed form from its caller. No paths, no lists, no URLs.
-- **Dependencies:** Microsoft-published packages only, exact versions, at least 7 days old. Ask
-  before adding anything else.
+- **Dependencies:** Microsoft-published packages only, exact versions, at least 7 days old. The
+  one exception, approved by the maintainer, is the error-reporting SDK (`Sentry`, app only).
+  Ask before adding anything else.
+- **Error reports** hold an error's type, where in SecReview it happened and the versions of
+  SecReview and Windows. Never results, names, paths or an identifier. Every report goes
+  through `ErrorReporter.Clean`; the build's `--error-report-test` proves it. The elevated
+  helper never reports anything.
 - **Text is short.** Titles one sentence, reasons one line, fix steps as numbered actions. The
   same goes for docs, pull requests and issues.
 

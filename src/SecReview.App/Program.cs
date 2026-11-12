@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using SecReview.Checks;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
 
@@ -23,6 +24,9 @@ internal static class Program
             case UiRole ui:
                 return RunWindow(ui);
 
+            case ErrorReportTestRole test:
+                return ErrorReportSelfTest.Run(test.OutputPath);
+
             case InvalidRole:
                 // A windowed app has no console to explain itself on; the exit code says it.
                 return ExitCode.Usage;
@@ -41,11 +45,22 @@ internal static class Program
             : null;
 
         AppLog log = AppLog.ForThisProcess();
+
+        // Made-up results report nothing, whatever the build: they are for looking at the window.
+        using var reporter = new ErrorReporter(role.Demo ? null : ErrorReports.CompiledAddress, log, PrivacyFilter.ForThisProcess());
+
+        // A run that is being looked at by a person leaves a marker while its window is open;
+        // one found at the next start, with its process gone, is a run that crashed.
+        RunMarker? marker = role.Demo || automated ? null : RunMarker.ForThisProcess();
+        bool previousRunCrashed = marker?.Begin() ?? false;
+
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             if (e.ExceptionObject is Exception exception)
             {
                 log.Error("Unhandled error", exception);
+                reporter.Report(exception);
+                reporter.Dispose(); // the process is about to end: send what is waiting
             }
         };
 
@@ -56,7 +71,7 @@ internal static class Program
             {
                 SynchronizationContext.SetSynchronizationContext(
                     new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                _ = new App(role, log);
+                _ = new App(role, log, reporter, previousRunCrashed);
             });
         }
 #pragma warning disable CA1031 // Last resort: record why the window could not run, then fail visibly.
@@ -64,9 +79,11 @@ internal static class Program
 #pragma warning restore CA1031
         {
             log.Error("The window could not start", exception);
+            reporter.Report(exception);
             return ExitCode.UnhandledError;
         }
 
+        marker?.End();
         return ExitCode.Ok;
     }
 }

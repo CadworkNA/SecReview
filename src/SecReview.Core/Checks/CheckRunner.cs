@@ -33,6 +33,7 @@ public sealed class CheckRunner
     private readonly bool _isElevated;
     private readonly TimeSpan _timeout;
     private readonly PrivacyFilter _privacy;
+    private readonly Action<string, Exception>? _onUnexpected;
 
     /// <param name="probes">How the checks read the machine.</param>
     /// <param name="clock">The clock (a fake in tests).</param>
@@ -40,13 +41,18 @@ public sealed class CheckRunner
     /// <param name="isElevated">Whether this process has administrator rights.</param>
     /// <param name="timeout">The time limit per check; <see cref="DefaultTimeout"/> if null.</param>
     /// <param name="privacy">Removes user and computer names from results; this process's names if null.</param>
+    /// <param name="onUnexpected">
+    /// Called with a check's identifier and the error when a check throws: a bug in SecReview,
+    /// which the result shows as "could not check" and which may also be reported. It must not throw.
+    /// </param>
     public CheckRunner(
         SystemProbes probes,
         TimeProvider clock,
         CheckSelection selection,
         bool isElevated,
         TimeSpan? timeout = null,
-        PrivacyFilter? privacy = null)
+        PrivacyFilter? privacy = null,
+        Action<string, Exception>? onUnexpected = null)
     {
         ArgumentNullException.ThrowIfNull(probes);
         ArgumentNullException.ThrowIfNull(clock);
@@ -61,6 +67,7 @@ public sealed class CheckRunner
         _isElevated = isElevated;
         _timeout = timeout ?? DefaultTimeout;
         _privacy = privacy ?? PrivacyFilter.ForThisProcess();
+        _onUnexpected = onUnexpected;
     }
 
     /// <summary>Whether <paramref name="check"/> belongs in a run of the given selection.</summary>
@@ -164,7 +171,7 @@ public sealed class CheckRunner
         using var abandoned = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         var context = new CheckContext(_probes, _clock, _isElevated, abandoned.Token);
 
-        Task<CheckOutcome> run = Task.Run(() => Guard(check, context), CancellationToken.None);
+        Task<CheckOutcome> run = Task.Run(() => Guard(check, context, _onUnexpected), CancellationToken.None);
         try
         {
             return await run.WaitAsync(_timeout, _clock, cancellation).ConfigureAwait(false);
@@ -181,7 +188,7 @@ public sealed class CheckRunner
     }
 
     /// <summary>Runs the check and turns anything unexpected into "could not check".</summary>
-    private static CheckOutcome Guard(ICheck check, CheckContext context)
+    private static CheckOutcome Guard(ICheck check, CheckContext context, Action<string, Exception>? onUnexpected)
     {
         try
         {
@@ -197,6 +204,7 @@ public sealed class CheckRunner
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            onUnexpected?.Invoke(check.Definition.Id, exception);
             return CheckOutcome.Error($"The check failed unexpectedly: {exception.GetType().Name}: {exception.Message}");
         }
     }

@@ -38,9 +38,22 @@
     <ControlFlowGuard>Guard</ControlFlowGuard>
   </PropertyGroup>
 
+  <PropertyGroup Label="Error reporting">
+    <!-- Managed errors only. The SDK's native crash handler would send memory dumps, and a
+         dump can hold anything the checks read; nothing like that may leave the PC. -->
+    <SentryNative>false</SentryNative>
+    <!-- The package ships a command-line tool for uploading symbols and sources during a
+         build. It is never run: nothing is uploaded from a build of SecReview. -->
+    <UseSentryCLI>false</UseSentryCLI>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <SentryUploadSources>false</SentryUploadSources>
+    <SentryImplicitUsings>false</SentryImplicitUsings>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
+    <PackageReference Include="Sentry" />
   </ItemGroup>
 
   <ItemGroup>

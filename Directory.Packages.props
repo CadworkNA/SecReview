@@ -12,6 +12,11 @@
     <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="[2.6.5]" />
   </ItemGroup>
 
+  <ItemGroup Label="Error reporting (third party, approved by the maintainer)">
+    <!-- The newest release that was at least 7 days old when it was added. -->
+    <PackageVersion Include="Sentry" Version="[6.12.1]" />
+  </ItemGroup>
+
   <ItemGroup Label="Build-time only">
     <!-- Source generator for Windows API declarations; nothing from it ships. -->
     <PackageVersion Include="Microsoft.Windows.CsWin32" Version="[0.3.369]" />

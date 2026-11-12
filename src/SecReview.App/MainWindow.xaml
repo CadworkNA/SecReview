@@ -53,6 +53,10 @@
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
                             <MenuFlyoutItem Click="OnSaveReportClicked" Text="Save report…" />
                             <MenuFlyoutItem Click="OnSettingsClicked" Text="Settings…" />
+                            <MenuFlyoutItem
+                                Click="OnFeedbackClicked"
+                                Text="Send feedback…"
+                                Visibility="{x:Bind ViewModel.CanSendFeedback, Mode=OneWay}" />
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem Click="OnAboutClicked" Text="About SecReview" />
                         </MenuFlyout>
@@ -67,7 +71,7 @@
                 Title="Welcome to SecReview"
                 CloseButtonClick="OnFirstRunClosed"
                 IsOpen="{x:Bind ViewModel.ShowFirstRun, Mode=OneWay}"
-                Message="It checks this PC's security settings and explains what it finds. It never changes a setting, and the results stay on this PC."
+                Message="{x:Bind ViewModel.FirstRunMessage, Mode=OneWay}"
                 Severity="Informational"
                 Visibility="{x:Bind ViewModel.ShowFirstRun, Mode=OneWay}" />
             <!-- A closed bar still takes its place in the spacing, so each is hidden when it has nothing to say. -->

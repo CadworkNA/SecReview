@@ -15,9 +15,17 @@ public static class AppArguments
     /// <summary>Followed by a file: save a picture of the window there, then exit.</summary>
     public const string ScreenshotSwitch = "--screenshot";
 
+    /// <summary>Followed by a file: write there what error reports would hold, send nothing, exit.</summary>
+    public const string ErrorReportTestSwitch = "--error-report-test";
+
     public static AppRole Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
+
+        if (args is [ErrorReportTestSwitch, var output] && IsFileArgument(output))
+        {
+            return new ErrorReportTestRole(output);
+        }
 
         bool smokeTest = false;
         bool demo = false;

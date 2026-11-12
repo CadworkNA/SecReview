@@ -23,6 +23,10 @@ Microsoft.Windows.SDK.BuildTools
 Microsoft.Windows.SDK.BuildTools.MSIX
 Microsoft.Web.WebView2
 
+# Error reporting in the app (not in the command-line helper). The only package here that is
+# not published by Microsoft; approved by the maintainer. It brings no further packages.
+Sentry
+
 # Tests only (MSTest on Microsoft.Testing.Platform)
 MSTest.Analyzers
 MSTest.TestAdapter
