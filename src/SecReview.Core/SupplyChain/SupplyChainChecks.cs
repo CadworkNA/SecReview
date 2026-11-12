@@ -1,4 +1,5 @@
 using SecReview.Checks;
+using SecReview.Malware;
 using SecReview.SupplyChain.Agents;
 using SecReview.SupplyChain.Cargo;
 using SecReview.SupplyChain.Cooldowns;
@@ -74,5 +75,8 @@ public static class SupplyChainChecks
         new EnvironmentTokensCheck(),
         new RootCertificatesCheck(),
         new DefenderExclusionsCheck(),
+        new InstalledMalwareCheck(),
+        new DownloadedMalwareCheck(),
+        new MalwareListCheck(),
     ];
 }
