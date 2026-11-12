@@ -1,0 +1,250 @@
+name: Package and release
+
+# The whole way from source to a setup program: official build (with the list of
+# known-malicious packages and the error-report address), signing, the setup program, an
+# install / upgrade / uninstall test on this disposable machine, and an SBOM.
+#
+# - Started by hand: once per milestone, and before a release. Optionally leaves a draft release.
+# - A version tag (vX.Y.Z, pushed by the maintainer): the same, and a draft release for that
+#   tag. Publishing the draft is the maintainer's step.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign the programs and the setup program
+        type: boolean
+        default: true
+      draft_release:
+        description: Leave a draft release with this run's files
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+      actions: read      # fetch the list built by the "Known-malicious list" workflow
+      id-token: write    # sign in to Azure for code signing, without a stored secret
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.version.outputs.sign }}
+
+    env:
+      SIGNING_ENDPOINT: https://wus2.codesigning.azure.net/
+      SIGNING_ACCOUNT_NAME: ${{ vars.SIGNING_ACCOUNT_NAME }}
+      CERTIFICATE_PROFILE_NAME: ${{ vars.CERTIFICATE_PROFILE_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # A tag is the version. A run by hand gets a version that cannot be mistaken for one.
+      # A tag is always signed; a run by hand says.
+      - name: Version
+        id: version
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SIGN_INPUT: ${{ inputs.sign }}
+        run: |
+          $version = if ($env:REF_TYPE -eq 'tag') { $env:REF_NAME.Substring(1) } else { "0.0.0-ci.$env:RUN_NUMBER" }
+          $sign = $env:REF_TYPE -eq 'tag' -or $env:SIGN_INPUT -eq 'true'
+          if ($sign -and -not ($env:SIGNING_ACCOUNT_NAME -and $env:CERTIFICATE_PROFILE_NAME)) {
+            throw 'Signing was asked for, but the signing variables are not set on the repository.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "sign=$($sign.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "Version $version, signed: $sign"
+
+      # The newest list the daily workflow built on main. It was checked there; build.ps1
+      # checks it again (format, size, age) and compiles its SHA-256 into the programs.
+      - name: Fetch the list of known-malicious packages
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh run list --repo $env:GITHUB_REPOSITORY --workflow malware-index.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+          if (-not $run) { throw 'No successful run of the "Known-malicious list" workflow on main.' }
+          gh run download $run --repo $env:GITHUB_REPOSITORY --name known-malicious-index --dir artifacts/list
+          if ($LASTEXITCODE) { throw "Downloading the list from run $run failed." }
+          Get-Item artifacts/list/known-malicious.idx | ForEach-Object { '{0}: {1:N1} MB, from run {2}' -f $_.Name, ($_.Length / 1MB), $run }
+
+      - name: Azure sign-in
+        if: steps.version.outputs.sign == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The address is where the app reports its own errors; without it the build has none
+      # and the app never sends anything.
+      - name: Build, test, publish, sign and pack
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN: ${{ steps.version.outputs.sign }}
+          ERROR_REPORT_ADDRESS: ${{ secrets.SENTRY_DSN || vars.SENTRY_DSN }}
+        run: |
+          $more = @{}
+          if ($env:ERROR_REPORT_ADDRESS) { $more.ErrorReportAddress = $env:ERROR_REPORT_ADDRESS }
+          ./build.ps1 -Locked -Version $env:VERSION -MalwareIndex artifacts/list/known-malicious.idx -Installer -Sign:($env:SIGN -eq 'true') @more
+
+      - name: Install, upgrade and uninstall on this machine
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/test-install.ps1 -Setup "artifacts/installer/SecReview-$env:VERSION-setup.exe" -Stage artifacts/stage -Version $env:VERSION
+
+      # What is in the install folder, and the packages it was built from (SPDX 2.2).
+      - name: SBOM
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          dotnet tool restore
+          if ($LASTEXITCODE) { throw 'Restoring the SBOM tool failed.' }
+          $publisher = ([xml] (Get-Content Directory.Build.props -Raw)).Project.PropertyGroup.Company | Where-Object { $_ } | Select-Object -First 1
+          New-Item -ItemType Directory -Path artifacts/sbom | Out-Null
+          dotnet tool run sbom-tool -- generate -b artifacts/stage -bc src -pn SecReview -pv $env:VERSION -ps $publisher -nsb "https://github.com/$env:GITHUB_REPOSITORY" -m artifacts/sbom -V Warning
+          if ($LASTEXITCODE) { throw "The SBOM tool ended with $LASTEXITCODE." }
+          New-Item -ItemType Directory -Path artifacts/release | Out-Null
+          Copy-Item artifacts/sbom/_manifest/spdx_2.2/manifest.spdx.json "artifacts/release/SecReview-$env:VERSION.spdx.json"
+          Copy-Item "artifacts/installer/SecReview-$env:VERSION-setup.exe" artifacts/release/
+          Get-ChildItem artifacts/release | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
+
+      - name: Upload the setup program and the SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: secreview-${{ steps.version.outputs.version }}
+          path: artifacts/release
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload the install logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: install-logs-${{ github.run_id }}
+          path: artifacts/install-test/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # A draft release with the setup program, the SBOM and, once the repository is public, the
+  # Sigstore bundle that proves where they were built. Never published from here.
+  release:
+    needs: package
+    if: github.ref_type == 'tag' || inputs.draft_release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    permissions:
+      contents: write        # create the draft release
+      id-token: write        # Sigstore signing of the attestation
+      attestations: write
+
+    env:
+      VERSION: ${{ needs.package.outputs.version }}
+      # Secrets cannot be asked about in a step's condition; this can.
+      ERROR_REPORTS_CONFIGURED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && vars.SENTRY_ORG != '' && vars.SENTRY_PROJECT != '' }}
+
+    steps:
+      - name: Download the setup program and the SBOM
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: secreview-${{ needs.package.outputs.version }}
+          path: release
+
+      # GitHub artifact attestations need a public repository; they switch on by themselves
+      # once this one is.
+      - name: Attest the release files (Sigstore)
+        id: attest
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release/SecReview-${{ needs.package.outputs.version }}-setup.exe
+            release/SecReview-${{ needs.package.outputs.version }}.spdx.json
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          SIGNED: ${{ needs.package.outputs.signed }}
+        run: |
+          setup="SecReview-$VERSION-setup.exe"
+          sbom="SecReview-$VERSION.spdx.json"
+          files=("release/$setup" "release/$sbom")
+          t='`'
+          {
+            echo "## Install"
+            echo
+            echo "Download ${t}$setup${t} and run it. For a silent install: ${t}$setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART${t}."
+            echo
+            echo "SHA-256: ${t}$(sha256sum "release/$setup" | cut -d' ' -f1)${t}"
+            echo
+            if [[ "$SIGNED" != "true" ]]; then
+              echo "**This build is not signed.** It is for testing only."
+              echo
+            fi
+            echo "${t}$sbom${t} lists what is installed and the packages it was built from (SPDX 2.2)."
+            if [[ -n "$BUNDLE" ]]; then
+              bundle="SecReview-$VERSION.sigstore.json"
+              cp "$BUNDLE" "release/$bundle"
+              files+=("release/$bundle")
+              echo
+              echo "Both files were built by this repository's workflow. To verify:"
+              echo
+              echo "${t}${t}${t}sh"
+              echo "gh attestation verify $setup --owner $GITHUB_REPOSITORY_OWNER --bundle $bundle"
+              echo "${t}${t}${t}"
+            fi
+            echo
+          } > notes.md
+          flags=(--draft)
+          [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] && flags+=(--verify-tag)
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "SecReview $VERSION" --notes-file notes.md --generate-notes "${flags[@]}" "${files[@]}"
+
+      # So that errors reported by this version are grouped under it. Only for a real version;
+      # a problem here does not hold up the release.
+      - name: Tell the error-report service about the version
+        if: github.ref_type == 'tag' && env.ERROR_REPORTS_CONFIGURED == 'true'
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_URL: ${{ vars.SENTRY_URL || 'https://sentry.io' }}
+        run: |
+          body=$(jq -n --arg version "secreview@$VERSION" --arg project "$SENTRY_PROJECT" --arg ref "$GITHUB_SHA" \
+            '{version: $version, projects: [$project], ref: $ref}')
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST "$SENTRY_URL/api/0/organizations/$SENTRY_ORG/releases/" \
+            -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" -H 'Content-Type: application/json' \
+            --data "$body" | jq '{version, dateCreated}'
