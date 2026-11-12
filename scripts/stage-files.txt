@@ -152,6 +152,14 @@ kok-IN/Microsoft.UI.Xaml.Phone.dll.mui
 kok-IN/Microsoft.ui.xaml.dll.mui
 lb-LU/Microsoft.UI.Xaml.Phone.dll.mui
 lb-LU/Microsoft.ui.xaml.dll.mui
+licenses/SecReview-LICENSE.txt sha256=c49d4c6851c1e34305b17945ff53e4b2106cc2da5d1b5273916c81b548772de4
+licenses/THIRD-PARTY-NOTICES.txt sha256=7556d13793e8063b66a3d6838ade923f4c88ed717c829819e2205422619512d6
+licenses/WindowsAppSDK-NOTICE.txt sha256=572b43d41dea717dae7dc5de69acb20a74df025e8f5a3c0aa6f7bca02615e23c
+licenses/WindowsAppSDK-license.txt sha256=5b11e6347756e40fe0274bc08c97f89201b94f0d50181a09a00f1f4740840501
+licenses/dotnet-THIRD-PARTY-NOTICES.txt sha256=6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21
+licenses/dotnet-runtime-LICENSE.txt sha256=cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310
+licenses/malicious-packages-LICENSE.txt sha256=c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4
+licenses/sentry-dotnet-LICENSE.txt sha256=b1152cc6eae51c7e295212386c390b68de684acc77f2008f2f0680278c267dc3
 lo-LA/Microsoft.UI.Xaml.Phone.dll.mui
 lo-LA/Microsoft.ui.xaml.dll.mui
 lt-LT/Microsoft.UI.Xaml.Phone.dll.mui
