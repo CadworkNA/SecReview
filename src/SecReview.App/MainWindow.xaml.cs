@@ -8,6 +8,7 @@ using Microsoft.Windows.Storage.Pickers;
 using SecReview.App.ViewModels;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
+using SecReview.Instances;
 using SecReview.Scanning;
 using SecReview.Settings;
 using Windows.ApplicationModel.DataTransfer;
@@ -30,6 +31,7 @@ public sealed partial class MainWindow : Window
     private readonly UiRole _role;
     private readonly AppLog _log;
     private readonly DispatcherQueueTimer _ticker;
+    private readonly ShowRequests? _showRequests;
     private int _frames;
     private bool _dialogOpen;
 
@@ -56,9 +58,21 @@ public sealed partial class MainWindow : Window
         _ticker.Interval = TimeSpan.FromMilliseconds(300);
         _ticker.Tick += (_, _) => ViewModel.Tick();
         _ticker.Start();
+
+        // A second start of SecReview (from the notification-area icon, say) asks this window
+        // to come forward instead of opening another.
+        if (!role.Demo && !IsAutomatedRun)
+        {
+            string data = AppData.Directory;
+            _showRequests = ShowRequests.Listen(
+                InstanceNames.WindowShow(data),
+                InstanceNames.WindowRequest(data),
+                checkId => DispatcherQueue.TryEnqueue(() => ComeForward(checkId)));
+        }
         Closed += (_, _) =>
         {
             _ticker.Stop();
+            _showRequests?.Dispose();
             closed?.Invoke();
         };
     }
@@ -71,8 +85,15 @@ public sealed partial class MainWindow : Window
     {
         Root.Loaded -= OnLoaded;
 
-        // ViewModel.StartAsync reports failures in the window and does not throw.
-        await ViewModel.StartAsync();
+        // ViewModel.StartAsync reports failures in the window and does not throw. It shows the
+        // last results before it first waits, so a check to open on can be shown at once.
+        Task started = ViewModel.StartAsync();
+        if (_role.ShowCheck is { } checkId)
+        {
+            ShowCheck(checkId);
+        }
+
+        await started;
 
         if (!IsAutomatedRun)
         {
@@ -153,7 +174,7 @@ public sealed partial class MainWindow : Window
         (ContentDialog Dialog, int Controls)[] dialogs =
         [
             (IgnoreDialog(out _), 3),   // the reason, Ignore, Cancel
-            (SettingsDialog(), 4),      // the switch, two "Stop ignoring" and Close
+            (SettingsDialog(), 7),      // four settings, two "Stop ignoring" and Close
             (FeedbackDialog(out _, out _), 4),   // the text, the tick box, Send, Cancel
             (AboutDialog(), 1),
             (Message("Made up", "A message."), 1),
@@ -198,6 +219,60 @@ public sealed partial class MainWindow : Window
         }
 
         return problems;
+    }
+
+    /// <summary>Brings the window in front, on a check when one is named.</summary>
+    private void ComeForward(string? checkId)
+    {
+        Activate();
+        Foreground.Bring(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        if (checkId is not null)
+        {
+            ShowCheck(checkId);
+        }
+    }
+
+    /// <summary>Opens a check's row among all checks and scrolls to it. Nothing happens for a check without a row.</summary>
+    private void ShowCheck(string checkId)
+    {
+        if (_dialogOpen || !ViewModel.Open(checkId))
+        {
+            return;
+        }
+
+        FilterBar.SelectedItem = FilterAll;
+
+        // Once the list has taken in the change.
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            // Rows far down the list do not exist until they are scrolled to; asking for one makes it.
+            if (ViewModel.PositionOf(checkId) is not { } at || SectionsList.GetOrCreateElement(at.Section) is not FrameworkElement group)
+            {
+                return;
+            }
+
+            group.UpdateLayout();
+            if (FirstRepeaterIn(group)?.GetOrCreateElement(at.Row) is FrameworkElement row)
+            {
+                row.UpdateLayout();
+                row.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
+                (row as Control)?.Focus(FocusState.Programmatic);
+            }
+        });
+
+        static ItemsRepeater? FirstRepeaterIn(DependencyObject parent)
+        {
+            for (int index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+                if (child is ItemsRepeater found || (found = FirstRepeaterIn(child)!) is not null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
     }
 
     private async void OnRunClicked(object sender, RoutedEventArgs e) => await ViewModel.RunAsync();
@@ -439,11 +514,49 @@ public sealed partial class MainWindow : Window
         return dialog;
     }
 
-    /// <summary>The settings: for now the ignored checks, each with its reason and a way back.</summary>
+    /// <summary>The settings: the notification-area icon, error reports, and the ignored checks, each with its reason and a way back.</summary>
     private ContentDialog SettingsDialog()
     {
         var secondary = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
         var panel = new StackPanel { Spacing = 12, MinWidth = 420 };
+
+        // The notification-area icon: whether there is one, how often it checks, whether it speaks up.
+        var icon = new ToggleSwitch { Header = "Keep SecReview in the notification area", IsOn = ViewModel.RunInNotificationArea };
+        var every = new ComboBox { Header = "Check again every", MinWidth = 160, IsEnabled = ViewModel.RunInNotificationArea };
+        foreach (int hours in AppSettings.RecheckChoices)
+        {
+            every.Items.Add(new ComboBoxItem { Content = hours == 1 ? "1 hour" : $"{hours} hours", Tag = hours });
+        }
+
+        every.SelectedIndex = Math.Max(0, AppSettings.RecheckChoices.ToList().IndexOf(ViewModel.RecheckHours));
+        var notify = new ToggleSwitch
+        {
+            Header = "Tell me when a check starts failing",
+            IsOn = ViewModel.NotifyNewFailures,
+            IsEnabled = ViewModel.RunInNotificationArea,
+        };
+        icon.Toggled += (_, _) =>
+        {
+            ViewModel.SetRunInNotificationArea(icon.IsOn);
+            every.IsEnabled = notify.IsEnabled = icon.IsOn;
+        };
+        every.SelectionChanged += (_, _) =>
+        {
+            if (every.SelectedItem is ComboBoxItem { Tag: int hours })
+            {
+                ViewModel.SetRecheckHours(hours);
+            }
+        };
+        notify.Toggled += (_, _) => ViewModel.SetNotifyNewFailures(notify.IsOn);
+        panel.Children.Add(icon);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "The icon shows how this PC is doing. SecReview checks again by itself, and only reads settings, as always.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = secondary,
+        });
+        panel.Children.Add(every);
+        panel.Children.Add(notify);
 
         // Error reports: the switch, what a report holds, and why the switch is off when it is not the user's to move.
         var reports = new ToggleSwitch
