@@ -49,7 +49,7 @@ public static class Wording
     }
 
     /// <summary>Names that keep their capital in the middle of a sentence.</summary>
-    private static readonly string[] Names = ["Python", "Scoop", "Yarn", "Poetry", "Bun", "Windows", "Defender", "Microsoft"];
+    private static readonly string[] Names = ["Python", "Scoop", "Yarn", "Poetry", "Bun", "Git", "Node", "Java", "Rust", "Docker", "Workspace", "Windows", "Defender", "Microsoft"];
 
     /// <summary>
     /// The text with a small first letter, for use in the middle of a sentence. Left alone when
@@ -74,6 +74,13 @@ public static class Wording
         }
 
         return char.ToLowerInvariant(text[0]) + text[1..];
+    }
+
+    /// <summary>The text with a capital first letter, for the start of a sentence or a row.</summary>
+    public static string UpperFirst(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return text.Length > 0 && char.IsLower(text[0]) ? char.ToUpperInvariant(text[0]) + text[1..] : text;
     }
 
     /// <summary>A date the same way everywhere: "12 October 2027".</summary>
