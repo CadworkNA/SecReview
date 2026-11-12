@@ -1,0 +1,12 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/SecReview.Cli/SecReview.Cli.csproj" />
+    <Project Path="src/SecReview.Core/SecReview.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SecReview.Core.Tests/SecReview.Core.Tests.csproj" />
+  </Folder>
+</Solution>

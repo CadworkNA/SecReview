@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Locked restore, build, unit tests, Native AOT publish and a smoke test of the published exe.
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The SDK version comes from global.json (exact pin), so CI and developers build alike.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Build, test and publish
+        shell: pwsh
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./build.ps1 -Locked -Version "0.0.0-ci.$env:RUN_NUMBER"
+
+      - name: Upload staged output
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: secreview-${{ github.sha }}
+          path: artifacts/stage
+          retention-days: 7
+          if-no-files-found: error

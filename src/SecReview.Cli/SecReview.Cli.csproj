@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SecReviewCli</AssemblyName>
+    <RootNamespace>SecReview.Cli</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- Native AOT: one small exe with no .NET runtime and no JIT. This is the only binary that
+       ever runs elevated, so it cannot be steered through DOTNET_STARTUP_HOOKS or profiler
+       variables inherited from the unelevated caller. -->
+  <PropertyGroup Label="Native AOT">
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <ControlFlowGuard>Guard</ControlFlowGuard>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Load DLLs from System32 only, never from the exe's or the current directory. -->
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SecReview.Core\SecReview.Core.csproj" />
+  </ItemGroup>
+
+</Project>

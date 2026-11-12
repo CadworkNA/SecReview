@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!-- Exact versions only. Adding a package also means adding its id to
+       scripts/allowed-packages.txt; a third-party package needs the maintainer's approval. -->
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="MSTest.Analyzers" Version="[4.5.3]" />
+    <PackageVersion Include="MSTest.TestAdapter" Version="[4.5.3]" />
+    <PackageVersion Include="MSTest.TestFramework" Version="[4.5.3]" />
+  </ItemGroup>
+</Project>

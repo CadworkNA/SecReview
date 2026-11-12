@@ -1,0 +1,30 @@
+name: Bug
+description: A check gives a wrong result, or SecReview misbehaves.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not attach a real report from your PC**: it lists that PC's weaknesses.
+        Describe only the check and setting involved. Security problems go through
+        [SECURITY.md](https://github.com/CadworkNA/SecReview/blob/main/SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes:
+      label: SecReview version
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: For a wrong result, name the check, the setting's real value and what SecReview showed.
+    validations:
+      required: true

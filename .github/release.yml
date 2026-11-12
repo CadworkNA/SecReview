@@ -1,0 +1,18 @@
+# Release notes are generated from pull request titles (conventional prefixes).
+changelog:
+  exclude:
+    labels:
+      - skip-release-notes
+  categories:
+    - title: New
+      labels:
+        - feature
+    - title: Fixed
+      labels:
+        - bug
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"
