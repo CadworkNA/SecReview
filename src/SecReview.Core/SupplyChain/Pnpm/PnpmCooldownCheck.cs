@@ -18,6 +18,7 @@ public sealed class PnpmCooldownCheck : ICheck
 
     internal const string YamlSetting = "minimumReleaseAge";
     internal const string IniSetting = "minimum-release-age";
+    internal const string Variable = "pnpm_config_minimum_release_age";
 
     private const string Item = "Wait before installing new releases";
     private const string Expected = "7 days or more";
@@ -41,6 +42,12 @@ public sealed class PnpmCooldownCheck : ICheck
             return CheckOutcome.NotApplicable("pnpm is not installed.");
         }
 
+        // pnpm takes the setting from its own variable before any file (pnpm 11 and later).
+        if (PersistentEnvironment.Read(context.Probes, Variable, out string? fromVariable, out string? variableSource) is { } unreadVariable)
+        {
+            return unreadVariable;
+        }
+
         if (pnpm.Version is { } old && old < PnpmLocator.CooldownFrom)
         {
             return CheckOutcome.Fail(
@@ -50,6 +57,32 @@ public sealed class PnpmCooldownCheck : ICheck
 
         // pnpm 10 reads the INI file; pnpm 11 and later read the YAML file. Unknown version: the YAML file, as current pnpm does.
         bool usesYaml = pnpm.ReadsYaml ?? true;
+
+        // The variable decides when it is set: pnpm 11 and later read it before any file.
+        if (fromVariable is not null && usesYaml)
+        {
+            if (!long.TryParse(fromVariable.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out long fromEnvironment) ||
+                Durations.FromNumber(fromEnvironment, Minute) is not { Kind: CooldownKind.Relative } set)
+            {
+                return CheckOutcome.Error($"pnpm's release wait in {variableSource} is not a number of minutes.");
+            }
+
+            bool enough = set.Length >= Durations.Week;
+            string wait = set.Length == TimeSpan.Zero ? "Switched off" : Wording.Duration(set.Length);
+            var byVariable = new List<Finding>
+            {
+                enough ? Finding.Ok(Item, wait, Expected, variableSource) : Finding.Problem(Item, wait, Expected, variableSource),
+            };
+            AddVersion(pnpm, byVariable);
+            return enough
+                ? CheckOutcome.Pass($"pnpm waits {wait} before installing a new release.", byVariable)
+                : CheckOutcome.Fail(
+                    set.Length == TimeSpan.Zero
+                        ? "pnpm's wait for new releases is switched off."
+                        : $"pnpm waits only {wait} before installing a new release.",
+                    byVariable);
+        }
+
         SettingsFile? file = usesYaml ? pnpm.Yaml : pnpm.Rc;
         ConfigNode? written = file?.Root?[usesYaml ? YamlSetting : IniSetting];
 
@@ -83,7 +116,8 @@ public sealed class PnpmCooldownCheck : ICheck
         }
 
         // A number in YAML; INI has no numbers, so digits there.
-        long? minutes = written switch
+        ConfigScalar? inForce = file!.Single(written);
+        long? minutes = inForce switch
         {
             ConfigScalar { AsNumber: { } number } => number,
             ConfigScalar { Kind: ScalarKind.Text } text when !usesYaml &&
@@ -95,7 +129,7 @@ public sealed class PnpmCooldownCheck : ICheck
             return CheckOutcome.Error($"{file!.Name}: could not evaluate (line {written.Line}): the release wait is not a number of minutes.");
         }
 
-        string source = file!.At(written);
+        string source = file!.At(inForce!);
         string length = Wording.Duration(cooldown.Length);
         if (cooldown.Length < Durations.Week)
         {

@@ -40,6 +40,21 @@ public sealed class WordingTests
     }
 
     [TestMethod]
+    [DataRow("Hosts exempt from TLS checks", "hosts exempt from TLS checks")]
+    [DataRow("Index \"internal\"", "index \"internal\"")]
+    [DataRow("Off", "off")]
+    [DataRow("TLS certificate checks", "TLS certificate checks", DisplayName = "an abbreviation")]
+    [DataRow("PyPy download source", "PyPy download source", DisplayName = "a name with a capital inside")]
+    [DataRow("Python download source", "Python download source", DisplayName = "a name")]
+    [DataRow("A", "A", DisplayName = "too short to tell")]
+    [DataRow("unsafe-best-match", "unsafe-best-match")]
+    [DataRow("", "")]
+    public void LowerFirst_LowersAnOrdinaryWord_AndLeavesNamesAlone(string text, string expected)
+    {
+        Assert.AreEqual(expected, Wording.LowerFirst(text));
+    }
+
+    [TestMethod]
     public void Date_IsTheSameEverywhere()
     {
         Assert.AreEqual("9 October 2029", Wording.Date(new DateOnly(2029, 10, 9)));

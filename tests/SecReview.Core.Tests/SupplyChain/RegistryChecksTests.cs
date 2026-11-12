@@ -99,7 +99,7 @@ public sealed class RegistryChecksTests
         CheckOutcome outcome = new NpmCredentialsCheck().Run(File(Npmrc, Text));
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
-        Assert.AreEqual("Your .npmrc holds 3 registry tokens as plain text.", outcome.Summary);
+        Assert.AreEqual("3 registry tokens for npm are stored as plain text.", outcome.Summary);
         CollectionAssert.AreEqual(
             new[] { "Token for registry.npmjs.org", "Token for npm.example", "Password (_password)" },
             outcome.Findings.Select(f => f.Item).ToArray());
@@ -114,6 +114,65 @@ public sealed class RegistryChecksTests
             .WithFile(Moved, "//registry.npmjs.org/:_authToken=made-up-token\n");
 
         Assert.AreEqual(CheckStatus.Fail, new NpmCredentialsCheck().Run(probes).Status);
+    }
+
+    [TestMethod]
+    public void NpmCredentials_ATokenOnALineThatALaterLineReplaces_IsStillFound()
+    {
+        const string Text = "//registry.npmjs.org/:_authToken=made-up-token\n//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n";
+
+        CheckOutcome outcome = new NpmCredentialsCheck().Run(File(Npmrc, Text));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("A registry token for npm is stored as plain text.", outcome.Summary);
+        Assert.AreEqual($"{Npmrc}, line 1", outcome.Findings[0].Source);
+    }
+
+    [TestMethod]
+    [DataRow("NPM_TOKEN")]
+    [DataRow("NODE_AUTH_TOKEN")]
+    [DataRow("npm_config_//registry.npmjs.org/:_authToken")]
+    public void NpmCredentials_ATokenInAPermanentVariable_Fails_EvenWithoutAFile(string variable)
+    {
+        CheckOutcome outcome = new NpmCredentialsCheck().Run(WithVariable(new FakeProbes(), variable, "made-up-token"));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"Variable {variable}", outcome.Findings[0].Item);
+        Assert.IsFalse(Everything(outcome).Contains("made-up", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void NpmSettings_TheLastLineOfASetting_IsTheOneInForce()
+    {
+        Assert.AreEqual(CheckStatus.Pass, new NpmSettingsCheck().Run(File(Npmrc, "strict-ssl=false\nstrict-ssl=true\n")).Status);
+
+        CheckOutcome off = new NpmSettingsCheck().Run(File(Npmrc, "strict-ssl=true\nstrict-ssl=false\n"));
+        Assert.AreEqual(CheckStatus.Fail, off.Status);
+        Assert.AreEqual($"{Npmrc}, line 2", off.Findings[0].Source);
+    }
+
+    [TestMethod]
+    [DataRow("strict-ssl=false ; the proxy needs this")]
+    [DataRow("strict-ssl = FALSE")]
+    [DataRow("strict-ssl=0")]
+    [DataRow("strict-ssl=\"false\"")]
+    public void NpmSettings_ASwitch_IsReadAsNpmReadsIt(string line)
+    {
+        Assert.AreEqual(CheckStatus.Fail, new NpmSettingsCheck().Run(File(Npmrc, line + "\n")).Status);
+    }
+
+    [TestMethod]
+    public void NpmSettings_TheVariable_WinsOverTheFile_AndCountsWithoutOne()
+    {
+        CheckOutcome alone = new NpmSettingsCheck().Run(WithVariable(new FakeProbes(), "npm_config_strict_ssl", "false"));
+        Assert.AreEqual(CheckStatus.Fail, alone.Status);
+        StringAssert.Contains(alone.Findings[0].Source, "npm_config_strict_ssl");
+
+        FakeProbes overridden = WithVariable(File(Npmrc, "strict-ssl=false\n"), "npm_config_strict_ssl", "true");
+        Assert.AreEqual(CheckStatus.Pass, new NpmSettingsCheck().Run(overridden).Status);
+
+        FakeProbes registry = WithVariable(File(Npmrc, "registry=https://registry.npmjs.org/\n"), "npm_config_registry", "http://registry.example/");
+        Assert.AreEqual("npm: default registry: plain HTTP.", new NpmSettingsCheck().Run(registry).Summary);
     }
 
     // Yarn
@@ -139,6 +198,50 @@ public sealed class RegistryChecksTests
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
         Assert.AreEqual(summary, outcome.Summary);
+    }
+
+    [TestMethod]
+    [DataRow("enableStrictSsl: \"false\"", CheckStatus.Fail)]
+    [DataRow("enableStrictSsl: 0", CheckStatus.Fail)]
+    [DataRow("enableStrictSsl: \"0\"", CheckStatus.Fail)]
+    [DataRow("enableScripts: \"true\"", CheckStatus.Fail)]
+    [DataRow("enableScripts: 1", CheckStatus.Fail)]
+    [DataRow("enableStrictSsl: \"true\"", CheckStatus.Pass)]
+    [DataRow("enableScripts: 0", CheckStatus.Pass)]
+    [DataRow("enableStrictSsl: maybe", CheckStatus.Error)]
+    [DataRow("enableStrictSsl: [false]", CheckStatus.Error)]
+    [DataRow("unsafeHttpWhitelist: \"*.internal.example\"", CheckStatus.Fail)]
+    [DataRow("unsafeHttpWhitelist:", CheckStatus.Pass)]
+    public void YarnSettings_ASwitch_IsReadAsYarnReadsIt_QuotedOrAsANumber(string text, CheckStatus expected)
+    {
+        Assert.AreEqual(expected, new YarnSettingsCheck().Run(File(Yarnrc, text + "\n")).Status);
+    }
+
+    [TestMethod]
+    public void YarnSettings_TheVariable_WinsOverTheFile_AndCountsWithoutOne()
+    {
+        CheckOutcome alone = new YarnSettingsCheck().Run(WithVariable(new FakeProbes(), "YARN_ENABLE_STRICT_SSL", "false"));
+        Assert.AreEqual(CheckStatus.Fail, alone.Status);
+        StringAssert.Contains(alone.Findings[0].Source, "YARN_ENABLE_STRICT_SSL");
+
+        FakeProbes overridden = WithVariable(File(Yarnrc, "enableScripts: true\n"), "YARN_ENABLE_SCRIPTS", "false");
+        Assert.AreEqual(CheckStatus.Pass, new YarnSettingsCheck().Run(overridden).Status);
+
+        FakeProbes server = WithVariable(File(Yarnrc, "enableScripts: false\n"), "YARN_NPM_REGISTRY_SERVER", "http://registry.example");
+        Assert.AreEqual("Yarn: default registry: plain HTTP.", new YarnSettingsCheck().Run(server).Summary);
+    }
+
+    [TestMethod]
+    [DataRow("YARN_NPM_AUTH_TOKEN")]
+    [DataRow("YARN_NPM_AUTH_IDENT")]
+    public void YarnCredentials_ATokenInAPermanentVariable_Fails_EvenWithoutAFile(string variable)
+    {
+        CheckOutcome outcome = new YarnCredentialsCheck().Run(WithVariable(new FakeProbes(), variable, "made-up-token"));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("A registry token for Yarn is stored as plain text.", outcome.Summary);
+        Assert.AreEqual($"Variable {variable}", outcome.Findings[0].Item);
+        Assert.IsFalse(Everything(outcome).Contains("made-up", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -194,6 +297,9 @@ public sealed class RegistryChecksTests
     [DataRow("[global]\nextra-index-url = https://packages.example/simple", "pip: extra package indexes: some.")]
     [DataRow("[global]\nindex-url = http://packages.example/simple", "pip: package index (index-url): plain HTTP.")]
     [DataRow("[install]\ntrusted-host =\n    a.example\n    b.example", "pip: hosts exempt from TLS checks: some.")]
+    [DataRow("[global]\nTrusted_Host = packages.example", "pip: hosts exempt from TLS checks: some.")]
+    [DataRow("[global]\n--extra-index-url = https://packages.example/simple", "pip: extra package indexes: some.")]
+    [DataRow("[global]\n  index-url = http://packages.example/simple", "pip: package index (index-url): plain HTTP.")]
     public void PipSettings_EachWeakSetting_Fails_AndIsNamed(string ini, string summary)
     {
         CheckOutcome outcome = new PipSettingsCheck().Run(File(PipIni, ini + "\n"));
@@ -240,6 +346,19 @@ public sealed class RegistryChecksTests
         Assert.AreEqual($"{Pypirc}, line 3", outcome.Findings[0].Source);
         Assert.IsFalse(Everything(outcome).Contains("made-up", StringComparison.Ordinal));
         Assert.IsFalse(Everything(outcome).Contains("someone", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("[pypi]\n  username = __token__\n  password = made-up-token\n", 3, DisplayName = "keys indented alike")]
+    [DataRow("[pypi]\nusername = __token__\npassword =\n    made-up-token\n", 4, DisplayName = "the password on the line below its key")]
+    [DataRow("[pypi]\nusername = __token__\nPassword: made-up-token\n", 3, DisplayName = "another spelling of the key")]
+    public void PythonCredentials_APasswordInPypirc_IsFound_HoweverTheFileIsLaidOut(string text, int line)
+    {
+        CheckOutcome outcome = new PythonCredentialsCheck().Run(File(Pypirc, text));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"{Pypirc}, line {line}", outcome.Findings[0].Source);
+        Assert.IsFalse(Everything(outcome).Contains("made-up", StringComparison.Ordinal));
     }
 
     [TestMethod]

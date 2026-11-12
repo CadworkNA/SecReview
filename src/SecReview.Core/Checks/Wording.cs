@@ -48,16 +48,32 @@ public static class Wording
         return shown.Length == 0 ? "0 s" : string.Join(' ', shown);
     }
 
+    /// <summary>Names that keep their capital in the middle of a sentence.</summary>
+    private static readonly string[] Names = ["Python", "Scoop", "Yarn", "Poetry", "Bun", "Windows", "Defender", "Microsoft"];
+
     /// <summary>
     /// The text with a small first letter, for use in the middle of a sentence. Left alone when
-    /// it starts with an abbreviation ("TLS checks") or is too short to tell.
+    /// its first word is an abbreviation ("TLS checks"), a name ("Python", "PyPy") or too short
+    /// to tell.
     /// </summary>
     public static string LowerFirst(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return text.Length >= 2 && char.IsUpper(text[0]) && char.IsLower(text[1])
-            ? char.ToLowerInvariant(text[0]) + text[1..]
-            : text;
+        int end = 0;
+        while (end < text.Length && char.IsLetterOrDigit(text[end]))
+        {
+            end++;
+        }
+
+        // An ordinary word has one capital, at the start; anything else is written as it must be.
+        ReadOnlySpan<char> word = text.AsSpan(0, end);
+        if (word.Length < 2 || !char.IsUpper(word[0]) || word[1..].ContainsAnyInRange('A', 'Z') ||
+            Names.Any(name => text.AsSpan(0, end).SequenceEqual(name)))
+        {
+            return text;
+        }
+
+        return char.ToLowerInvariant(text[0]) + text[1..];
     }
 
     /// <summary>A date the same way everywhere: "12 October 2027".</summary>

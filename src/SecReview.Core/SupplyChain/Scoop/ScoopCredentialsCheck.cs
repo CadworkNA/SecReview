@@ -55,10 +55,10 @@ public sealed class ScoopCredentialsCheck : ICheck
         }
 
         // Headers sent to private hosts usually are, or carry, a token.
-        if (scoop.Config is { ValueKind: JsonValueKind.Object } config &&
-            config.TryGetProperty("private_hosts", out JsonElement hosts) && hosts.ValueKind == JsonValueKind.Array &&
-            hosts.EnumerateArray().Any(h => h.ValueKind == JsonValueKind.Object && h.TryGetProperty("headers", out JsonElement headers) &&
-                headers.ValueKind is JsonValueKind.String or JsonValueKind.Object or JsonValueKind.Array))
+        if (scoop.Property("private_hosts") is { ValueKind: JsonValueKind.Array } hosts &&
+            hosts.EnumerateArray().Any(h => h.ValueKind == JsonValueKind.Object && h.EnumerateObject().Any(p =>
+                p.Name.Equals("headers", StringComparison.OrdinalIgnoreCase) &&
+                p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Object or JsonValueKind.Array)))
         {
             problems.Add(Finding.Problem("Sign-in headers for private hosts", "Stored as plain text", Expected, $"{scoop.ConfigPath} (private_hosts)"));
         }

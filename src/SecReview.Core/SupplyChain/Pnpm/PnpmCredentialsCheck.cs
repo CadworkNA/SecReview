@@ -74,14 +74,13 @@ public sealed class PnpmCredentialsCheck : ICheck
 
         foreach (string variable in variables)
         {
-            bool holdsToken =
-                variable.Equals("pnpm_config__auth", StringComparison.OrdinalIgnoreCase) ||
-                ((variable.StartsWith("npm_config_", StringComparison.OrdinalIgnoreCase) || variable.StartsWith("pnpm_config_", StringComparison.OrdinalIgnoreCase)) &&
-                 (variable.EndsWith("_authToken", StringComparison.OrdinalIgnoreCase) || variable.EndsWith(":_auth", StringComparison.OrdinalIgnoreCase) ||
-                  variable.EndsWith("_password", StringComparison.OrdinalIgnoreCase)));
+            // pnpm's own variables; the npm_config_ ones, which npm shares, are the npm check's.
+            bool holdsToken = variable.StartsWith("pnpm_config_", StringComparison.OrdinalIgnoreCase) &&
+                (variable.EndsWith("_authToken", StringComparison.OrdinalIgnoreCase) || variable.EndsWith("_auth", StringComparison.OrdinalIgnoreCase) ||
+                 variable.EndsWith("_password", StringComparison.OrdinalIgnoreCase));
             if (holdsToken)
             {
-                problems.Add(Finding.Problem("A variable that holds a token", "Set for good", "Not set", "environment variables"));
+                problems.Add(Finding.Problem($"Variable {variable}", "Holds a token, set for good", "Not set", "environment variables"));
             }
         }
 

@@ -100,6 +100,14 @@ public sealed class UvCooldownCheck : ICheck
         // A length of time is only understood from uv 0.9.17 on.
         var findings = new List<Finding> { Finding.Ok(Item, length, Expected, source) };
         AddExceptions(uv, findings);
+
+        // The [pip] table replaces the top-level value for "uv pip" commands.
+        if (WeakerForPip(uv) is { } forPip)
+        {
+            findings.Add(forPip);
+            return CheckOutcome.Fail($"uv waits {length}, but its [pip] settings set a weaker wait for \"uv pip\" commands.", findings);
+        }
+
         if (uv.Version is { } version)
         {
             if (version < UvLocator.RelativeCooldownFrom)
@@ -138,7 +146,7 @@ public sealed class UvCooldownCheck : ICheck
             return;
         }
 
-        int listed = 0;
+        var notes = new List<Finding>();
         foreach ((string package, ConfigNode value) in exceptions.Entries)
         {
             Cooldown cooldown = Durations.ParseUv(value switch
@@ -152,13 +160,7 @@ public sealed class UvCooldownCheck : ICheck
                 continue;
             }
 
-            if (++listed > Most)
-            {
-                findings.Add(Finding.Note("More exceptions", $"{exceptions.Entries.Count - Most} more packages", found.File.At(found.Value)));
-                return;
-            }
-
-            findings.Add(Finding.Note(
+            notes.Add(Finding.Note(
                 $"Exception for {package}",
                 cooldown.Kind switch
                 {
@@ -169,6 +171,49 @@ public sealed class UvCooldownCheck : ICheck
                 },
                 found.File.At(value)));
         }
+
+        findings.AddRange(notes.Take(Most));
+        if (notes.Count > Most)
+        {
+            findings.Add(Finding.Note("More exceptions", $"{notes.Count - Most} more packages", found.File.At(found.Value)));
+        }
+    }
+
+    /// <summary>
+    /// The problem with a release wait set under [pip], which "uv pip" commands use in place of
+    /// the top-level one; null if there is none there or it is a week or more.
+    /// </summary>
+    private static Finding? WeakerForPip(UvInstall uv)
+    {
+        foreach (SettingsFile file in uv.Files)
+        {
+            if ((file.Root?["pip"] as ConfigMap)?[Setting] is not { } node)
+            {
+                continue;
+            }
+
+            Cooldown cooldown = Durations.ParseUv(node switch
+            {
+                ConfigScalar { AsBoolean: false } => "false",
+                ConfigScalar scalar => scalar.Text,
+                _ => null,
+            });
+            return cooldown.Kind == CooldownKind.Relative && cooldown.Length >= Durations.Week
+                ? null
+                : Finding.Problem(
+                    "Wait for \"uv pip\" commands",
+                    cooldown.Kind switch
+                    {
+                        CooldownKind.Disabled => "Switched off",
+                        CooldownKind.AbsoluteDate => "A fixed date",
+                        CooldownKind.Relative => Wording.Duration(cooldown.Length),
+                        _ => "Not understood",
+                    },
+                    Expected,
+                    file.At(node));
+        }
+
+        return null;
     }
 
     /// <summary>The lowest version a "&gt;=1.2.3" (or "==1.2.3") requirement allows; null for anything else.</summary>

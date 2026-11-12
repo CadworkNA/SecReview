@@ -3,6 +3,21 @@ using SecReview.Config;
 
 namespace SecReview.SupplyChain;
 
+/// <summary>Reads yes/no values the way the JavaScript package managers and uv do.</summary>
+internal static class Flags
+{
+    /// <summary>
+    /// True for "true", "1", "yes" and "on"; false for "false", "0", "no" and "off"; in any
+    /// letter case. Null for anything else.
+    /// </summary>
+    public static bool? Parse(string? text) => text?.Trim().ToLowerInvariant() switch
+    {
+        "true" or "1" or "yes" or "on" => true,
+        "false" or "0" or "no" or "off" => false,
+        _ => null,
+    };
+}
+
 /// <summary>
 /// Finds sign-in secrets written into npm-style settings files (<c>.npmrc</c>, pnpm's
 /// <c>rc</c> and <c>auth.ini</c>). Only the key and its line are reported. A value that only
@@ -25,9 +40,19 @@ internal static class NpmTokens
 
         foreach ((string key, ConfigNode value) in file.Root.Entries)
         {
-            if (IsSecretKey(key) && value is ConfigScalar { Text.Length: > 0 } secret && !IsReference(secret.Text))
+            if (!IsSecretKey(key))
             {
-                yield return Finding.Problem(Describe(key), "Stored as plain text", Expected, file.At(secret));
+                continue;
+            }
+
+            // Every line counts, not only the one in force: a token on a line that a later
+            // line replaces is still sitting in the file.
+            foreach (ConfigScalar secret in value.All())
+            {
+                if (secret.Text.Length > 0 && !IsReference(secret.Text))
+                {
+                    yield return Finding.Problem(Describe(key), "Stored as plain text", Expected, file.At(secret));
+                }
             }
         }
     }

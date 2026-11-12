@@ -169,6 +169,12 @@ public static class YamlReader
 
         private ConfigList ReadList(int indent, int depth)
         {
+            // A list under a key at the key's own indentation gets here without passing ReadBlock.
+            if (depth > MaximumDepth)
+            {
+                throw new ConfigSyntaxException(_lines[_index].Number, "values are nested too deeply");
+            }
+
             int start = _lines[_index].Number;
             var items = new List<ConfigNode>();
             while (_index < _lines.Count && _lines[_index].Indent == indent && IsListItem(_lines[_index].Text))

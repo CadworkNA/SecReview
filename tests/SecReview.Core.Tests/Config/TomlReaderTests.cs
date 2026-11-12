@@ -149,6 +149,21 @@ public sealed class TomlReaderTests
     }
 
     [TestMethod]
+    [DataRow("UFFFFFFFF", DisplayName = "a code too large for a number with a sign")]
+    [DataRow("U00110000", DisplayName = "a code past the last character")]
+    [DataRow("uD800", DisplayName = "half of a surrogate pair")]
+    public void ACharacterCodeThatIsNotACharacter_StopsTheRead(string code)
+    {
+        const char Backslash = (char)92;
+
+        ConfigFile file = TomlReader.Read($"a = \"{Backslash}{code}\"");
+
+        Assert.IsFalse(file.IsOk, file.Render());
+        Assert.AreEqual(1, file.ProblemLine);
+        Assert.IsFalse(YamlReader.Read($"a: \"{Backslash}{code}\"").IsOk, "the YAML reader refuses it too");
+    }
+
+    [TestMethod]
     public void VeryDeepNesting_IsRefused_NotAStackOverflow()
     {
         ConfigFile file = TomlReader.Read("a = " + new string('[', 5000) + new string(']', 5000));

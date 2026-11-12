@@ -8,8 +8,8 @@ namespace SecReview.SupplyChain.Npm;
 internal static class NpmFiles
 {
     /// <summary>
-    /// The files that exist; empty when there are none. Returns the outcome when something
-    /// needed to tell could not be read.
+    /// The files that exist, the user's first; empty when there are none. Returns the outcome
+    /// when something needed to tell could not be read.
     /// </summary>
     public static CheckOutcome? Load(SystemProbes probes, out List<SettingsFile> files)
     {
@@ -39,13 +39,18 @@ internal static class NpmFiles
 }
 
 /// <summary>
-/// The user's <c>.npmrc</c> must not hold registry tokens as plain text. npm, pnpm and Yarn 1
-/// all read this file, and <c>npm login</c> writes the token there. Only the registry a token
-/// is for is reported; a line that refers to an environment variable is not a stored token.
+/// The user's <c>.npmrc</c> must not hold registry tokens as plain text, and no token may sit
+/// in a persistent environment variable. npm, pnpm and Yarn 1 all read this file, and
+/// <c>npm login</c> writes the token there. Only the registry a token is for, or the
+/// variable's name, is reported; a line that refers to an environment variable is not a
+/// stored token.
 /// </summary>
 public sealed class NpmCredentialsCheck : ICheck
 {
     public const string Id = "sc.npm.credentials";
+
+    /// <summary>Variables that, by convention, hold a registry token.</summary>
+    private static readonly string[] TokenVariables = ["NPM_TOKEN", "NODE_AUTH_TOKEN"];
 
     public CheckDefinition Definition { get; } =
         new(Id, CheckCategory.SupplyChain, Severity.Medium, AdminNeed.No, CheckScope.User);
@@ -59,35 +64,67 @@ public sealed class NpmCredentialsCheck : ICheck
             return failed;
         }
 
-        if (files.Count == 0)
+        if (PersistentEnvironment.Names(context.Probes.Registry, out IReadOnlyList<string> variables) is { } unread)
+        {
+            return unread;
+        }
+
+        var tokens = new List<Finding>();
+        foreach (string variable in variables)
+        {
+            if (TokenVariables.Contains(variable, StringComparer.OrdinalIgnoreCase) || HoldsToken(variable))
+            {
+                tokens.Add(Finding.Problem($"Variable {variable}", "Holds a token, set for good", "Not set", "environment variables"));
+            }
+        }
+
+        if (files.Count == 0 && tokens.Count == 0)
         {
             return CheckOutcome.NotApplicable("There is no .npmrc file.");
         }
 
+        tokens.AddRange(files.SelectMany(NpmTokens.In));
+        if (tokens.Count > 0)
+        {
+            return CheckOutcome.Fail(
+                tokens.Count == 1 ? "A registry token for npm is stored as plain text." : $"{tokens.Count} registry tokens for npm are stored as plain text.",
+                tokens);
+        }
+
+        // Nothing found. If a file could not be read, "no tokens" is not known.
         if (files.FirstOrDefault(f => f.Problem is not null)?.Problem is { } problem)
         {
             return CheckOutcome.Error(problem);
         }
 
-        List<Finding> tokens = [.. files.SelectMany(NpmTokens.In)];
-        return tokens.Count == 0
-            ? CheckOutcome.Pass(
-                "Your .npmrc holds no registry tokens as plain text.",
-                Finding.Ok("Registry tokens", "None stored as plain text", "Not stored as plain text"))
-            : CheckOutcome.Fail(
-                tokens.Count == 1 ? "Your .npmrc holds a registry token as plain text." : $"Your .npmrc holds {tokens.Count} registry tokens as plain text.",
-                tokens);
+        return CheckOutcome.Pass(
+            "No registry tokens for npm are stored as plain text.",
+            Finding.Ok("Registry tokens", "None stored as plain text", "Not stored as plain text"));
     }
+
+    /// <summary>Whether a variable is npm's way of passing a token setting: "npm_config_" followed by a key that holds a secret.</summary>
+    internal static bool HoldsToken(string variable) =>
+        variable.StartsWith("npm_config_", StringComparison.OrdinalIgnoreCase) &&
+        (variable.EndsWith("_authToken", StringComparison.OrdinalIgnoreCase) || variable.EndsWith("_auth", StringComparison.OrdinalIgnoreCase) ||
+         variable.EndsWith("_password", StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
 /// npm's settings must not switch off TLS checks, point at a registry over plain HTTP, or let
 /// every package run install scripts (npm 12 denies them unless a project allows them; the
-/// "allow all" switch undoes that).
+/// "allow all" switch undoes that). A setting is taken where npm takes it: the
+/// <c>npm_config_…</c> variable, then the user's file, then the global one.
 /// </summary>
 public sealed class NpmSettingsCheck : ICheck
 {
     public const string Id = "sc.npm.settings";
+
+    /// <summary>Setting, what it is, the value that is a problem, and the words for it.</summary>
+    private static readonly (string Key, string Item, bool Bad, string Found, string Expected)[] Switches =
+    [
+        ("strict-ssl", "TLS certificate checks", false, "Off", "On"),
+        ("dangerously-allow-all-scripts", "Install scripts", true, "Every package may run them", "Only approved packages"),
+    ];
 
     public CheckDefinition Definition { get; } =
         new(Id, CheckCategory.SupplyChain, Severity.High, AdminNeed.No, CheckScope.User);
@@ -95,43 +132,56 @@ public sealed class NpmSettingsCheck : ICheck
     public CheckOutcome Run(CheckContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        SystemProbes probes = context.Probes;
 
-        if (NpmFiles.Load(context.Probes, out List<SettingsFile> files) is { } failed)
+        if (NpmFiles.Load(probes, out List<SettingsFile> files) is { } failed)
         {
             return failed;
         }
 
-        if (files.Count == 0)
+        var problems = new List<Finding>();
+        bool anyVariable = false;
+
+        foreach ((string key, string item, bool bad, string found, string expected) in Switches)
         {
-            return CheckOutcome.NotApplicable("There is no .npmrc file.");
+            if (Effective(probes, files, key, out string? value, out string? source) is { } unread)
+            {
+                return unread;
+            }
+
+            anyVariable |= source?.Contains("environment", StringComparison.Ordinal) == true;
+            if (value is not null && Flags.Parse(value) == bad)
+            {
+                problems.Add(Finding.Problem(item, found, expected, source));
+            }
         }
 
-        var problems = new List<Finding>();
+        if (Effective(probes, files, "registry", out string? registry, out string? registrySource) is { } unreadRegistry)
+        {
+            return unreadRegistry;
+        }
+
+        anyVariable |= registrySource?.Contains("environment", StringComparison.Ordinal) == true;
+        if (IsPlainHttp(registry))
+        {
+            problems.Add(Finding.Problem("Default registry", "Plain HTTP", "HTTPS", registrySource));
+        }
+
+        // Registries for a scope ("@company:registry") can only be set in the files.
         foreach (SettingsFile file in files)
         {
             foreach ((string key, ConfigNode value) in file.Root?.Entries ?? [])
             {
-                string? text = (value as ConfigScalar)?.Text.Trim();
-                if (text is null)
+                if (key.EndsWith(":registry", StringComparison.Ordinal) && file.Single(value) is { } scoped && IsPlainHttp(scoped.Text))
                 {
-                    continue;
-                }
-
-                if (key == "strict-ssl" && text.Equals("false", StringComparison.OrdinalIgnoreCase))
-                {
-                    problems.Add(Finding.Problem("TLS certificate checks", "Off", "On", file.At(value)));
-                }
-                else if (key == "dangerously-allow-all-scripts" && text.Equals("true", StringComparison.OrdinalIgnoreCase))
-                {
-                    problems.Add(Finding.Problem("Install scripts", "Every package may run them", "Only approved packages", file.At(value)));
-                }
-                else if ((key == "registry" || key.EndsWith(":registry", StringComparison.Ordinal)) &&
-                    text.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-                {
-                    problems.Add(Finding.Problem(
-                        key == "registry" ? "Default registry" : $"Registry for {key[..^":registry".Length]}", "Plain HTTP", "HTTPS", file.At(value)));
+                    problems.Add(Finding.Problem($"Registry for {key[..^":registry".Length]}", "Plain HTTP", "HTTPS", file.At(scoped)));
                 }
             }
+        }
+
+        if (files.Count == 0 && !anyVariable)
+        {
+            return CheckOutcome.NotApplicable("There is no .npmrc file.");
         }
 
         if (problems.Count > 0)
@@ -143,6 +193,7 @@ public sealed class NpmSettingsCheck : ICheck
                 problems);
         }
 
+        // Nothing found. If a file could not be read, "nothing wrong" is not known.
         if (files.FirstOrDefault(f => f.Problem is not null)?.Problem is { } problem)
         {
             return CheckOutcome.Error(problem);
@@ -150,4 +201,36 @@ public sealed class NpmSettingsCheck : ICheck
 
         return CheckOutcome.Pass("npm's settings keep its protections on.", Finding.Ok("Protections switched off", "None", "None"));
     }
+
+    /// <summary>
+    /// The value npm uses for a setting and where it comes from: the <c>npm_config_…</c>
+    /// variable, else the first file that sets it. Both null when nothing sets it.
+    /// </summary>
+    private static CheckOutcome? Effective(SystemProbes probes, List<SettingsFile> files, string key, out string? value, out string? source)
+    {
+        string variable = "npm_config_" + key.Replace('-', '_');
+        if (PersistentEnvironment.Read(probes, variable, out value, out source) is { } failed)
+        {
+            return failed;
+        }
+
+        if (value is not null)
+        {
+            return null;
+        }
+
+        foreach (SettingsFile file in files)
+        {
+            if (file.Single(file.Root?[key]) is { } inFile)
+            {
+                (value, source) = (inFile.Text, file.At(inFile));
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsPlainHttp(string? address) =>
+        address?.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase) == true;
 }

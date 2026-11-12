@@ -117,6 +117,26 @@ public sealed class ScoopChecksTests
     }
 
     [TestMethod]
+    [DataRow("https://someone:made-up@pass@github.com/example/private-bucket", DisplayName = "an @ inside the password")]
+    [DataRow("https://someone:made-up-password@github.com/example/private-bucket", DisplayName = "a user name and password")]
+    [DataRow("https://github.com/example/private-bucket?token=made-up-token", DisplayName = "a token after ?")]
+    [DataRow("https://github.com/example/private-bucket#made-up-token", DisplayName = "a token after #")]
+    public void Buckets_ASecretAnywhereInTheAddress_IsNeverShown(string address)
+    {
+        CheckOutcome outcome = Buckets.Run(WithBucket(Scoop(), "private", address));
+
+        Assert.AreEqual("From https://github.com/example/private-bucket", outcome.Findings[0].Found);
+        Assert.IsFalse(outcome.Findings.Any(f => (f.Item + f.Found + f.Expected + f.Source).Contains("made-up", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public void Buckets_AnAddressWithASignInPart_IsStillComparedByWhereItPoints()
+    {
+        Assert.AreEqual(CheckStatus.Pass, Buckets.Run(WithBucket(Scoop(), "main", "https://someone:made-up@github.com/ScoopInstaller/Main")).Status);
+        Assert.AreEqual(CheckStatus.Fail, Buckets.Run(WithBucket(Scoop(), "main", "https://github.com@example.test/ScoopInstaller/Main")).Status);
+    }
+
+    [TestMethod]
     public void Buckets_ScoopItselfFromAnotherRepository_Fails()
     {
         FakeProbes probes = Scoop().WithFile(ConfigPath, """{ "scoop_repo": "https://github.com/example/Scoop" }""");
@@ -160,6 +180,9 @@ public sealed class ScoopChecksTests
     [DataRow("""{ "version": "1.0", "url": ["https://example.test/a.zip", "http://example.test/b.zip"], "hash": ["aa", "bb"] }""", "downloaded over plain HTTP")]
     [DataRow("""{ "version": "1.0", "architecture": { "64bit": { "url": "http://example.test/a.zip", "hash": "aa" }, "32bit": { "url": "https://example.test/b.zip", "hash": "bb" } } }""", "downloaded over plain HTTP")]
     [DataRow("""{ "version": "1.0", "architecture": { "64bit": { "url": "https://example.test/a.zip" } } }""", "no hash, so the download was not verified")]
+    [DataRow("""{ "version": "1.0", "url": ["https://example.test/a.zip", "https://example.test/b.zip"], "hash": ["aa"] }""", "no hash for some of its downloads")]
+    [DataRow("""{ "version": "1.0", "url": ["https://example.test/a.zip", "https://example.test/b.zip"], "hash": "aa" }""", "no hash for some of its downloads")]
+    [DataRow("""{ "version": "1.0", "url": "https://example.test/a.zip", "hash": [""] }""", "no hash, so the download was not verified")]
     public void Apps_EachWeakness_Fails_AndIsNamed(string manifest, string found)
     {
         CheckOutcome outcome = Apps.Run(WithApp(WithApp(Scoop(), "good", GoodManifest), "weak", manifest));
@@ -230,6 +253,9 @@ public sealed class ScoopChecksTests
 
         FakeProbes missing = Scoop().WithFile(Root + @"\apps\tool\current\scoop-manifest.json", GoodManifest);
         Assert.AreEqual(CheckStatus.Error, Apps.Run(missing).Status, "no install record");
+
+        FakeProbes closed = WithApp(Scoop(), "tool", GoodManifest).WithFolderFailure(Root + @"\apps\tool", ProbeFailure.AccessDenied());
+        Assert.AreEqual(CheckStatus.Error, Apps.Run(closed).Status, "a folder that cannot be opened is an app, not no app");
     }
 
     // Updates
@@ -277,6 +303,45 @@ public sealed class ScoopChecksTests
 
         Assert.AreEqual(CheckStatus.Pass, outcome.Status);
         Assert.IsTrue(outcome.Rows().Any(r => r.StartsWith("tool: 1.2.3, held back on purpose; the bucket has 1.3.0", StringComparison.Ordinal)));
+        Assert.AreEqual("Scoop last looked for updates: 1 day ago (expected Within 14 days) [ok]", outcome.Rows()[^1]);
+    }
+
+    [TestMethod]
+    public void Updates_AnAppThatCannotBeCompared_IsCouldNotCheck_NotAPass()
+    {
+        FakeProbes good = Fetched(WithBucketManifest(WithApp(Scoop(), "tool", GoodManifest), "tool", "1.2.3"), daysAgo: 1);
+
+        CheckOutcome brokenRecord = Updates.Run(WithApp(good, "other", GoodManifest, "{ not json"));
+        Assert.AreEqual(CheckStatus.Error, brokenRecord.Status);
+        Assert.AreEqual("1 Scoop app could not be compared with its bucket.", brokenRecord.Summary);
+        Assert.AreEqual("other: Its install record could not be read (expected The version in its bucket) [problem]", brokenRecord.Rows()[0]);
+
+        FakeProbes again = Fetched(WithBucketManifest(WithApp(Scoop(), "tool", GoodManifest), "tool", "1.2.3"), daysAgo: 1);
+        CheckOutcome brokenBucket = Updates.Run(WithApp(again, "other", GoodManifest).WithFile(Root + @"\buckets\main\bucket\other.json", "{ not json"));
+        Assert.AreEqual(CheckStatus.Error, brokenBucket.Status);
+        StringAssert.Contains(brokenBucket.Rows()[0], "Its bucket's manifest could not be read");
+
+        FakeProbes closed = Fetched(WithBucketManifest(WithApp(Scoop(), "tool", GoodManifest), "tool", "1.2.3"), daysAgo: 1)
+            .WithFolderFailure(Root + @"\apps\tool", ProbeFailure.AccessDenied());
+        Assert.AreEqual(CheckStatus.Error, Updates.Run(closed).Status);
+    }
+
+    [TestMethod]
+    public void Updates_AnAppBehind_StillFails_WhenAnotherCannotBeCompared()
+    {
+        FakeProbes probes = Fetched(WithBucketManifest(WithApp(Scoop(), "tool", GoodManifest), "tool", "1.3.0"), daysAgo: 1);
+
+        Assert.AreEqual(CheckStatus.Fail, Updates.Run(WithApp(probes, "other", GoodManifest, "{ not json")).Status);
+    }
+
+    [TestMethod]
+    public void Updates_AnAppItsBucketNoLongerOffers_IsSaid_NotFailed()
+    {
+        CheckOutcome outcome = Updates.Run(Fetched(WithApp(Scoop(), "tool", GoodManifest), daysAgo: 1));
+
+        Assert.AreEqual(CheckStatus.Pass, outcome.Status);
+        Assert.AreEqual("Scoop has no updates waiting; 1 app is no longer offered by its bucket.", outcome.Summary);
+        Assert.AreEqual("tool: 1.2.3; its bucket no longer offers it [note]", outcome.Rows()[0]);
     }
 
     [TestMethod]
@@ -323,6 +388,9 @@ public sealed class ScoopChecksTests
     [DataRow("""{ "virustotal_api_key": "made-up-key" }""", "VirusTotal key")]
     [DataRow("""{ "proxy": "someone:made-up-password@proxy.example:8080" }""", "Proxy password")]
     [DataRow("""{ "private_hosts": [ { "match": "example\\.test", "headers": "Authorization: made-up" } ] }""", "Sign-in headers for private hosts")]
+    [DataRow("""{ "GH_Token": "made-up-token" }""", "GitHub token")]
+    [DataRow("""{ "Private_Hosts": [ { "Match": "example\\.test", "Headers": "Authorization: made-up" } ] }""", "Sign-in headers for private hosts")]
+    [DataRow("""{ "proxy": "someone:made-up@word@proxy.example:8080" }""", "Proxy password")]
     public void Tokens_EachStoredSecret_Fails_NamingTheSettingOnly(string config, string item)
     {
         CheckOutcome outcome = Tokens.Run(Scoop().WithFile(ConfigPath, config));

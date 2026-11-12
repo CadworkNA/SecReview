@@ -46,16 +46,36 @@ public sealed class ScoopUpdatesCheck : ICheck
         var findings = new List<Finding>();
         var behind = new List<string>();
         int compared = 0;
+        int unread = 0;
+        int dropped = 0;
         foreach (ScoopApp app in apps.Value!)
         {
-            if (app.Version is not { } installed || app.Bucket is not { } bucket ||
-                !ScoopAppsCheck.SafeName(bucket) || !ScoopAppsCheck.SafeName(app.Name))
+            // An app whose own records cannot be read cannot be compared; that is said, not skipped.
+            if (app.Manifest is null || app.Install is null || app.Version is not { } installed)
+            {
+                unread++;
+                findings.Add(Finding.Problem(app.Name, "Its install record could not be read", Expected, app.Folder));
+                continue;
+            }
+
+            // Not from a bucket (the app downloads check reports that): nothing to compare with.
+            if (app.Bucket is not { } bucket || !ScoopAppsCheck.SafeName(bucket) || !ScoopAppsCheck.SafeName(app.Name))
             {
                 continue;
             }
 
-            if (BucketVersion(files, scoop, bucket, app.Name) is not { } offered)
+            string? offered = BucketVersion(files, scoop, bucket, app.Name, out bool unreadable);
+            if (unreadable)
             {
+                unread++;
+                findings.Add(Finding.Problem(app.Name, "Its bucket's manifest could not be read", Expected, app.Folder));
+                continue;
+            }
+
+            if (offered is null)
+            {
+                dropped++;
+                findings.Add(Finding.Note(app.Name, $"{installed}; its bucket no longer offers it", app.Folder));
                 continue;
             }
 
@@ -84,7 +104,8 @@ public sealed class ScoopUpdatesCheck : ICheck
         bool stale = age is { } known && known > MaximumBucketAge;
         if (age is { } bucketAge)
         {
-            string ago = bucketAge < TimeSpan.FromDays(1) ? "Today" : $"{(int)bucketAge.TotalDays} days ago";
+            int days = (int)bucketAge.TotalDays;
+            string ago = days < 1 ? "Today" : days == 1 ? "1 day ago" : $"{days} days ago";
             findings.Add(stale
                 ? Finding.Problem("Scoop last looked for updates", ago, "Within 14 days")
                 : Finding.Ok("Scoop last looked for updates", ago, "Within 14 days"));
@@ -109,9 +130,27 @@ public sealed class ScoopUpdatesCheck : ICheck
                 $"Scoop has not looked for updates for {(int)age!.Value.TotalDays} days, so it cannot know what is outdated.", findings);
         }
 
+        // Nothing is known to be behind, but some apps could not be compared at all.
+        if (unread > 0)
+        {
+            return CheckOutcome.Error(
+                unread == 1
+                    ? "1 Scoop app could not be compared with its bucket."
+                    : $"{unread} Scoop apps could not be compared with their buckets.",
+                findings);
+        }
+
         if (compared == 0)
         {
-            return CheckOutcome.Pass("No apps from a bucket are installed with Scoop.", findings);
+            // An app its bucket has dropped gets no more updates; that is said, not failed.
+            return CheckOutcome.Pass(
+                dropped switch
+                {
+                    0 => "No apps from a bucket are installed with Scoop.",
+                    1 => "Scoop has no updates waiting; 1 app is no longer offered by its bucket.",
+                    _ => $"Scoop has no updates waiting; {dropped} apps are no longer offered by their buckets.",
+                },
+                findings);
         }
 
         findings.Insert(0, Finding.Ok("Apps", $"{compared} at the version their bucket offers", Expected));
@@ -122,17 +161,37 @@ public sealed class ScoopUpdatesCheck : ICheck
             findings);
     }
 
-    /// <summary>The version of an app in its bucket's manifest: <c>bucket\app.json</c> if the bucket has that folder, else beside the bucket's root.</summary>
-    private static string? BucketVersion(IFileProbe files, ScoopInstall scoop, string bucket, string app)
+    /// <summary>
+    /// The version of an app in its bucket's manifest: <c>bucket\app.json</c> if the bucket has
+    /// that folder, else beside the bucket's root. <paramref name="unreadable"/> is true when
+    /// the manifest is there but cannot be read or names no version.
+    /// </summary>
+    private static string? BucketVersion(IFileProbe files, ScoopInstall scoop, string bucket, string app, out bool unreadable)
     {
+        unreadable = false;
         string root = $@"{scoop.Root}\buckets\{bucket}";
         foreach (string path in (string[])[$@"{root}\bucket\{app}.json", $@"{root}\{app}.json"])
         {
-            if (SettingsFiles.LoadJson(files, path, out _) is { ValueKind: JsonValueKind.Object } manifest &&
-                manifest.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.String)
+            JsonElement? manifest = SettingsFiles.LoadJson(files, path, out string? problem);
+            if (problem is not null)
+            {
+                unreadable = true;
+                return null;
+            }
+
+            if (manifest is null)
+            {
+                continue;
+            }
+
+            if (manifest is { ValueKind: JsonValueKind.Object } found &&
+                found.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.String)
             {
                 return version.GetString();
             }
+
+            unreadable = true;
+            return null;
         }
 
         return null;

@@ -101,15 +101,17 @@ internal static class PnpmLocator
         return null;
     }
 
-    /// <summary>A scalar's text, whatever its kind; null for anything that is not a single value.</summary>
-    public static string? Text(ConfigNode? node) => (node as ConfigScalar)?.Text;
+    /// <summary>The text of the value in force (the last, where an INI key is written more than once); null if there is none.</summary>
+    public static string? Text(ConfigNode? node) => node.InForce()?.Text;
 
-    /// <summary>A yes/no setting from YAML (true/false) or INI ("true"/"false"); null if absent or neither.</summary>
-    public static bool? Flag(ConfigNode? node) => node switch
+    /// <summary>
+    /// A yes/no setting, read the way npm and pnpm read it: true/false as YAML values or as
+    /// text, and 1/0. The value in force counts. Null if absent or none of these.
+    /// </summary>
+    public static bool? Flag(ConfigNode? node) => node.InForce() switch
     {
-        ConfigScalar { AsBoolean: { } flag } => flag,
-        ConfigScalar { Kind: ScalarKind.Text } text when text.Text.Equals("true", StringComparison.OrdinalIgnoreCase) => true,
-        ConfigScalar { Kind: ScalarKind.Text } text when text.Text.Equals("false", StringComparison.OrdinalIgnoreCase) => false,
-        _ => null,
+        { AsBoolean: { } flag } => flag,
+        { } scalar => SupplyChain.Flags.Parse(scalar.Text),
+        null => null,
     };
 }

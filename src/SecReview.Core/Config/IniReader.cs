@@ -119,7 +119,27 @@ public static class IniReader
 
             if (dialect == IniDialect.Npm)
             {
-                value = Unquote(value, number);
+                if (key.AsSpan().ContainsAny(';', '#'))
+                {
+                    throw new ConfigSyntaxException(number, "a setting's name contains a comment sign");
+                }
+
+                value = Unquote(WithoutComment(value), number);
+            }
+            else
+            {
+                // Python reads option names without regard to case, and pip treats "_" as "-"
+                // and ignores a leading "--": "Trusted_Host" is "trusted-host".
+                key = key.ToLowerInvariant().Replace('_', '-');
+                if (key.StartsWith("--", StringComparison.Ordinal))
+                {
+                    key = key[2..];
+                }
+
+                if (key.Length == 0)
+                {
+                    throw new ConfigSyntaxException(number, "a setting has no name");
+                }
             }
 
             var scalar = new ConfigScalar(value, ScalarKind.Text, number);
@@ -164,6 +184,32 @@ public static class IniReader
                 section.Replace(key, both);
                 break;
         }
+    }
+
+    /// <summary>
+    /// npm ends an unquoted value at the first ";" or "#" that has no backslash before it: the
+    /// rest of the line is a comment. A value in quotes is kept whole.
+    /// </summary>
+    private static string WithoutComment(string value)
+    {
+        if (value.Length >= 2 && value[0] is '"' or '\'' && value[^1] == value[0])
+        {
+            return value;
+        }
+
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\\')
+            {
+                i++;
+            }
+            else if (value[i] is ';' or '#')
+            {
+                return value[..i].TrimEnd();
+            }
+        }
+
+        return value;
     }
 
     /// <summary>npm values may be wrapped in single or double quotes.</summary>

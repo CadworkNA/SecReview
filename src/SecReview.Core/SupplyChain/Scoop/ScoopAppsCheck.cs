@@ -128,9 +128,20 @@ public sealed class ScoopAppsCheck : ICheck
         {
             problems.Add("a nightly build, which Scoop does not verify");
         }
-        else if (!HasValue(source, "hash") && HasValue(source, "url"))
+        else if (HasValue(source, "url"))
         {
-            problems.Add("no hash, so the download was not verified");
+            // Scoop pairs each download address with the hash at the same position; an address
+            // without one is downloaded unverified.
+            int downloads = Texts(source, "url").Count();
+            int hashes = Texts(source, "hash").Count(h => h.Trim().Length > 0);
+            if (hashes == 0)
+            {
+                problems.Add("no hash, so the download was not verified");
+            }
+            else if (hashes < downloads)
+            {
+                problems.Add("no hash for some of its downloads");
+            }
         }
 
         if (Texts(source, "url").Any(u => u.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase)))

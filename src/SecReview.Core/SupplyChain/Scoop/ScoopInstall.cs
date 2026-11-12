@@ -13,10 +13,29 @@ internal sealed record ScoopInstall(string Root, string GlobalRoot, string? Conf
 {
     /// <summary>A text setting from the settings file; null if absent or not text.</summary>
     public string? Setting(string name) =>
-        Config is { ValueKind: JsonValueKind.Object } config && config.TryGetProperty(name, out JsonElement value) &&
-        value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        Property(name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
+
+    /// <summary>
+    /// A setting's value whatever kind it is; null if absent. Scoop reads setting names without
+    /// regard to letter case, and so does this.
+    /// </summary>
+    public JsonElement? Property(string name)
+    {
+        if (Config is not { ValueKind: JsonValueKind.Object } config)
+        {
+            return null;
+        }
+
+        foreach (JsonProperty property in config.EnumerateObject())
+        {
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return property.Value;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>One app installed with Scoop, as its own files describe it.</summary>
@@ -145,7 +164,20 @@ internal static class ScoopLocator
     /// <summary>One app by name; null if it is not installed under this root.</summary>
     public static ScoopApp? App(IFileProbe files, string root, string name)
     {
-        string? folder = CurrentFolder(files, $@"{root}\apps\{name}");
+        string appFolder = $@"{root}\apps\{name}";
+        ProbeResult<IReadOnlyList<FileEntry>> listed = files.List(appFolder);
+        if (listed.Status == ProbeStatus.NotFound)
+        {
+            return null;
+        }
+
+        // A folder that is there but cannot be listed is an app that could not be read, not no app.
+        if (!listed.IsOk)
+        {
+            return new ScoopApp(name, appFolder, null, null, $"The folder of the app {name} could not be read.");
+        }
+
+        string? folder = CurrentFolder(listed.Value!, appFolder);
         if (folder is null)
         {
             return null;
@@ -167,20 +199,14 @@ internal static class ScoopLocator
     /// The folder of the version in use: <c>current</c> (a link Scoop keeps), or, where links
     /// are switched off, the newest version folder.
     /// </summary>
-    private static string? CurrentFolder(IFileProbe files, string appFolder)
+    private static string? CurrentFolder(IReadOnlyList<FileEntry> versions, string appFolder)
     {
-        ProbeResult<IReadOnlyList<FileEntry>> versions = files.List(appFolder);
-        if (!versions.IsOk)
-        {
-            return null;
-        }
-
-        if (versions.Value!.Any(v => v.IsDirectory && v.Name.Equals("current", StringComparison.OrdinalIgnoreCase)))
+        if (versions.Any(v => v.IsDirectory && v.Name.Equals("current", StringComparison.OrdinalIgnoreCase)))
         {
             return $@"{appFolder}\current";
         }
 
-        FileEntry? newest = versions.Value!
+        FileEntry? newest = versions
             .Where(v => v.IsDirectory && !v.IsLink)
             .OrderByDescending(v => v.LastWrite)
             .FirstOrDefault();

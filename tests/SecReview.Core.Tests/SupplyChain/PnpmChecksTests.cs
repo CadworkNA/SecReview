@@ -307,16 +307,78 @@ public sealed class PnpmChecksTests
         Assert.AreEqual($"{Yaml}, line 5", outcome.Findings[0].Source);
     }
 
-    [TestMethod]
-    public void Tokens_InAPermanentVariable_Fail_WithoutShowingIt()
-    {
-        FakeProbes probes = Pnpm().WithRegistryValue(
-            RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, "npm_config_//registry.npmjs.org/:_authToken", RegistryValue.FromText("made-up-token"));
+    private static FakeProbes WithVariable(FakeProbes probes, string name, string value) =>
+        probes.WithRegistryValue(RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, name, RegistryValue.FromText(value));
 
-        CheckOutcome outcome = Tokens.Run(probes);
+    [TestMethod]
+    public void Tokens_InAPermanentVariable_Fail_NamingTheVariableOnly()
+    {
+        const string Variable = "pnpm_config_//registry.npmjs.org/:_authToken";
+
+        CheckOutcome outcome = Tokens.Run(WithVariable(Pnpm(), Variable, "made-up-token"));
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"Variable {Variable}", outcome.Findings[0].Item);
         Assert.IsFalse(outcome.Findings.Any(f => (f.Item + f.Found + f.Source).Contains("made-up", StringComparison.Ordinal)));
+
+        // The variables npm shares belong to the npm check, so that one token is one finding.
+        Assert.AreEqual(
+            CheckStatus.Pass, Tokens.Run(WithVariable(Pnpm(), "npm_config_//registry.npmjs.org/:_authToken", "made-up-token")).Status);
+    }
+
+    [TestMethod]
+    public void Tokens_OnALineThatALaterLineReplaces_AreStillFound()
+    {
+        CheckOutcome outcome = Tokens.Run(Pnpm(
+            authIni: "//registry.npmjs.org/:_authToken=made-up-token\n//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n"));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"{AuthIni}, line 1", outcome.Findings[0].Source);
+    }
+
+    [TestMethod]
+    public void Cooldown_TheVariable_DecidesForPnpm11AndLater_AndIsIgnoredByPnpm10()
+    {
+        CheckOutcome weak = Cooldown.Run(WithVariable(Pnpm(yaml: "minimumReleaseAge: 10080\n"), PnpmCooldownCheck.Variable, "60"));
+        Assert.AreEqual(CheckStatus.Fail, weak.Status);
+        Assert.AreEqual("pnpm waits only 1 h before installing a new release.", weak.Summary);
+        StringAssert.Contains(weak.Findings[0].Source, PnpmCooldownCheck.Variable);
+
+        CheckOutcome strong = Cooldown.Run(WithVariable(Pnpm(yaml: "storeDir: D:\\store\n"), PnpmCooldownCheck.Variable, "20160"));
+        Assert.AreEqual(CheckStatus.Pass, strong.Status);
+
+        Assert.AreEqual(CheckStatus.Error, Cooldown.Run(WithVariable(Pnpm(), PnpmCooldownCheck.Variable, "a week")).Status);
+
+        CheckOutcome ten = Cooldown.Run(WithVariable(Pnpm(version: "10.34.9", rc: "minimum-release-age=10080\n"), PnpmCooldownCheck.Variable, "0"));
+        Assert.AreEqual(CheckStatus.Pass, ten.Status);
+    }
+
+    [TestMethod]
+    public void Cooldown_InRc_TheLastLineIsTheOneInForce()
+    {
+        CheckOutcome outcome = Cooldown.Run(Pnpm(version: "10.34.9", rc: "minimum-release-age=10080\nminimum-release-age=60\n"));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"{Rc}, line 2", outcome.Findings[0].Source);
+    }
+
+    [TestMethod]
+    public void Settings_TheVariable_WinsOverTheFiles()
+    {
+        CheckOutcome off = Settings.Run(WithVariable(Pnpm(yaml: "strictSsl: true\n"), "pnpm_config_strict_ssl", "false"));
+        Assert.AreEqual("pnpm: TLS certificate checks: off.", off.Summary);
+        StringAssert.Contains(off.Findings[0].Source, "pnpm_config_strict_ssl");
+
+        CheckOutcome on = Settings.Run(WithVariable(Pnpm(yaml: "dangerouslyAllowAllBuilds: true\n"), "pnpm_config_dangerously_allow_all_builds", "false"));
+        Assert.AreEqual(CheckStatus.Pass, on.Status);
+    }
+
+    [TestMethod]
+    public void Settings_InRc_AreReadAsPnpmReadsThem()
+    {
+        Assert.AreEqual(CheckStatus.Pass, Settings.Run(Pnpm(rc: "strict-ssl=false\nstrict-ssl=true\n")).Status, "the last line wins");
+        Assert.AreEqual(CheckStatus.Fail, Settings.Run(Pnpm(rc: "strict-ssl=false ; the proxy needs this\n")).Status);
+        Assert.AreEqual(CheckStatus.Fail, Settings.Run(Pnpm(rc: "strict-ssl=0\n")).Status);
     }
 
     [TestMethod]

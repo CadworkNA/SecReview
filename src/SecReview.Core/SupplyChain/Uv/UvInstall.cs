@@ -128,7 +128,7 @@ internal static class UvLocator
                 SettingsFiles.Load(files, configFile, SettingsFormat.Toml) ??
                 new SettingsFile(configFile, null, "The settings file named by UV_CONFIG_FILE does not exist."));
         }
-        else if (noConfig is null)
+        else if (noConfig is null || Flags.Parse(noConfig) == false)
         {
             foreach (string path in (string[])[$@"{uvFolder}\uv.toml", $@"{programData.Value}\uv\uv.toml"])
             {

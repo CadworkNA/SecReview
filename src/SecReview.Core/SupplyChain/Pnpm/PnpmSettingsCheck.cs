@@ -53,6 +53,23 @@ public sealed class PnpmSettingsCheck : ICheck
 
         foreach ((string yaml, string ini, string item, bool bad, string found, string expected) in Switches)
         {
+            // pnpm's own variable for the setting wins over every file.
+            string variable = "pnpm_config_" + ini.Replace('-', '_');
+            if (PersistentEnvironment.Read(context.Probes, variable, out string? fromVariable, out string? variableSource) is { } unread)
+            {
+                return unread;
+            }
+
+            if (fromVariable is not null)
+            {
+                if (Flags.Parse(fromVariable) == bad)
+                {
+                    problems.Add(Finding.Problem(item, found, expected, variableSource));
+                }
+
+                continue;
+            }
+
             bool isNetwork = yaml == "strictSsl";
             if (yamlCounts && pnpm.Yaml?.Root?[yaml] is { } inYaml && PnpmLocator.Flag(inYaml) == bad)
             {

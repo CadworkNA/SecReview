@@ -87,9 +87,52 @@ public sealed class IniReaderTests
     }
 
     [TestMethod]
-    public void ASectionWrittenTwice_IsOneSection()
+    public void ASectionWrittenTwice_IsOneSectionForNpm_AndAnErrorForPython()
     {
-        Assert.AreEqual("{s={a=\"1\", b=\"2\"}}", Python("[s]\na = 1\n[s]\nb = 2"));
+        Assert.AreEqual("{s={a=\"1\", b=\"2\"}}", Npm("[s]\na = 1\n[s]\nb = 2"));
+
+        ConfigFile python = IniReader.Read("[s]\na = 1\n[s]\nb = 2", IniDialect.Python);
+        Assert.IsFalse(python.IsOk, "configparser refuses the file, so pip does too");
+        Assert.AreEqual(3, python.ProblemLine);
+    }
+
+    [TestMethod]
+    public void Python_AKeyWrittenTwice_IsAnError_AsItIsForConfigparser()
+    {
+        ConfigFile file = IniReader.Read("[global]\nindex-url = https://a.example\nindex-url = https://b.example", IniDialect.Python);
+
+        Assert.IsFalse(file.IsOk);
+        Assert.AreEqual(3, file.ProblemLine);
+    }
+
+    [TestMethod]
+    public void Python_KeyNames_AreReadAsPipReadsThem()
+    {
+        Assert.AreEqual(
+            "{global={trusted-host=\"a\", extra-index-url=\"b\", index-url=\"c\"}}",
+            Python("[global]\nTrusted_Host = a\n--extra-index-url = b\nINDEX-URL = c"));
+
+        Assert.IsFalse(IniReader.Read("[global]\ntrusted_host = a\ntrusted-host = b", IniDialect.Python).IsOk, "two spellings of one key");
+    }
+
+    [TestMethod]
+    public void Python_OnlyADeeperLine_ContinuesAValue_AndBlankLinesOrCommentsDoNotEndIt()
+    {
+        // Keys indented alike are keys, not a continuation of the first.
+        Assert.AreEqual("{pypi={username=\"a\", password=\"b\"}}", Python("[pypi]\n  username = a\n  password = b"));
+
+        Assert.AreEqual("{s={a=[\"one\", \"two\", \"three\"]}}", Python("[s]\na = one\n\n    two\n# note\n    three"));
+        Assert.AreEqual("{s={a=[\"x = y\"]}}", Python("[s]\na =\n    x = y"), "a deeper line is a value even when it looks like a setting");
+    }
+
+    [TestMethod]
+    public void Npm_ACommentAfterAValue_IsNotPartOfIt()
+    {
+        Assert.AreEqual("{strict-ssl=\"false\"}", Npm("strict-ssl=false ; for the proxy"));
+        Assert.AreEqual("{strict-ssl=\"false\"}", Npm("strict-ssl=false # for the proxy"));
+        Assert.AreEqual("{a=\"x;y\"}", Npm("a=\"x;y\""), "a quoted value is kept whole");
+        Assert.AreEqual("{a=\"x\\;y\"}", Npm("a=x\\;y"), "an escaped sign does not start a comment");
+        Assert.IsFalse(IniReader.Read("a;b=1", IniDialect.Npm).IsOk, "a comment sign in a name is not guessed at");
     }
 
     [TestMethod]

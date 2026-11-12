@@ -391,7 +391,7 @@
     "name": "pnpm stored tokens",
     "titlePass": "pnpm keeps no registry tokens as plain text",
     "titleFail": "pnpm keeps registry tokens as plain text",
-    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
     "fix": [
       "Run pnpm logout for the registry named in the details, or delete the line shown there.",
       "Revoke the token at the registry, since it was stored in the open.",
@@ -553,11 +553,11 @@
   },
   "sc.npm.credentials": {
     "name": "npm stored tokens",
-    "titlePass": "Your .npmrc holds no registry tokens",
-    "titleFail": "Your .npmrc holds registry tokens as plain text",
-    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "titlePass": "No npm registry tokens are stored as plain text",
+    "titleFail": "npm registry tokens are stored as plain text",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
     "fix": [
-      "Run npm logout for the registry named in the details, or delete the line shown there.",
+      "Run npm logout for the registry named in the details, or delete the line or variable shown there.",
       "Revoke the token at the registry, since it was stored in the open.",
       "For publishing, use a short-lived token or sign in again when needed."
     ],
@@ -580,11 +580,11 @@
   },
   "sc.yarn.credentials": {
     "name": "Yarn stored tokens",
-    "titlePass": "Your .yarnrc.yml holds no registry tokens",
-    "titleFail": "Your .yarnrc.yml holds registry tokens as plain text",
-    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "titlePass": "No Yarn registry tokens are stored as plain text",
+    "titleFail": "Yarn registry tokens are stored as plain text",
+    "why": "A registry token in a plain file or a permanent variable can be read by every program you run. With it, an attacker publishes packages in your name.",
     "fix": [
-      "Delete the line shown in the details from .yarnrc.yml, or run yarn npm logout.",
+      "Delete the line or variable shown in the details, or run yarn npm logout.",
       "Revoke the token at the registry, since it was stored in the open.",
       "If a token must be configured, write it as ${NPM_TOKEN} and set that variable only when needed."
     ],

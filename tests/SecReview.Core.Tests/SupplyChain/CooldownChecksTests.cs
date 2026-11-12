@@ -218,10 +218,69 @@ public sealed class CooldownChecksTests
     [DataRow("[global]\nuploaded-prior-to = 2026-11-01", CheckStatus.Fail)]
     [DataRow("[global]\nuploaded-prior-to = 7 days", CheckStatus.Error)]
     [DataRow("[global]\nindex-url = https://pypi.org/simple", CheckStatus.Fail)]
-    [DataRow("[install]\nuploaded-prior-to = P7D", CheckStatus.Fail)]
-    public void Pip_TakesALengthUnderGlobal(string ini, CheckStatus expected)
+    [DataRow("[install]\nuploaded-prior-to = P7D", CheckStatus.Pass)]
+    [DataRow("[global]\nuploaded-prior-to = P7D\n[install]\nuploaded-prior-to = P1D", CheckStatus.Fail)]
+    [DataRow("[global]\nuploaded-prior-to = P1D\n[install]\nuploaded-prior-to = P7D", CheckStatus.Pass)]
+    [DataRow("[global]\nUploaded_Prior_To = P7D", CheckStatus.Pass)]
+    [DataRow("[global]\nuploaded-prior-to = P7D\nuploaded-prior-to = P1D", CheckStatus.Error)]
+    [DataRow("[download]\nuploaded-prior-to = P7D", CheckStatus.Fail)]
+    public void Pip_TakesALengthUnderGlobal_AndInstallWinsOverIt(string ini, CheckStatus expected)
     {
         Assert.AreEqual(expected, new PipCooldownCheck().Run(new FakeProbes().WithFile(PipIni, ini + "\n")).Status);
+    }
+
+    [TestMethod]
+    public void Pip_InstallInAnyFile_WinsOverGlobalInAnyFile()
+    {
+        FakeProbes probes = new FakeProbes()
+            .WithFile(PipIni, "[global]\nuploaded-prior-to = P7D\n")
+            .WithFile(@"C:\ProgramData\pip\pip.ini", "[install]\nuploaded-prior-to = P1D\n");
+
+        CheckOutcome outcome = new PipCooldownCheck().Run(probes);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual(@"C:\ProgramData\pip\pip.ini, line 2", outcome.Findings[0].Source);
+    }
+
+    [TestMethod]
+    public void AFileThatCannotBeRead_BeforeTheOneThatSetsTheWait_IsCouldNotCheck()
+    {
+        // The user's file would win over the PC's, and nobody knows what it says.
+        FakeProbes probes = new FakeProbes()
+            .WithFileFailure(PipIni, ProbeFailure.AccessDenied())
+            .WithFile(@"C:\ProgramData\pip\pip.ini", "[global]\nuploaded-prior-to = P7D\n");
+        Assert.AreEqual(CheckStatus.Error, new PipCooldownCheck().Run(probes).Status);
+
+        string global = Roaming + @"\npm\etc\npmrc";
+        FakeProbes npm = new FakeProbes().WithFile(Npmrc, "not a settings line\n").WithFile(global, "min-release-age=7\n");
+        Assert.AreEqual(CheckStatus.Error, new NpmCooldownCheck().Run(npm).Status);
+
+        // The other way round the answer is known: the user's file sets it and wins.
+        FakeProbes known = new FakeProbes().WithFile(Npmrc, "min-release-age=7\n").WithFile(global, "not a settings line\n");
+        Assert.AreEqual(CheckStatus.Pass, new NpmCooldownCheck().Run(known).Status);
+    }
+
+    [TestMethod]
+    public void Npm_TheLastLineOfTheSetting_IsTheOneInForce()
+    {
+        CheckOutcome outcome = new NpmCooldownCheck().Run(Npm("min-release-age=7\nmin-release-age=1\n"));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($"{Npmrc}, line 2", outcome.Findings[0].Source);
+        Assert.AreEqual(CheckStatus.Pass, new NpmCooldownCheck().Run(Npm("min-release-age=7 ; a week\n")).Status);
+    }
+
+    [TestMethod]
+    public void AVariableWrittenWithAReference_IsExpanded_AsWindowsDoes()
+    {
+        // "%USERPROFILE%\settings\npmrc" names a file in the user folder.
+        FakeProbes probes = WithVariable(Npm("min-release-age=7\n"), "NPM_CONFIG_USERCONFIG", @"%USERPROFILE%\settings\npmrc")
+            .WithFile(Profile + @"\settings\npmrc", "min-release-age=1\n");
+
+        CheckOutcome outcome = new NpmCooldownCheck().Run(probes);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual($@"{Profile}\settings\npmrc, line 1", outcome.Findings[0].Source);
     }
 
     [TestMethod]

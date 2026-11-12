@@ -221,6 +221,65 @@ public sealed class UvChecksTests
         Assert.IsFalse(outcome.Rows().Any(r => r.Contains("pandas", StringComparison.Ordinal)), "a longer wait is not an exception");
     }
 
+    [TestMethod]
+    public void Cooldown_ManyExemptions_AreCutShort_WithTheRightCount()
+    {
+        string exemptions = string.Join(", ", Enumerable.Range(1, 13).Select(i => $"package{i} = false"));
+
+        CheckOutcome outcome = Cooldown.Run(Uv($"exclude-newer = \"7 days\"\nexclude-newer-package = {{ {exemptions} }}"));
+
+        Assert.AreEqual(10, outcome.Rows().Count(r => r.StartsWith("Exception for", StringComparison.Ordinal)));
+        Assert.IsTrue(outcome.Rows().Contains("More exceptions: 3 more packages [note]"));
+    }
+
+    [TestMethod]
+    [DataRow("\"1 day\"", CheckStatus.Fail)]
+    [DataRow("false", CheckStatus.Fail)]
+    [DataRow("\"2026-11-01T00:00:00Z\"", CheckStatus.Fail)]
+    [DataRow("\"14 days\"", CheckStatus.Pass)]
+    public void Cooldown_AWeakerWaitUnderPip_Fails_BecauseUvPipUsesThatOne(string forPip, CheckStatus expected)
+    {
+        CheckOutcome outcome = Cooldown.Run(Uv($"exclude-newer = \"7 days\"\n\n[pip]\nexclude-newer = {forPip}\n"));
+
+        Assert.AreEqual(expected, outcome.Status);
+        if (expected == CheckStatus.Fail)
+        {
+            Assert.AreEqual("uv waits 7 days, but its [pip] settings set a weaker wait for \"uv pip\" commands.", outcome.Summary);
+            Assert.AreEqual($"{UserConfig}, line 4", outcome.Findings.Single(f => f.Item.Contains("uv pip", StringComparison.Ordinal)).Source);
+        }
+    }
+
+    [TestMethod]
+    public void Cooldown_AFileThatCannotBeRead_BeforeTheOneThatSetsTheWait_IsCouldNotCheck()
+    {
+        // The user's file would win over the PC's, and nobody knows what it says.
+        FakeProbes probes = new FakeProbes()
+            .WithFile(Receipt, """{ "version": "0.12.19" }""")
+            .WithFile(UserConfig, "this is not TOML\n")
+            .WithFile(SystemConfig, "exclude-newer = \"7 days\"");
+        Assert.AreEqual(CheckStatus.Error, Cooldown.Run(probes).Status);
+
+        // The other way round the answer is known.
+        FakeProbes known = Uv("exclude-newer = \"7 days\"").WithFile(SystemConfig, "this is not TOML\n");
+        Assert.AreEqual(CheckStatus.Pass, Cooldown.Run(known).Status);
+    }
+
+    [TestMethod]
+    public void Cooldown_NoConfigSetToNo_StillReadsTheFiles()
+    {
+        Assert.AreEqual(CheckStatus.Pass, Cooldown.Run(WithVariable(Uv("exclude-newer = \"7 days\""), "UV_NO_CONFIG", "false")).Status);
+        Assert.AreEqual(CheckStatus.Fail, Cooldown.Run(WithVariable(Uv("exclude-newer = \"7 days\""), "UV_NO_CONFIG", "1")).Status);
+    }
+
+    [TestMethod]
+    public void Cooldown_AConfigFileVariableWithAReference_IsExpanded()
+    {
+        FakeProbes probes = WithVariable(Uv("link-mode = \"copy\""), "UV_CONFIG_FILE", @"%APPDATA%\uv\other.toml")
+            .WithFile(Roaming + @"\uv\other.toml", "exclude-newer = \"7 days\"");
+
+        Assert.AreEqual(CheckStatus.Pass, Cooldown.Run(probes).Status);
+    }
+
     // Sources
 
     [TestMethod]
@@ -241,7 +300,11 @@ public sealed class UvChecksTests
     [DataRow("[[index]]\nname = \"internal\"\nurl = \"http://packages.example/simple\"", "uv: index \"internal\": plain HTTP.")]
     [DataRow("[[index]]\nname = \"internal\"\nurl = \"https://packages.example/simple\"\nignore-error-codes = [401, 403]", "uv: index \"internal\": ignores \"access denied\".")]
     [DataRow("[[index]]\nurl = \"https://packages.example/simple\"\nexclude-newer = false", "uv: an index: exempt from the release wait.")]
-    [DataRow("python-install-mirror = \"https://mirror.example/python\"", "uv: python download source: replaced.")]
+    [DataRow("python-install-mirror = \"https://mirror.example/python\"", "uv: Python download source: replaced.")]
+    [DataRow("pypy-install-mirror = \"https://mirror.example/pypy\"", "uv: PyPy download source: replaced.")]
+    [DataRow("[pip]\nindex-strategy = \"unsafe-best-match\"", "uv: index strategy (uv pip): unsafe-best-match.")]
+    [DataRow("[pip]\nallow-insecure-host = [\"packages.example\"]", "uv: hosts exempt from TLS checks (uv pip): 1.")]
+    [DataRow("[pip]\nextra-index-url = [\"http://bad.example/simple\"]", "uv: extra-index-url (uv pip): plain HTTP.")]
     public void Sources_EachWeakSetting_Fails_AndIsNamed(string settings, string summary)
     {
         CheckOutcome outcome = Sources.Run(Uv(settings));
@@ -292,6 +355,16 @@ public sealed class UvChecksTests
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
         StringAssert.Contains(outcome.Findings[0].Source, name);
+    }
+
+    [TestMethod]
+    [DataRow("UV_NO_VERIFY_HASHES", "false")]
+    [DataRow("UV_NO_VERIFY_HASHES", "0")]
+    [DataRow("UV_INSECURE_NO_ZIP_VALIDATION", "False")]
+    [DataRow("UV_SKIP_WHEEL_FILENAME_CHECK", "no")]
+    public void Sources_ASwitchSetToNo_LeavesTheProtectionOn(string name, string value)
+    {
+        Assert.AreEqual(CheckStatus.Pass, Sources.Run(WithVariable(Uv("exclude-newer = \"7 days\""), name, value)).Status);
     }
 
     [TestMethod]

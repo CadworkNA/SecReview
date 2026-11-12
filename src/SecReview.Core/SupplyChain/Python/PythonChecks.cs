@@ -42,14 +42,6 @@ internal static class PipFiles
         return null;
     }
 
-    /// <summary>The single values of a setting that may be one value or several lines.</summary>
-    public static IEnumerable<ConfigScalar> Values(ConfigNode? node) => node switch
-    {
-        ConfigScalar scalar => [scalar],
-        ConfigList list => list.Items.OfType<ConfigScalar>(),
-        _ => [],
-    };
-
     /// <summary>Whether an address carries a password ("https://user:password@host/...").</summary>
     public static bool HasPassword(string address) =>
         Uri.TryCreate(address.Trim(), UriKind.Absolute, out Uri? uri) && uri.UserInfo.Contains(':', StringComparison.Ordinal) &&
@@ -111,19 +103,19 @@ public sealed class PipSettingsCheck : ICheck
                     continue;
                 }
 
-                if (settings["trusted-host"] is { } trusted && PipFiles.Values(trusted).Any(v => v.Text.Length > 0))
+                if (settings["trusted-host"] is { } trusted && trusted.All().Any(v => v.Text.Length > 0))
                 {
                     problems.Add(Finding.Problem("Hosts exempt from TLS checks", "Some", "None", file.At(trusted)));
                 }
 
-                if (settings["extra-index-url"] is { } extra && PipFiles.Values(extra).Any(v => v.Text.Length > 0))
+                if (settings["extra-index-url"] is { } extra && extra.All().Any(v => v.Text.Length > 0))
                 {
                     problems.Add(Finding.Problem("Extra package indexes", "Some", "None", file.At(extra)));
                 }
 
                 foreach (string key in (string[])["index-url", "extra-index-url", "find-links"])
                 {
-                    foreach (ConfigScalar address in PipFiles.Values(settings[key]))
+                    foreach (ConfigScalar address in settings[key].All())
                     {
                         if (address.Text.TrimStart().StartsWith("http://", StringComparison.OrdinalIgnoreCase))
                         {
@@ -195,7 +187,8 @@ public sealed class PythonCredentialsCheck : ICheck
         // .pypirc: a section per index, each with username and password.
         foreach ((string index, ConfigNode section) in pypirc?.Root?.Entries ?? [])
         {
-            if ((section as ConfigMap)?["password"] is ConfigScalar { Text.Length: > 0 } password)
+            // A password may sit on the line below its key, which makes it a continued value.
+            if ((section as ConfigMap)?["password"].All().FirstOrDefault(p => p.Text.Length > 0) is { } password)
             {
                 secrets.Add(Finding.Problem($"Password for {index}", "Stored as plain text", Expected, pypirc!.At(password)));
             }
@@ -208,7 +201,7 @@ public sealed class PythonCredentialsCheck : ICheck
             {
                 foreach (string key in (string[])["index-url", "extra-index-url"])
                 {
-                    foreach (ConfigScalar address in PipFiles.Values((section as ConfigMap)?[key]))
+                    foreach (ConfigScalar address in ((section as ConfigMap)?[key]).All())
                     {
                         if (PipFiles.HasPassword(address.Text))
                         {

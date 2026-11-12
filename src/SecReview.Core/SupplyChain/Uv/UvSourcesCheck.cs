@@ -76,9 +76,12 @@ public sealed class UvSourcesCheck : ICheck
                 return unreadSwitch;
             }
 
-            if (value is not null)
+            // The host list counts when it names anything; the others are yes/no switches, and
+            // one set to "false" or "0" leaves the protection on.
+            bool isHosts = name == "UV_INSECURE_HOST";
+            if (value is not null && (isHosts || Flags.Parse(value) != false))
             {
-                problems.Add(Finding.Problem(item, name == "UV_INSECURE_HOST" ? "Some" : "Switched off", name == "UV_INSECURE_HOST" ? "None" : "On", source));
+                problems.Add(Finding.Problem(item, isHosts ? "Some" : "Switched off", isHosts ? "None" : "On", source));
             }
         }
 
@@ -108,19 +111,36 @@ public sealed class UvSourcesCheck : ICheck
                 continue;
             }
 
-            if (root["allow-insecure-host"] is ConfigList { Items.Count: > 0 } hosts)
+            // The top level applies to every uv command; the [pip] table replaces it for "uv pip".
+            (ConfigMap Settings, string Suffix)[] scopes = root["pip"] is ConfigMap pip
+                ? [(root, string.Empty), (pip, " (uv pip)")]
+                : [(root, string.Empty)];
+            foreach ((ConfigMap settings, string suffix) in scopes)
             {
-                problems.Add(Finding.Problem(
-                    "Hosts exempt from TLS checks", hosts.Items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), "None", file.At(hosts)));
-            }
-
-            foreach ((string key, ConfigNode value) in root.Entries)
-            {
-                if (key is "index-url" or "extra-index-url" or "find-links")
+                if (settings["allow-insecure-host"] is ConfigList { Items.Count: > 0 } hosts)
                 {
-                    foreach (ConfigScalar url in Scalars(value))
+                    problems.Add(Finding.Problem(
+                        "Hosts exempt from TLS checks" + suffix,
+                        hosts.Items.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        "None",
+                        file.At(hosts)));
+                }
+
+                // The top-level strategy is judged above, where the variable can override it.
+                if (suffix.Length > 0 && settings["index-strategy"] is ConfigScalar { Kind: ScalarKind.Text } pipStrategy &&
+                    pipStrategy.Text.StartsWith("unsafe-", StringComparison.OrdinalIgnoreCase))
+                {
+                    problems.Add(Finding.Problem("Index strategy" + suffix, pipStrategy.Text, "first-index", file.At(pipStrategy)));
+                }
+
+                foreach ((string key, ConfigNode value) in settings.Entries)
+                {
+                    if (key is "index-url" or "extra-index-url" or "find-links")
                     {
-                        AddUrlProblems(problems, key, url, file);
+                        foreach (ConfigScalar url in value.All())
+                        {
+                            AddUrlProblems(problems, key + suffix, url, file);
+                        }
                     }
                 }
             }
@@ -138,7 +158,7 @@ public sealed class UvSourcesCheck : ICheck
                     // uv stops at "access denied" from an index. Told to ignore it, uv moves on to
                     // the next index, and a public package can take a private one's place.
                     if (index["ignore-error-codes"] is ConfigList codes &&
-                        Scalars(codes).Any(c => c.AsNumber is 401 or 403))
+                        codes.All().Any(c => c.AsNumber is 401 or 403))
                     {
                         problems.Add(Finding.Problem(name, "Ignores \"access denied\"", "Stops on it", file.At(codes)));
                     }
@@ -174,13 +194,6 @@ public sealed class UvSourcesCheck : ICheck
     }
 
     private static string Describe(Finding problem) => $"{Wording.LowerFirst(problem.Item)}: {Wording.LowerFirst(problem.Found)}";
-
-    private static IEnumerable<ConfigScalar> Scalars(ConfigNode node) => node switch
-    {
-        ConfigScalar scalar => [scalar],
-        ConfigList list => list.Items.OfType<ConfigScalar>(),
-        _ => [],
-    };
 
     /// <summary>A plain-HTTP address, or one with a user name and password written into it. The address itself is not shown.</summary>
     private static void AddUrlProblems(List<Finding> problems, string item, ConfigScalar url, SettingsFile file)

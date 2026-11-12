@@ -150,6 +150,12 @@ public sealed class YamlReaderTests
 
         string deep = string.Concat(Enumerable.Range(0, 200).Select(i => new string(' ', i) + "k:\n"));
         Assert.IsFalse(YamlReader.Read(deep).IsOk);
+
+        // Lists that sit at the indentation of the key they belong to nest without a deeper block.
+        string lists = "k:\n" + string.Concat(Enumerable.Range(0, 200).Select(i => new string(' ', 2 * i) + "- k:\n"));
+        ConfigFile file = YamlReader.Read(lists);
+        Assert.IsFalse(file.IsOk);
+        StringAssert.Contains(file.Problem, "nested too deeply");
     }
 
     [TestMethod]

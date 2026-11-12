@@ -127,12 +127,25 @@ public sealed class ScoopBucketsCheck : ICheck
     /// <summary>The address without any user name or token written into it ("https://token@host/..." becomes "https://host/...").</summary>
     internal static string WithoutSecrets(string address)
     {
+        // Anything after "?" or "#" is not part of where the repository is, and may be a token.
         string text = address.Trim();
+        int extra = text.IndexOfAny(['?', '#']);
+        if (extra >= 0)
+        {
+            text = text[..extra];
+        }
+
+        // The user name and password end at the last "@" before the path: a password may
+        // itself contain an "@".
         int scheme = text.IndexOf("://", StringComparison.Ordinal);
-        int at = text.IndexOf('@', StringComparison.Ordinal);
-        int firstSlash = scheme < 0 ? -1 : text.IndexOf('/', scheme + 3);
-        return scheme >= 0 && at > scheme && (firstSlash < 0 || at < firstSlash)
-            ? text[..(scheme + 3)] + text[(at + 1)..]
-            : text;
+        int start = scheme < 0 ? 0 : scheme + 3;
+        int end = text.IndexOf('/', start);
+        if (end < 0)
+        {
+            end = text.Length;
+        }
+
+        int at = end > start ? text.LastIndexOf('@', end - 1, end - start) : -1;
+        return at >= start ? text[..start] + text[(at + 1)..] : text;
     }
 }
