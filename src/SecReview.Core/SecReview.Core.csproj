@@ -35,6 +35,13 @@
     <AssemblyMetadata Include="KnownMaliciousListSha256" Value="$(KnownMaliciousListSha256)" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(UpdateManifestUrl)' != ''">
+    <!-- Where this build looks for updates (build.ps1 -UpdateUrl): the address of latest.json.
+         Compiled in so that nothing on a PC can point SecReview at another address. Without
+         it the build neither looks for updates nor installs any. -->
+    <AssemblyMetadata Include="UpdateManifestUrl" Value="$(UpdateManifestUrl)" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />
   </ItemGroup>
