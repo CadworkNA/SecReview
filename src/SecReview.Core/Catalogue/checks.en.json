@@ -358,5 +358,47 @@
     "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.pnpm.cooldown": {
+    "name": "pnpm release cooldown",
+    "titlePass": "pnpm waits before installing new releases",
+    "titleFail": "pnpm installs releases that are too new",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
+    "fix": [
+      "Open a terminal and run pnpm config set --global minimumReleaseAge 10080.",
+      "That is 7 days in minutes; pnpm 11 and later keep it in config.yaml.",
+      "Update pnpm if it is older than 10.16."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pnpm.settings": {
+    "name": "pnpm protections",
+    "titlePass": "pnpm's protections are on",
+    "titleFail": "A pnpm protection is switched off",
+    "why": "These settings stop packages from running install scripts unasked and from arriving tampered with. Each one switched off is a way in.",
+    "fix": [
+      "Open the file named in the details in a text editor.",
+      "Remove the setting shown there, so pnpm's own default applies again.",
+      "To allow one package to run its build script, list it under allowBuilds instead of allowing all."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.pnpm.credentials": {
+    "name": "pnpm stored tokens",
+    "titlePass": "pnpm keeps no registry tokens as plain text",
+    "titleFail": "pnpm keeps registry tokens as plain text",
+    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes packages in your name.",
+    "fix": [
+      "Run pnpm logout for the registry named in the details, or delete the line shown there.",
+      "Revoke the token at the registry, since it was stored in the open.",
+      "For publishing, use a short-lived token or sign in again when needed."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
   }
 }

@@ -1,4 +1,5 @@
 using SecReview.Checks;
+using SecReview.SupplyChain.Pnpm;
 using SecReview.SupplyChain.Uv;
 
 namespace SecReview.SupplyChain;
@@ -15,5 +16,8 @@ public static class SupplyChainChecks
         new UvCooldownCheck(),
         new UvSourcesCheck(),
         new UvCredentialsCheck(),
+        new PnpmCooldownCheck(),
+        new PnpmSettingsCheck(),
+        new PnpmCredentialsCheck(),
     ];
 }

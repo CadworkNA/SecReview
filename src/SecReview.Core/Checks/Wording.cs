@@ -48,6 +48,18 @@ public static class Wording
         return shown.Length == 0 ? "0 s" : string.Join(' ', shown);
     }
 
+    /// <summary>
+    /// The text with a small first letter, for use in the middle of a sentence. Left alone when
+    /// it starts with an abbreviation ("TLS checks") or is too short to tell.
+    /// </summary>
+    public static string LowerFirst(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return text.Length >= 2 && char.IsUpper(text[0]) && char.IsLower(text[1])
+            ? char.ToLowerInvariant(text[0]) + text[1..]
+            : text;
+    }
+
     /// <summary>A date the same way everywhere: "12 October 2027".</summary>
     public static string Date(DateOnly date) =>
         date.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);

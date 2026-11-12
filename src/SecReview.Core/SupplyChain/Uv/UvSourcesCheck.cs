@@ -173,8 +173,7 @@ public sealed class UvSourcesCheck : ICheck
             Finding.Ok("Download sources for Python and uv", "uv's own", "uv's own"));
     }
 
-    private static string Describe(Finding problem) =>
-        $"{char.ToLowerInvariant(problem.Item[0])}{problem.Item[1..]}: {char.ToLowerInvariant(problem.Found[0])}{problem.Found[1..]}";
+    private static string Describe(Finding problem) => $"{Wording.LowerFirst(problem.Item)}: {Wording.LowerFirst(problem.Found)}";
 
     private static IEnumerable<ConfigScalar> Scalars(ConfigNode node) => node switch
     {
