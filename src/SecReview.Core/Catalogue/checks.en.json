@@ -619,5 +619,340 @@
     "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
+  },
+  "sc.env.tls": {
+    "name": "TLS checks in variables",
+    "titlePass": "No variable switches off TLS certificate checks",
+    "titleFail": "A variable switches off TLS certificate checks",
+    "why": "With certificate checks off, a tool accepts packages and code from anyone who can sit between you and the server.",
+    "fix": [
+      "Press Start, type environment variables, and open Edit environment variables for your account.",
+      "Delete the variable named in the details.",
+      "If a company proxy needs it, ask IT for the proxy's certificate and trust that instead."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.env.injection": {
+    "name": "Code loaded by variables",
+    "titlePass": "No variable loads code into your development tools",
+    "titleFail": "A variable loads code into every program of one kind",
+    "why": "Such a variable makes every Node.js, .NET or Java program run extra code first. Malware sets it to stay on a PC unseen.",
+    "fix": [
+      "Press Start, type environment variables, and open Edit environment variables for your account.",
+      "Find the variable named in the details and check which tool set it.",
+      "Delete it unless you know the tool and still use it."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.env.tokens": {
+    "name": "Secrets in variables",
+    "titlePass": "No permanent variable holds a token or password",
+    "titleFail": "Permanent variables hold tokens or passwords",
+    "why": "Every program you run inherits these variables. An install script of a bad package reads them first.",
+    "fix": [
+      "Press Start, type environment variables, and open Edit environment variables for your account.",
+      "Delete the variable named in the details.",
+      "Revoke the token where it was issued, and keep the new one in your password manager."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.git.settings": {
+    "name": "Git protections",
+    "titlePass": "Git's protections are on",
+    "titleFail": "A Git setting switches off a protection",
+    "why": "These settings decide whether a clone can be tampered with on the way, or run something you did not ask for.",
+    "fix": [
+      "Open the file named in the details in a text editor.",
+      "Delete the line shown there, or the whole section if nothing else is in it.",
+      "If one server needs an exception, limit it to that server's address instead of all."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.git.credentials": {
+    "name": "Git stored passwords",
+    "titlePass": "Git keeps no passwords in plain files",
+    "titleFail": "Git keeps passwords in plain files",
+    "why": "A password or token in a plain file can be read by every program you run. With it, an attacker pushes code in your name.",
+    "fix": [
+      "Run git config --global credential.helper manager so that Windows keeps the passwords.",
+      "Delete the file named in the details.",
+      "Revoke the tokens that were in it where they were issued, then sign in again."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.nuget.sources": {
+    "name": "NuGet package sources",
+    "titlePass": "NuGet gets packages from sources it can trust",
+    "titleFail": "A NuGet setting weakens where packages come from",
+    "why": "With several sources and no mapping, a public package can take the place of a private one of the same name.",
+    "fix": [
+      "Open the NuGet.Config file named in the details.",
+      "Change a source that starts with http:// to https://, and remove disableTLSCertificateValidation.",
+      "With more than one source, add a packageSourceMapping section that ties package names to a source."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.nuget.credentials": {
+    "name": "NuGet stored passwords",
+    "titlePass": "NuGet keeps no passwords as plain text",
+    "titleFail": "NuGet keeps a source's password as plain text",
+    "why": "A password in a plain file can be read by every program you run. It gives them your access to the private feed.",
+    "fix": [
+      "Remove the source with dotnet nuget remove source followed by its name.",
+      "Add it again with dotnet nuget add source, without --store-password-in-clear-text.",
+      "Change the password or token, since it was stored in the open."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.nuget.cooldown": {
+    "name": "NuGet release wait",
+    "titlePass": "NuGet waits a week before picking new versions",
+    "titleFail": "NuGet picks new package versions at once",
+    "why": "Most bad packages are found and removed within days. A wait keeps a version published an hour ago out of your builds.",
+    "fix": [
+      "Open the NuGet.Config file named in the details.",
+      "Add minPublishAgeHours=\"168\" to each source's line under packageSources.",
+      "Update the .NET SDK to 11.0.100 or later if the details say it is older."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.github.credentials": {
+    "name": "GitHub CLI token",
+    "titlePass": "The GitHub CLI keeps no token in a plain file",
+    "titleFail": "The GitHub CLI keeps its token in a plain file",
+    "why": "A GitHub token in a plain file can be read by every program you run. With it, an attacker pushes code in your name.",
+    "fix": [
+      "Run gh auth logout, then gh auth login, without --insecure-storage.",
+      "Check that hosts.yml no longer has an oauth_token line.",
+      "Revoke the old token under GitHub Settings, Applications."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.docker.settings": {
+    "name": "Docker protections",
+    "titlePass": "Docker checks TLS and keeps its control port closed",
+    "titleFail": "A Docker setting weakens it",
+    "why": "A registry without TLS checks can hand you a tampered image. An open control port gives anyone who reaches it your PC.",
+    "fix": [
+      "In Docker Desktop, open Settings, General, and switch off Expose daemon on tcp://localhost:2375 without TLS.",
+      "Under Settings, Docker Engine, remove the insecure-registries and hosts lines.",
+      "Select Apply and restart."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.docker.credentials": {
+    "name": "Docker stored sign-ins",
+    "titlePass": "Docker keeps no registry passwords in a plain file",
+    "titleFail": "Docker keeps registry passwords in a plain file",
+    "why": "Without a credential store, docker login writes the password into a file every program can read, only encoded.",
+    "fix": [
+      "Run docker logout for each registry named in the details.",
+      "Open config.json in your .docker folder and set \"credsStore\": \"wincred\".",
+      "Run docker login again, and change the passwords that were in the file."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.cloud.credentials": {
+    "name": "Cloud keys in files",
+    "titlePass": "No long-lived cloud keys are stored as plain text",
+    "titleFail": "Long-lived cloud keys are stored as plain text",
+    "why": "A cloud key in a plain file can be read by every program you run. It works from anywhere until someone revokes it.",
+    "fix": [
+      "Switch the tool named in the details to a sign-in that expires, such as aws sso login.",
+      "Delete the key or token from the file shown.",
+      "Revoke the old key in the cloud console."
+    ],
+    "timeToFix": "20 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.build.credentials": {
+    "name": "Build tool passwords",
+    "titlePass": "Build tools keep no passwords as plain text",
+    "titleFail": "Build tools keep passwords as plain text",
+    "why": "A repository password or publishing key in a plain file can be read by every program you run, build scripts included.",
+    "fix": [
+      "Remove the entry shown in the details from its file.",
+      "Use the tool's own encryption or a variable set only when publishing.",
+      "Change the password or key, since it was stored in the open."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.editor.updates": {
+    "name": "Editor extension updates",
+    "titlePass": "Your editor waits before installing extension updates",
+    "titleFail": "Your editor installs extension updates within hours",
+    "why": "An extension runs with all your rights. When one is taken over, the bad update reaches every PC that updates at once.",
+    "fix": [
+      "In the editor, open Settings and search for extensions.autoUpdateDelay.",
+      "Set it to 168. In Cursor, set extensions.installCooldownHours to 168 instead.",
+      "If the setting is missing, update the editor, or switch Extensions: Auto Update off."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.editor.settings": {
+    "name": "Editor protections",
+    "titlePass": "Your editor's protections are on",
+    "titleFail": "An editor protection is switched off",
+    "why": "These settings stand between opening a downloaded folder and running its code with all your rights.",
+    "fix": [
+      "In the editor, open Settings and search for the setting named in the details.",
+      "Select the gear beside it, then Reset Setting.",
+      "Do the same in each profile that the details name."
+    ],
+    "timeToFix": "2 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.mcp.servers": {
+    "name": "MCP servers",
+    "titlePass": "No MCP server runs unpinned code",
+    "titleFail": "An MCP server runs unpinned code or exposes a secret",
+    "why": "An MCP server runs with all your rights. Without a fixed version, whoever takes over the package runs code here at the next start.",
+    "fix": [
+      "Open the settings file named in the details.",
+      "Add an exact version to the package, such as name@1.2.3 for npx or name==1.2.3 for uvx.",
+      "Replace a secret written in the file with a reference to a variable, and change that secret."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.agents.permissions": {
+    "name": "AI tool approvals",
+    "titlePass": "AI coding tools ask before they act",
+    "titleFail": "An AI coding tool acts without asking",
+    "why": "With asking switched off, text the tool reads in a web page or a repository can make it run commands with all your rights.",
+    "fix": [
+      "Open the settings file named in the details.",
+      "Delete the line shown there.",
+      "Use the no-asking mode only per session, inside a container or a virtual machine."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.winget.policies": {
+    "name": "winget verification",
+    "titlePass": "No policy weakens what winget verifies",
+    "titleFail": "A policy lets winget skip a verification",
+    "why": "winget checks an installer's hash and scans archives before it installs. With a check switched off, a tampered download gets through.",
+    "fix": [
+      "These settings come from your organisation's policy, so ask IT to review them.",
+      "Name the policy shown in the details when you ask."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.choco.settings": {
+    "name": "Chocolatey verification",
+    "titlePass": "Chocolatey verifies what it downloads",
+    "titleFail": "A Chocolatey setting weakens what it verifies",
+    "why": "Chocolatey compares each download with a checksum from the package. Without that, a swapped download installs unnoticed.",
+    "fix": [
+      "Open a terminal as administrator.",
+      "Run choco feature enable -n checksumFiles and choco feature disable -n allowEmptyChecksums.",
+      "Remove a source over plain HTTP with choco source remove -n followed by its name."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.go.settings": {
+    "name": "Go module verification",
+    "titlePass": "Go verifies the modules it downloads",
+    "titleFail": "A Go setting weakens how modules are verified",
+    "why": "Go compares every module with a public checksum database. With that off, a tampered module builds into your program unnoticed.",
+    "fix": [
+      "Run go env -u followed by the setting named in the details, such as GOINSECURE or GOSUMDB.",
+      "If it is a permanent variable instead, delete it under Edit environment variables for your account.",
+      "For private modules, list only your own hosts in GOPRIVATE."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.cargo.settings": {
+    "name": "Cargo crate sources",
+    "titlePass": "Cargo gets crates from sources it can trust",
+    "titleFail": "A Cargo setting weakens where crates come from",
+    "why": "Over plain HTTP, or with revoked certificates accepted, a crate can be swapped on its way to your build.",
+    "fix": [
+      "Open the config.toml file named in the details.",
+      "Delete the check-revoke line, and change a registry address from http:// to https://.",
+      "If a variable is named instead, delete it under Edit environment variables for your account."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.cargo.credentials": {
+    "name": "Cargo stored tokens",
+    "titlePass": "Cargo keeps no registry tokens as plain text",
+    "titleFail": "Cargo keeps registry tokens as plain text",
+    "why": "A registry token in a plain file can be read by every program you run. With it, an attacker publishes crates in your name.",
+    "fix": [
+      "Run cargo logout to remove the token from the file.",
+      "Add global-credential-providers = [\"cargo:wincred\"] under [registry] in config.toml.",
+      "Revoke the old token at the registry, then run cargo login again."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.trust.rootcerts": {
+    "name": "Certificate authorities for your account",
+    "titlePass": "Certificate authorities added for your account are listed",
+    "titleFail": "A certificate authority was added for your account",
+    "why": "Whoever holds the key of a trusted certificate authority can pose as any website or package registry to you.",
+    "fix": [
+      "Press Start, type certmgr.msc and open it.",
+      "Open Trusted Root Certification Authorities, Certificates, and find the thumbprint from the details.",
+      "Delete the certificate unless you know which tool added it and still use that tool."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.defender.exclusions": {
+    "name": "Defender exclusions",
+    "titlePass": "Microsoft Defender's exclusions are narrow",
+    "titleFail": "Microsoft Defender skips where downloaded code lands",
+    "why": "Defender does not scan what is excluded. A bad package in an excluded folder runs without ever being looked at.",
+    "fix": [
+      "Open Windows Security, Virus & threat protection, Manage settings.",
+      "Under Exclusions, select Add or remove exclusions.",
+      "Remove the entries named in the details, or narrow them to single files."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
   }
 }

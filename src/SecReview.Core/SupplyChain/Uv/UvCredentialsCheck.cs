@@ -73,10 +73,7 @@ public sealed class UvCredentialsCheck : ICheck
 
         foreach (string variable in variables)
         {
-            bool holdsSecret = SecretVariables.Contains(variable, StringComparer.OrdinalIgnoreCase) ||
-                (variable.StartsWith("UV_INDEX_", StringComparison.OrdinalIgnoreCase) &&
-                 variable.EndsWith("_PASSWORD", StringComparison.OrdinalIgnoreCase));
-            if (holdsSecret)
+            if (HoldsSecret(variable))
             {
                 problems.Add(Finding.Problem($"Variable {variable.ToUpperInvariant()}", "Holds a secret, set for good", "Not set", "environment variables"));
             }
@@ -90,6 +87,11 @@ public sealed class UvCredentialsCheck : ICheck
                     : $"uv keeps {problems.Count} sign-in secrets as plain text.",
                 problems);
     }
+
+    /// <summary>Whether a variable is one uv takes a secret from.</summary>
+    internal static bool HoldsSecret(string variable) =>
+        SecretVariables.Contains(variable, StringComparer.OrdinalIgnoreCase) ||
+        (variable.StartsWith("UV_INDEX_", StringComparison.OrdinalIgnoreCase) && variable.EndsWith("_PASSWORD", StringComparison.OrdinalIgnoreCase));
 
     private static bool HasValue(ConfigNode? node) => node is ConfigScalar { Text.Length: > 0 };
 

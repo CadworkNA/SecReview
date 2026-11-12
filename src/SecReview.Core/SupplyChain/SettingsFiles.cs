@@ -74,10 +74,20 @@ internal static class SettingsFiles
     /// A JSON file's root; null if there is no such file. <paramref name="problem"/> is set
     /// when the file exists but cannot be read or is not valid JSON.
     /// </summary>
-    public static JsonElement? LoadJson(IFileProbe files, string path, out string? problem)
+    public static JsonElement? LoadJson(IFileProbe files, string path, out string? problem, int maximumBytes = IFileProbe.DefaultMaximumBytes) =>
+        LoadJson(files, path, out problem, maximumBytes, emptyMeansNoSettings: false);
+
+    /// <summary>
+    /// As <see cref="LoadJson(IFileProbe, string, out string?, int)"/>, for a tool's settings file: a file with nothing
+    /// in it sets nothing, which is how the tools themselves read one, so it gives an empty object.
+    /// </summary>
+    public static JsonElement? LoadJsonSettings(IFileProbe files, string path, out string? problem, int maximumBytes = IFileProbe.DefaultMaximumBytes) =>
+        LoadJson(files, path, out problem, maximumBytes, emptyMeansNoSettings: true);
+
+    private static JsonElement? LoadJson(IFileProbe files, string path, out string? problem, int maximumBytes, bool emptyMeansNoSettings)
     {
         problem = null;
-        ProbeResult<string> text = files.ReadText(path);
+        ProbeResult<string> text = files.ReadText(path, maximumBytes);
         if (text.Status == ProbeStatus.NotFound)
         {
             return null;
@@ -93,7 +103,7 @@ internal static class SettingsFiles
         try
         {
             using JsonDocument document = JsonDocument.Parse(
-                text.Value!, new JsonDocumentOptions { MaxDepth = 32, CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+                emptyMeansNoSettings && string.IsNullOrWhiteSpace(text.Value!.Trim((char)0xFEFF)) ? "{}" : text.Value!, new JsonDocumentOptions { MaxDepth = 32, CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
             return document.RootElement.Clone();
         }
         catch (JsonException exception)

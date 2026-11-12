@@ -1,10 +1,20 @@
 using SecReview.Checks;
+using SecReview.SupplyChain.Agents;
+using SecReview.SupplyChain.Cargo;
 using SecReview.SupplyChain.Cooldowns;
+using SecReview.SupplyChain.Credentials;
+using SecReview.SupplyChain.Editors;
+using SecReview.SupplyChain.Git;
+using SecReview.SupplyChain.Go;
 using SecReview.SupplyChain.Npm;
+using SecReview.SupplyChain.NuGet;
 using SecReview.SupplyChain.Pnpm;
 using SecReview.SupplyChain.Python;
 using SecReview.SupplyChain.Scoop;
+using SecReview.SupplyChain.Trust;
 using SecReview.SupplyChain.Uv;
+using SecReview.SupplyChain.Variables;
+using SecReview.SupplyChain.WindowsPackages;
 using SecReview.SupplyChain.Yarn;
 
 namespace SecReview.SupplyChain;
@@ -40,5 +50,29 @@ public static class SupplyChainChecks
         new YarnCredentialsCheck(),
         new PipSettingsCheck(),
         new PythonCredentialsCheck(),
+        new NuGetSourcesCheck(),
+        new NuGetCredentialsCheck(),
+        new NuGetCooldownCheck(),
+        new CargoSettingsCheck(),
+        new CargoCredentialsCheck(),
+        new GoSettingsCheck(),
+        new EditorUpdatesCheck(),
+        new EditorSettingsCheck(),
+        new McpServersCheck(),
+        new AgentPermissionsCheck(),
+        new GitSettingsCheck(),
+        new GitCredentialsCheck(),
+        new GitHubCliCredentialsCheck(),
+        new DockerSettingsCheck(),
+        new DockerCredentialsCheck(),
+        new CloudCredentialsCheck(),
+        new BuildCredentialsCheck(),
+        new WingetPoliciesCheck(),
+        new ChocolateySettingsCheck(),
+        new EnvironmentTlsCheck(),
+        new EnvironmentInjectionCheck(),
+        new EnvironmentTokensCheck(),
+        new RootCertificatesCheck(),
+        new DefenderExclusionsCheck(),
     ];
 }
