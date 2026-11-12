@@ -49,8 +49,9 @@ VersionInfoVersion={#FileVersion}
 VersionInfoProductTextVersion={#AppVersion}
 VersionInfoDescription={#AppName} setup
 DefaultDirName={autopf}\{#AppName}
-; Always Program Files: the folder is not asked for.
+; The folder is not asked for, and /DIR is refused (see [Code]): only Program Files.
 DisableDirPage=yes
+UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
@@ -77,10 +78,9 @@ SignedUninstaller=yes
 Name: autostart; Description: "Keep SecReview in the notification area (starts when a user signs in)"
 
 [Files]
+; What an earlier version left in the folder is removed first (see [Code]), so the folder
+; holds exactly this version afterwards.
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; Files an earlier version installed and this one no longer has go here, one line each
-; ([InstallDelete] Type: files; Name: "{app}\<file>"). There is no earlier version yet.
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -92,10 +92,15 @@ Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "{#AppName}"; Flags: deletevalue; Tasks: not autostart
 
 [Run]
-; As the user who started setup, never with setup's administrator rights. Not after a silent
-; install: there the icon comes at the next sign-in.
+; Not after a silent install: there the icon comes at the next sign-in.
+;
+; The icon is started as the user who started setup. Where that user started setup with
+; administrator rights already, the icon notices and does not stay (it then comes at the next
+; sign-in): it must not keep those rights all day.
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Flags: nowait runasoriginaluser skipifsilent; Tasks: autostart
-Filename: "{app}\{#AppExe}"; Description: "Open {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; The window is opened through the desktop, so it runs as the signed-in user without
+; administrator rights, however setup itself was started.
+Filename: "{win}\explorer.exe"; Parameters: """{app}\{#AppExe}"""; Description: "Open {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
 ; A running copy would keep its files from being removed.
@@ -103,14 +108,65 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#CliExe}"; Flags: runhidden; RunOnceId: "StopSecReviewCli"
 
 [Code]
-// Ends running copies of SecReview before its files are replaced: the window and the
-// notification-area icon of every signed-in user. SecReview writes its files in one step, so
-// being ended loses nothing. Nothing running is not an error.
+// SecReview goes into Program Files and nowhere else: the administrator checks start a helper
+// from the install folder with administrator rights, so it must be a folder ordinary users
+// cannot write to. /DIR on the command line could point anywhere; this refuses it.
+function InProgramFiles(): Boolean;
+begin
+  Result := CompareText(RemoveBackslashUnlessRoot(WizardDirValue), ExpandConstant('{autopf}\{#AppName}')) = 0;
+end;
+
+// Before anything is changed: the folder is checked, then running copies of SecReview are
+// ended so their files can be replaced (the window and the notification-area icon of every
+// signed-in user). SecReview writes its own files in one step, so being ended loses nothing.
+// Nothing running is not an error.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
+  if not InProgramFiles() then
+  begin
+    Result := '{#AppName} can only be installed in ' + ExpandConstant('{autopf}\{#AppName}') + '. Start setup again without /DIR.';
+    Exit;
+  end;
+
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#CliExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
+end;
+
+// Removes what an earlier version installed, except the uninstaller and its records, so a
+// file this version no longer has does not stay behind (an old DLL next to the programs
+// could still be loaded). Only ever in SecReview's own folder in Program Files.
+procedure RemoveEarlierFiles();
+var
+  Found: TFindRec;
+  Path: String;
+begin
+  if not InProgramFiles() then
+    Exit;
+
+  if FindFirst(ExpandConstant('{app}\*'), Found) then
+  begin
+    try
+      repeat
+        if (Found.Name <> '.') and (Found.Name <> '..') and (Pos('unins', Lowercase(Found.Name)) <> 1) then
+        begin
+          Path := ExpandConstant('{app}\') + Found.Name;
+          if (Found.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+            DelTree(Path, True, True, True)
+          else
+            DeleteFile(Path);
+        end;
+      until not FindNext(Found);
+    finally
+      FindClose(Found);
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    RemoveEarlierFiles();
 end;

@@ -164,6 +164,7 @@ function Get-PackageFolder([string] $Id) {
     throw "Package $Id is not in the app's lock file."
 }
 $windowsAppSdk = Get-PackageFolder 'Microsoft.WindowsAppSDK.Runtime'
+$winUi = Get-PackageFolder 'Microsoft.WindowsAppSDK.WinUI'
 $compiler = Get-PackageFolder 'runtime.win-x64.Microsoft.DotNet.ILCompiler'
 $licenseFiles = [ordered]@{
     'SecReview-LICENSE.txt'            = Join-Path $root 'LICENSE'
@@ -172,8 +173,12 @@ $licenseFiles = [ordered]@{
     'dotnet-THIRD-PARTY-NOTICES.txt'   = Join-Path $compiler 'THIRD-PARTY-NOTICES.TXT'
     'WindowsAppSDK-license.txt'        = Join-Path $windowsAppSdk 'license.txt'
     'WindowsAppSDK-NOTICE.txt'         = Join-Path $windowsAppSdk 'NOTICE.txt'
+    'WindowsAppSDK-WinUI-NOTICE.txt'   = Join-Path $winUi 'NOTICE.txt'
+    'CsWinRT-LICENSE.txt'              = Join-Path $root 'notices\CsWinRT-LICENSE.txt'
     'sentry-dotnet-LICENSE.txt'        = Join-Path $root 'notices\sentry-dotnet-LICENSE.txt'
+    'Ben.Demystifier-LICENSE.txt'      = Join-Path $root 'notices\Ben.Demystifier-LICENSE.txt'
     'malicious-packages-LICENSE.txt'   = Join-Path $root 'notices\malicious-packages-LICENSE.txt'
+    'InnoSetup-license.txt'            = Join-Path $root 'notices\InnoSetup-license.txt'
 }
 foreach ($name in $licenseFiles.Keys) {
     Copy-Item -LiteralPath $licenseFiles[$name] (Join-Path $licenses $name)
@@ -441,6 +446,12 @@ if ($Installer) {
     $installerOut = Join-Path $root 'artifacts\installer'
     if (Test-Path $installerOut) { Remove-Item $installerOut -Recurse -Force }
     $iscc = & (Join-Path $root 'scripts\ensure-inno.ps1')
+
+    # The folder was checked before the programs were tried out. Checked again here, so that
+    # what is packed is exactly what was checked, whatever ran in between.
+    Invoke-Step 'Check staged output again' {
+        & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -OursSigned:$Sign
+    }
     $numbers = ($Version -split '-', 2)[0]
     $publisher = ([xml] (Get-Content (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup.Company |
         Where-Object { $_ } | Select-Object -First 1

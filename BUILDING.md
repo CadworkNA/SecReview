@@ -126,8 +126,10 @@ check starts failing.
 `installer\SecReview.iss` (Inno Setup) packs the staged folder. Its header lists everything
 setup changes on a PC; the uninstaller removes all of it and leaves each user's own data.
 
-- **Program Files, for all users.** The folder is not asked for: the administrator checks
-  need programs an ordinary user cannot replace.
+- **Program Files, for all users, and nowhere else.** The folder is not asked for and
+  `/DIR` is refused: the administrator checks need programs an ordinary user cannot replace.
+- **An upgrade** removes what the earlier version left in the folder before it copies, so
+  the folder holds exactly the new version.
 - **Start at sign-in** is one value under `HKLM\...\Run` (`SecReview.exe --tray`), a task
   that is on by default. Each user can still switch the icon off in Settings.
 - **Silent:** `SecReview-<version>-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; add
@@ -148,16 +150,19 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
    the error-report address from the repository's settings.
 2. The two programs are signed (Azure Artifact Signing, signed in through OpenID Connect; no
    stored key), then the uninstaller and the setup program. A signature without a timestamp
-   fails the build.
-3. Install, upgrade and uninstall on the build machine.
+   fails the build. A run by hand signs only when asked to; a version tag always does.
+3. Install, upgrade and uninstall on the build machine, with what landed on it compared to
+   the staged folder and, for a signed build, its signatures.
 4. An SBOM of the install folder and the packages behind it (SPDX 2.2, Microsoft's SBOM tool,
    pinned in `.config\dotnet-tools.json`).
 5. A **draft** release with the setup program and the SBOM, and, once the repository is
    public, a Sigstore bundle proving where they were built.
-6. Last, `scripts/test-posture.ps1` weakens five settings of the build machine (firewall off
-   for one network, Remote Desktop on without Network Level Authentication, WDigest, AutoPlay,
-   a made-up npm token) and checks that each check fails for its own reason and that the
-   report holds neither the token nor a name. It refuses to run anywhere but a build machine.
+6. On a second machine, `scripts/test-posture.ps1` installs the setup program and weakens
+   five settings (firewall off for one network, Remote Desktop on without Network Level
+   Authentication, WDigest, AutoPlay, and a made-up npm token in the profile of an ordinary
+   user made for the test). Each check must fail for its own reason, the user's files must
+   not be read with administrator rights, and no report may hold the token or a name. A
+   release waits for this. The script refuses to run anywhere but GitHub's own machines.
 
 Start it by hand (Actions, "Package and release") to try all of this without a release. A
 release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.

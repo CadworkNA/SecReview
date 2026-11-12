@@ -19,7 +19,7 @@ on:
       sign:
         description: Sign the programs and the setup program
         type: boolean
-        default: true
+        default: false
       draft_release:
         description: Leave a draft release with this run's files
         type: boolean
@@ -88,7 +88,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $run = gh run list --repo $env:GITHUB_REPOSITORY --workflow malware-index.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+          # Runs for pull requests are left out: only a run of main's own code makes the list that ships
+          # (that workflow gives a pull request's list another name as well).
+          $run = gh run list --repo $env:GITHUB_REPOSITORY --workflow malware-index.yml --branch main --status success --limit 20 --json databaseId,event --jq '[.[] | select(.event == "schedule" or .event == "workflow_dispatch" or .event == "push")][0].databaseId'
           if (-not $run) { throw 'No successful run of the "Known-malicious list" workflow on main.' }
           gh run download $run --repo $env:GITHUB_REPOSITORY --name known-malicious-index --dir artifacts/list
           if ($LASTEXITCODE) { throw "Downloading the list from run $run failed." }
@@ -101,6 +103,16 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The sign-in above is good for a few minutes; signing comes after the build. Asking for
+      # the signing service's token now keeps it at hand until then.
+      - name: Get the signing token
+        if: steps.version.outputs.sign == 'true'
+        shell: pwsh
+        run: |
+          $expires = az account get-access-token --resource https://codesigning.azure.net --query expiresOn --output tsv
+          if ($LASTEXITCODE) { throw 'Azure did not hand out a token for the signing service.' }
+          "Token for the signing service, good until $expires."
 
       # The address is where the app reports its own errors; without it the build has none
       # and the app never sends anything.
@@ -119,7 +131,8 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: ./scripts/test-install.ps1 -Setup "artifacts/installer/SecReview-$env:VERSION-setup.exe" -Stage artifacts/stage -Version $env:VERSION
+          SIGN: ${{ steps.version.outputs.sign }}
+        run: ./scripts/test-install.ps1 -Setup "artifacts/installer/SecReview-$env:VERSION-setup.exe" -Stage artifacts/stage -Version $env:VERSION -Signed:($env:SIGN -eq 'true')
 
       # What is in the install folder, and the packages it was built from (SPDX 2.2).
       - name: SBOM
@@ -147,12 +160,6 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      # Last, because it changes this machine: a few settings are weakened to prove that the
-      # checks then fail for the right reason. Allowed here only, on a machine that is thrown away.
-      - name: Weaken settings on this machine and check that SecReview says so
-        shell: pwsh
-        run: ./scripts/test-posture.ps1 -Stage artifacts/stage
-
       - name: Upload the install logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -162,10 +169,46 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # On a machine of its own, which is thrown away afterwards: the setup program is installed,
+  # a few settings are weakened, and the installed SecReview must say so, each for the right
+  # reason. Allowed here only.
+  posture:
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the setup program
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: secreview-${{ needs.package.outputs.version }}
+          path: release
+
+      - name: Install
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          $setup = (Resolve-Path "release/SecReview-$env:VERSION-setup.exe").Path
+          $exit = (Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru).ExitCode
+          if ($exit -ne 0) { throw "Setup ended with $exit." }
+
+      - name: Weaken settings on this machine and check that SecReview says so
+        shell: pwsh
+        run: ./scripts/test-posture.ps1 -Cli "$env:ProgramFiles\SecReview\SecReviewCli.exe"
+
   # A draft release with the setup program, the SBOM and, once the repository is public, the
   # Sigstore bundle that proves where they were built. Never published from here.
   release:
-    needs: package
+    needs: [package, posture]
     if: github.ref_type == 'tag' || inputs.draft_release
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -199,11 +242,25 @@ jobs:
             release/SecReview-${{ needs.package.outputs.version }}.spdx.json
 
       - name: Create the draft release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
           SIGNED: ${{ needs.package.outputs.signed }}
         run: |
+          # A version tag gives the release its name. A run by hand gets a name that is not a
+          # version tag, so publishing its draft can never start a release build.
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="v$VERSION"
+            # The tag must still point at the commit this run built.
+            now=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+            if [[ "$now" != "$GITHUB_SHA" ]]; then
+              echo "::error::Tag $tag now points at $now, but this run built $GITHUB_SHA."
+              exit 1
+            fi
+          else
+            tag="trial-$VERSION"
+          fi
           setup="SecReview-$VERSION-setup.exe"
           sbom="SecReview-$VERSION.spdx.json"
           files=("release/$setup" "release/$sbom")
@@ -236,7 +293,7 @@ jobs:
           flags=(--draft)
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
           [[ "$GITHUB_REF_TYPE" == "tag" ]] && flags+=(--verify-tag)
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "SecReview $VERSION" --notes-file notes.md --generate-notes "${flags[@]}" "${files[@]}"
 
       # So that errors reported by this version are grouped under it. Only for a real version;
@@ -244,6 +301,7 @@ jobs:
       - name: Tell the error-report service about the version
         if: github.ref_type == 'tag' && env.ERROR_REPORTS_CONFIGURED == 'true'
         continue-on-error: true
+        shell: bash
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
