@@ -1,3 +1,5 @@
 [*.cs]
 # Test names read Method_Scenario_Expectation.
 dotnet_diagnostic.CA1707.severity = none
+# Expected values are written inline in assertions; hoisting them into fields hides the test.
+dotnet_diagnostic.CA1861.severity = none

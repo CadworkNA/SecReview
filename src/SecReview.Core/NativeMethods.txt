@@ -37,3 +37,42 @@ PowerReadACValueIndex
 PowerReadDCValueIndex
 GetSystemPowerStatus
 LocalFree
+
+// Shell property store (BitLocker status of a drive without administrator rights)
+SHGetPropertyStoreFromParsingName
+IPropertyStore
+PropVariantClear
+PSGetPropertyKeyFromName
+
+// Audit policy (needs administrator rights)
+AuditQuerySystemPolicy
+AuditFree
+
+// User rights assignment (needs administrator rights)
+LsaOpenPolicy
+LsaEnumerateAccountsWithUserRight
+LsaFreeMemory
+LsaClose
+LsaNtStatusToWinError
+LSA_ENUMERATION_INFORMATION
+
+// Windows Update
+ISystemInformation
+SystemInformation
+IAutomaticUpdates2
+AutomaticUpdates
+IAutomaticUpdatesResults
+IAutomaticUpdatesSettings
+
+// WMI
+IWbemLocator
+WbemLocator
+IWbemServices
+IEnumWbemClassObject
+IWbemClassObject
+CoSetProxyBlanket
+VariantClear
+SafeArrayGetLBound
+SafeArrayGetUBound
+SafeArrayGetElement
+SysAllocString

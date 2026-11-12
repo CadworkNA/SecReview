@@ -27,8 +27,49 @@ internal sealed class FakeProbes
 
     public ProbeResult<PowerSettings> Power { get; set; } = NotSetUp;
 
+    public ProbeResult<IReadOnlyList<DriveEncryption>> DriveEncryption { get; set; } = NotSetUp;
+
+    public ProbeResult<WindowsUpdateStatus> WindowsUpdate { get; set; } = NotSetUp;
+
+    /// <summary>The setting every asked-for audit subcategory has, or the failure of the read.</summary>
+    public ProbeResult<AuditSetting> AuditPolicy { get; set; } = NotSetUp;
+
     /// <summary>When set, every registry read ends this way (for example access denied).</summary>
     public ProbeFailure? RegistryFailure { get; set; }
+
+    private readonly Dictionary<string, ProbeResult<IReadOnlyList<WmiObject>>> _wmiClasses =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, ProbeResult<IReadOnlyList<AccountReference>>> _userRights =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public FakeProbes WithWmiObjects(string wmiNamespace, string className, params WmiObject[] objects)
+    {
+        _wmiClasses[$"{wmiNamespace}:{className}"] = ProbeResult<IReadOnlyList<WmiObject>>.Ok(objects);
+        return this;
+    }
+
+    public FakeProbes WithWmiFailure(string wmiNamespace, string className, ProbeFailure failure)
+    {
+        _wmiClasses[$"{wmiNamespace}:{className}"] = failure;
+        return this;
+    }
+
+    public FakeProbes WithUserRight(string right, params AccountReference[] accounts)
+    {
+        _userRights[right] = ProbeResult<IReadOnlyList<AccountReference>>.Ok(accounts);
+        return this;
+    }
+
+    public FakeProbes WithUserRightFailure(string right, ProbeFailure failure)
+    {
+        _userRights[right] = failure;
+        return this;
+    }
+
+    /// <summary>A WMI object with the given property values.</summary>
+    public static WmiObject Wmi(params (string Name, object? Value)[] properties) =>
+        new(properties.Select(p => new KeyValuePair<string, object?>(p.Name, p.Value)));
 
     public FakeProbes WithRegistryValue(RegistryRoot root, string keyPath, string valueName, RegistryValue value)
     {
@@ -38,6 +79,18 @@ internal sealed class FakeProbes
 
     public FakeProbes WithRegistryNumber(RegistryRoot root, string keyPath, string valueName, long value) =>
         WithRegistryValue(root, keyPath, valueName, RegistryValue.FromNumber(value));
+
+    public FakeProbes WithoutRegistryValue(RegistryRoot root, string keyPath, string valueName)
+    {
+        _registryValues.Remove(RegistryPath(root, keyPath, valueName));
+        return this;
+    }
+
+    public FakeProbes WithoutService(string name)
+    {
+        _services.Remove(name);
+        return this;
+    }
 
     public FakeProbes WithService(string name, ServiceStartType startType, bool isRunning)
     {
@@ -54,10 +107,15 @@ internal sealed class FakeProbes
     public SystemProbes Build() => new(
         Registry: new RegistryProbe(this),
         Services: new ServiceProbe(this),
+        Wmi: new WmiProbe(this),
         Firewall: new FirewallProbe(this),
         SecurityCenter: new SecurityCenterProbe(this),
         AccountPolicy: new AccountPolicyProbe(this),
-        Power: new PowerProbe(this));
+        Power: new PowerProbe(this),
+        DriveEncryption: new DriveEncryptionProbe(this),
+        WindowsUpdate: new WindowsUpdateProbe(this),
+        AuditPolicy: new AuditPolicyProbe(this),
+        UserRights: new UserRightsProbe(this));
 
     /// <summary>A firewall state with all three profiles set the same way.</summary>
     public static FirewallState FirewallAll(bool enabled, bool blocksInbound = true) => new(
@@ -171,5 +229,43 @@ internal sealed class FakeProbes
     private sealed class PowerProbe(FakeProbes owner) : IPowerProbe
     {
         public ProbeResult<PowerSettings> GetSettings() => owner.Power;
+    }
+
+    private sealed class DriveEncryptionProbe(FakeProbes owner) : IDriveEncryptionProbe
+    {
+        public ProbeResult<IReadOnlyList<DriveEncryption>> GetFixedDrives() => owner.DriveEncryption;
+    }
+
+    private sealed class WindowsUpdateProbe(FakeProbes owner) : IWindowsUpdateProbe
+    {
+        public ProbeResult<WindowsUpdateStatus> GetStatus() => owner.WindowsUpdate;
+    }
+
+    private sealed class WmiProbe(FakeProbes owner) : IWmiProbe
+    {
+        public ProbeResult<IReadOnlyList<WmiObject>> Query(
+            string wmiNamespace, string className, IReadOnlyList<string> properties) =>
+            owner._wmiClasses.TryGetValue($"{wmiNamespace}:{className}", out var result) ? result : NotSetUp;
+    }
+
+    private sealed class AuditPolicyProbe(FakeProbes owner) : IAuditPolicyProbe
+    {
+        public ProbeResult<IReadOnlyDictionary<Guid, AuditSetting>> GetSubcategories(
+            IReadOnlyList<Guid> subcategories)
+        {
+            if (!owner.AuditPolicy.IsOk)
+            {
+                return owner.AuditPolicy.ToFailure();
+            }
+
+            return ProbeResult<IReadOnlyDictionary<Guid, AuditSetting>>.Ok(
+                subcategories.ToDictionary(id => id, _ => owner.AuditPolicy.Value));
+        }
+    }
+
+    private sealed class UserRightsProbe(FakeProbes owner) : IUserRightsProbe
+    {
+        public ProbeResult<IReadOnlyList<AccountReference>> GetAccountsWithRight(string right) =>
+            owner._userRights.TryGetValue(right, out var result) ? result : NotSetUp;
     }
 }

@@ -7,7 +7,12 @@ namespace SecReview.Probing;
 public sealed record SystemProbes(
     IRegistryProbe Registry,
     IServiceProbe Services,
+    IWmiProbe Wmi,
     IFirewallProbe Firewall,
     ISecurityCenterProbe SecurityCenter,
     IAccountPolicyProbe AccountPolicy,
-    IPowerProbe Power);
+    IPowerProbe Power,
+    IDriveEncryptionProbe DriveEncryption,
+    IWindowsUpdateProbe WindowsUpdate,
+    IAuditPolicyProbe AuditPolicy,
+    IUserRightsProbe UserRights);
