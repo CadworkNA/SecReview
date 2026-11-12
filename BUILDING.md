@@ -37,7 +37,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Cli` | `SecReviewCli.exe` (Native AOT console). The only binary that ever runs elevated |
 | `src/SecReview.App` | `SecReview.exe` (WinUI 3, Native AOT, unpackaged, Windows App SDK copied next to it). `Program.Main` picks the role before XAML starts |
 | `tests/SecReview.Core.Tests` | MSTest unit tests for `Core` |
-| `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships, and that every binary not ours is signed by Microsoft) |
+| `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships: every binary not ours must be signed by Microsoft and chain to a pinned root, every other file must match its recorded hash) |
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 
@@ -63,8 +63,9 @@ Dependabot does not propose SDK updates for that reason.
 
 The two Windows App SDK packages (`Microsoft.WindowsAppSDK.WinUI`, `.Runtime`) must always have
 the same version. After changing them, the files that ship change too: run
-`scripts\check-stage.ps1 -Stage artifacts\stage -Update` and review the difference in
-`scripts\stage-files.txt`.
+`.\build.ps1 -UpdateStageList` and review the difference in `scripts\stage-files.txt`. Parts of
+the SDK that SecReview does not use (WebView2, the design-time library, the restart helper) are
+left out of the staged output; the list is in `build.ps1`.
 
 If restore fails with **NU3034** after nuget.org rotates its signing certificate, run
 `dotnet nuget trust sync nuget.org` and commit the updated fingerprints in `nuget.config`.

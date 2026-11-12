@@ -19,7 +19,7 @@ public static class AppArguments
             }
             else
             {
-                return new InvalidRole("Unknown argument.");
+                return new InvalidRole();
             }
         }
 
