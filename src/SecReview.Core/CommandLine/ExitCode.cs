@@ -28,4 +28,10 @@ public static class ExitCode
 
     /// <summary>An automated run of the window: the scan itself could not run; see the local log.</summary>
     public const int ScanFailed = 9;
+
+    /// <summary>
+    /// An automated run of the window: something a person can press has no name for a screen
+    /// reader or cannot be reached with the keyboard; the local log names it.
+    /// </summary>
+    public const int AccessibilityFailed = 10;
 }
