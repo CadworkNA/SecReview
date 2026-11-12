@@ -1,0 +1,15 @@
+<Project>
+  <!-- Who signs SecReview's releases. Compiled into signed builds (build.ps1 -Sign), where it
+       decides which updates SecReview installs: only a setup program signed by exactly this
+       publisher. The release build fails when its own signatures do not match.
+
+       Subject: the signing certificate's subject, as Windows writes it.
+       Identity: the identifier Azure Artifact Signing puts into every certificate it issues
+       for this publisher. The certificates themselves last three days; this stays.
+
+       A fork that signs its own releases replaces both values with its own. -->
+  <PropertyGroup>
+    <PublisherSubject>CN=Cadwork Informatique Inc., O=Cadwork Informatique Inc., L=Montreal, S=Québec, C=CA</PublisherSubject>
+    <PublisherIdentityOid>1.3.6.1.4.1.311.97.716556005.106120101.341410937.889968856</PublisherIdentityOid>
+  </PropertyGroup>
+</Project>

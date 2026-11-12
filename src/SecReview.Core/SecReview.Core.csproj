@@ -42,6 +42,16 @@
     <AssemblyMetadata Include="UpdateManifestUrl" Value="$(UpdateManifestUrl)" />
   </ItemGroup>
 
+  <!-- Who signs SecReview's releases (signing\Publisher.props), for signed builds only
+       (build.ps1 -Sign). An update is installed only when its setup program is signed by
+       exactly this publisher; a build without it never installs one. -->
+  <Import Project="..\..\signing\Publisher.props" Condition="'$(SignedBuild)' == 'true'" />
+
+  <ItemGroup Condition="'$(PublisherSubject)' != ''">
+    <AssemblyMetadata Include="PublisherSubject" Value="$(PublisherSubject)" />
+    <AssemblyMetadata Include="PublisherIdentityOid" Value="$(PublisherIdentityOid)" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SecReview.Core.Tests" />
   </ItemGroup>

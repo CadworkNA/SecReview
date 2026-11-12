@@ -407,6 +407,13 @@ public sealed partial class MainWindow : Window
 
     private async void OnAboutClicked(object sender, RoutedEventArgs e) => await ShowAsync(AboutDialog());
 
+    private async void OnUpdateNowClicked(object sender, RoutedEventArgs e) => await ViewModel.UpdateNowAsync();
+
+    private void OnUpdateProblemClosed(InfoBar sender, object args) => ViewModel.DismissUpdateProblem();
+
+    private async void OnWhatIsNewClicked(object sender, RoutedEventArgs e) =>
+        await ShowAsync(Message("What's new", ViewModel.UpdateNotes));
+
     private async void OnFeedbackClicked(object sender, RoutedEventArgs e)
     {
         if (await ShowAsync(FeedbackDialog(out TextBox text, out CheckBox include)) != ContentDialogResult.Primary)
@@ -642,7 +649,7 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private static ContentDialog AboutDialog()
+    private ContentDialog AboutDialog()
     {
         var panel = new StackPanel { Spacing = 8, MaxWidth = 440 };
         foreach (string line in (string[])
@@ -654,6 +661,23 @@ public sealed partial class MainWindow : Window
         ])
         {
             panel.Children.Add(new TextBlock { Text = line, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        }
+
+        // Updates: where SecReview stands, and a way to look now.
+        var status = new TextBlock { Text = ViewModel.UpdateStatus, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(status);
+        if (ViewModel.CanLookForUpdates)
+        {
+            var look = new Button { Content = "Look for updates" };
+            look.Click += async (_, _) =>
+            {
+                look.IsEnabled = false;
+                status.Text = "Looking for updates…";
+                await ViewModel.LookForUpdatesAsync(now: true);
+                status.Text = ViewModel.UpdateStatus;
+                look.IsEnabled = true;
+            };
+            panel.Children.Add(look);
         }
 
         return new ContentDialog

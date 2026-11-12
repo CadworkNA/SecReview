@@ -25,6 +25,9 @@ done; start there when resuming work.
 - **Secrets:** report file and key, never the value; nothing secret in logs or error reports.
 - **Elevated code** (`SecReviewCli --elevated-scan`, `--apply-update`) takes only a pipe name of a
   fixed form from its caller. No paths, no lists, no URLs.
+- **Updates** come from one compiled-in address and are installed only when signed by the
+  publisher in `signing/Publisher.props`. Never add a setting, argument or file that could name
+  another address or publisher, and never relax a check in `UpdateApplier` without asking.
 - **Dependencies:** Microsoft-published packages only, exact versions, at least 7 days old. The
   one exception, approved by the maintainer, is the error-reporting SDK (`Sentry`, app only).
   Ask before adding anything else.

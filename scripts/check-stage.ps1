@@ -130,14 +130,28 @@ foreach ($file in $files) {
 }
 
 if ($OursSigned) {
+    # The publisher the programs are compiled to accept updates from. What this build signs
+    # must be signed by that same publisher, or its own updates would be refused.
+    $publisher = ([xml] (Get-Content (Join-Path $PSScriptRoot '..\signing\Publisher.props') -Raw)).Project.PropertyGroup
     foreach ($name in 'SecReview.exe', 'SecReviewCli.exe') {
         $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $stagePath $name)
         if ($signature.Status -ne 'Valid') {
             $problems.Add("${name}: not validly signed ($($signature.Status))")
-        } elseif (-not $signature.TimeStamperCertificate) {
+            continue
+        }
+        if (-not $signature.TimeStamperCertificate) {
             $problems.Add("${name}: the signature has no timestamp, so it would lapse with the certificate")
+        }
+        $certificate = $signature.SignerCertificate
+        $usages = @($certificate.Extensions |
+            Where-Object { $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] } |
+            ForEach-Object { $_.EnhancedKeyUsages } | ForEach-Object { $_.Value })
+        if ($certificate.Subject -cne $publisher.PublisherSubject) {
+            $problems.Add("${name}: signed by '$($certificate.Subject)', not by the publisher in signing\Publisher.props")
+        } elseif ($publisher.PublisherIdentityOid -and $publisher.PublisherIdentityOid -notin $usages) {
+            $problems.Add("${name}: the signing certificate does not carry the publisher's identifier from signing\Publisher.props")
         } else {
-            Write-Host "${name}: signed by $($signature.SignerCertificate.GetNameInfo('SimpleName', $false))."
+            Write-Host "${name}: signed by $($certificate.GetNameInfo('SimpleName', $false)), the publisher in signing\Publisher.props."
         }
     }
 }

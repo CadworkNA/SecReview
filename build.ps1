@@ -95,6 +95,11 @@ if ($UpdateUrl) {
     $compileArgs += "-p:UpdateManifestUrl=$UpdateUrl"
 }
 
+if ($Sign) {
+    # A signed build knows its publisher (signing\Publisher.props) and so may install updates.
+    $compileArgs += '-p:SignedBuild=true'
+}
+
 Invoke-Step 'Build' { dotnet build $solution -c Release --no-restore @compileArgs }
 
 if ($listFile) {

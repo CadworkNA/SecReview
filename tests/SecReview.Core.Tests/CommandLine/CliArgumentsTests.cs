@@ -131,4 +131,26 @@ public sealed class CliArgumentsTests
         StringAssert.Contains(CliArguments.Usage, "--diagnose");
         StringAssert.Contains(CliArguments.Usage, "--report <file>");
     }
+
+    [TestMethod]
+    public void ApplyUpdate_TakesAPipeNameOfOurForm_AndNothingElse()
+    {
+        string name = SecReview.Elevation.ElevationPipe.NewName();
+
+        Assert.AreEqual(new ApplyUpdateCommand(name), CliArguments.Parse(["--apply-update", "--pipe", name]));
+
+        foreach (string[] bad in new string[][]
+        {
+            ["--apply-update"],
+            ["--apply-update", "--pipe"],
+            ["--apply-update", "--pipe", "made-up"],
+            ["--apply-update", "--pipe", name, "--url", "https://made-up.example/setup.exe"],
+            ["--apply-update", "--pipe", name, @"C:\made\up\setup.exe"],
+            ["--apply-update", name],
+            ["--apply-update", "--url", "https://made-up.example/latest.json", "--pipe", name],
+        })
+        {
+            Assert.IsInstanceOfType<InvalidCommand>(CliArguments.Parse(bad), string.Join(' ', bad));
+        }
+    }
 }

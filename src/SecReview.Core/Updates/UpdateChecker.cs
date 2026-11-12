@@ -116,7 +116,7 @@ public sealed class UpdateChecker
 /// may send SecReview on to another address (GitHub does, for release files); each such
 /// address is checked like the first, and there are few of them.
 /// </summary>
-public sealed class HttpUpdateTransport : IUpdateTransport, IDisposable
+public sealed class HttpUpdateTransport : IUpdateDownloader, IDisposable
 {
     private const int MaximumRedirects = 5;
 
