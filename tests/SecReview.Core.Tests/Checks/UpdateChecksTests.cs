@@ -94,15 +94,30 @@ public sealed class UpdateChecksTests
         Assert.AreEqual("Yes, until 25 November 2026", outcome.Findings[1].Found);
     }
 
+    private static FakeProbes PausedUntil(RegistryValue value) => Updates().WithRegistryValue(
+        RegistryRoot.LocalMachine, AutomaticUpdatesCheck.SettingsKey, AutomaticUpdatesCheck.PauseExpiry, value);
+
     [TestMethod]
-    [DataRow("2026-11-01T09:00:00Z")]
-    [DataRow("not a date")]
-    public void Automatic_APauseThatHasEnded_OrIsNotADate_DoesNotCount(string expiry)
+    public void Automatic_APauseThatHasEnded_DoesNotCount()
+    {
+        Assert.AreEqual(
+            CheckStatus.Pass, new AutomaticUpdatesCheck().Run(PausedUntil(RegistryValue.FromText("2026-11-01T09:00:00Z"))).Status);
+    }
+
+    [TestMethod]
+    public void Automatic_APauseWhoseEndCannotBeRead_IsCouldNotCheck_NotANo()
+    {
+        Assert.AreEqual(CheckStatus.Error, new AutomaticUpdatesCheck().Run(PausedUntil(RegistryValue.FromText("not a date"))).Status);
+        Assert.AreEqual(CheckStatus.Error, new AutomaticUpdatesCheck().Run(PausedUntil(RegistryValue.FromBinary([1, 2, 3]))).Status);
+    }
+
+    [TestMethod]
+    public void Automatic_APauseStatusThatIsNotANumber_IsCouldNotCheck()
     {
         FakeProbes probes = Updates().WithRegistryValue(
-            RegistryRoot.LocalMachine, AutomaticUpdatesCheck.SettingsKey, AutomaticUpdatesCheck.PauseExpiry, RegistryValue.FromText(expiry));
+            RegistryRoot.LocalMachine, AutomaticUpdatesCheck.PauseStatusKey, AutomaticUpdatesCheck.QualityPaused, RegistryValue.FromText("yes"));
 
-        Assert.AreEqual(CheckStatus.Pass, new AutomaticUpdatesCheck().Run(probes).Status);
+        Assert.AreEqual(CheckStatus.Error, new AutomaticUpdatesCheck().Run(probes).Status);
     }
 
     [TestMethod]
@@ -139,37 +154,79 @@ public sealed class UpdateChecksTests
 
     // Recent updates
 
+    /// <summary>Windows' list of installed updates; dates as Windows writes them (month/day/year). "Now" is 11 November 2026.</summary>
+    private static FakeProbes Installed(params (string Id, string? InstalledOn)[] updates) => new FakeProbes().WithWmiObjects(
+        RecentUpdatesCheck.WmiNamespace,
+        RecentUpdatesCheck.WmiClass,
+        [.. updates.Select(u => FakeProbes.Wmi(("HotFixID", u.Id), ("InstalledOn", u.InstalledOn)))]);
+
     [TestMethod]
-    public void Recent_InstalledLately_Passes()
+    public void Recent_InstalledLately_Passes_AndNamesTheNewestUpdate()
     {
-        CheckOutcome outcome = new RecentUpdatesCheck().Run(Updates(lastInstall: Now.AddDays(-2)));
+        CheckOutcome outcome = new RecentUpdatesCheck().Run(Installed(("KB1000001", "10/14/2026"), ("KB1000002", "11/9/2026"), ("KB1000003", "9/1/2026")));
 
         Assert.AreEqual(CheckStatus.Pass, outcome.Status);
-        Assert.AreEqual("Windows installed an update 2 days ago.", outcome.Summary);
+        Assert.AreEqual("Windows installed an update to itself 2 days ago.", outcome.Summary);
+        Assert.AreEqual("Last Windows update installed: 2 days ago (KB1000002) (expected Within 35 days) [ok]", outcome.Rows()[0]);
     }
 
     [TestMethod]
-    public void Recent_Today_AndExactlyAtTheLimit_Pass()
+    public void Recent_TheDateIsMonthFirst_WhateverThePcsLanguage()
     {
-        Assert.AreEqual("Windows installed an update today.", new RecentUpdatesCheck().Run(Updates(lastInstall: Now.AddHours(-5))).Summary);
-        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Updates(lastInstall: Now - RecentUpdatesCheck.MaximumAge)).Status);
-        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Updates(lastInstall: Now.AddHours(2))).Status, "a clock slightly off");
+        // 3 November, not 11 March: read the way Windows writes it.
+        Assert.AreEqual(
+            "Windows installed an update to itself 8 days ago.", new RecentUpdatesCheck().Run(Installed(("KB1", "11/3/2026"))).Summary);
+    }
+
+    [TestMethod]
+    public void Recent_TodayYesterday_AndExactlyAtTheLimit_Pass()
+    {
+        Assert.AreEqual("Windows installed an update to itself today.", new RecentUpdatesCheck().Run(Installed(("KB1", "11/11/2026"))).Summary);
+        Assert.AreEqual("Windows installed an update to itself yesterday.", new RecentUpdatesCheck().Run(Installed(("KB1", "11/10/2026"))).Summary);
+        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Installed(("KB1", "10/7/2026"))).Status, "35 days");
+        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Installed(("KB1", "11/12/2026"))).Status, "a clock slightly off");
     }
 
     [TestMethod]
     public void Recent_LongAgo_Fails()
     {
-        CheckOutcome outcome = new RecentUpdatesCheck().Run(Updates(lastInstall: Now.AddDays(-36)));
+        CheckOutcome outcome = new RecentUpdatesCheck().Run(Installed(("KB1", "10/6/2026"), ("KB2", "1/5/2026")));
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
-        Assert.AreEqual("Windows last installed an update 36 days ago.", outcome.Summary);
+        Assert.AreEqual("Windows last installed an update to itself 36 days ago.", outcome.Summary);
     }
 
     [TestMethod]
-    public void Recent_NoDate_OrUnreadable_IsCouldNotCheck()
+    public void Recent_EntriesWithoutADate_SayNothingEitherWay()
     {
-        Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(Updates(neverInstalled: true)).Status);
+        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Installed(("KB1", null), ("KB2", "11/9/2026"), ("KB3", " "))).Status);
+        Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(Installed(("KB1", null))).Status);
+    }
+
+    [TestMethod]
+    public void Recent_ADateThatCannotBeRead_IsNeverGuessedAt()
+    {
+        // A recent readable date is enough; an old one is not, since the unreadable entry may be newer.
+        Assert.AreEqual(CheckStatus.Pass, new RecentUpdatesCheck().Run(Installed(("KB1", "13.11.2026"), ("KB2", "11/9/2026"))).Status);
+        Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(Installed(("KB1", "13.11.2026"), ("KB2", "1/5/2026"))).Status);
+        Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(Installed(("KB1", "01cf0a2b3c4d5e6f"))).Status);
+    }
+
+    [TestMethod]
+    public void Recent_NothingListed_OrUnreadable_IsCouldNotCheck()
+    {
+        Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(Installed()).Status);
         Assert.AreEqual(CheckStatus.Error, new RecentUpdatesCheck().Run(new FakeProbes()).Status);
+    }
+
+    [TestMethod]
+    public void Recent_DoesNotUseTheUpdateServicesOwnDate_WhichAntivirusDefinitionsMove()
+    {
+        // The service says "yesterday"; Windows itself was last updated in January.
+        FakeProbes probes = Installed(("KB1", "1/5/2026"));
+        probes.WindowsUpdate = Updates(lastInstall: Now.AddDays(-1)).WindowsUpdate;
+
+        Assert.AreEqual(CheckStatus.Fail, new RecentUpdatesCheck().Run(probes).Status);
     }
 
     // Restart
@@ -207,6 +264,15 @@ public sealed class UpdateChecksTests
 
         Assert.AreEqual(CheckStatus.Fail, outcome.Status);
         Assert.AreEqual("An update is waiting for a restart.", outcome.Summary);
+    }
+
+    [TestMethod]
+    public void Restart_JustOverTheLimit_NeverReadsAsTheLimitItself()
+    {
+        CheckOutcome outcome = new RestartCheck().Run(Running(14.25));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("This PC has not been restarted for 14 days 6 h.", outcome.Summary);
     }
 
     [TestMethod]

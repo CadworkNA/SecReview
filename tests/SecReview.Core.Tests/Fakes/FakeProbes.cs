@@ -366,7 +366,7 @@ internal sealed class FakeProbes
             }
 
             return file.IsOk && file.Value!.Length > maximumBytes
-                ? ProbeFailure.Failed($"The file is larger than {maximumBytes / 1024} KB and was not read.")
+                ? ProbeFailure.Failed($"{IFileProbe.TooLargeDetailStart} {maximumBytes / 1024} KB and was not read.")
                 : file;
         }
 

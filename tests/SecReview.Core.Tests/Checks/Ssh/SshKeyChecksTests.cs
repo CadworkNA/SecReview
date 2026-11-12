@@ -125,6 +125,46 @@ public sealed class SshKeyChecksTests
     }
 
     [TestMethod]
+    public void AnUnreadableFile_IsReported_WhateverItIsCalled()
+    {
+        // Not named like a key, but it may be one: a protected key next to it must not make this a pass.
+        FakeProbes probes = Keys(("id_ed25519", SshFixtures.OpenSsh(SshFixtures.Ed25519Blob(), passphrase: true)))
+            .WithFileFailure(SshFixtures.Path("github_key"), ProbeFailure.AccessDenied());
+
+        CheckOutcome passphrase = Passphrase.Run(probes);
+        Assert.AreEqual(CheckStatus.Error, passphrase.Status);
+        StringAssert.Contains(passphrase.Summary, "github_key");
+        Assert.IsTrue(passphrase.Rows().Contains("github_key: Access denied (expected Passphrase) [problem]"));
+
+        CheckOutcome strength = Strength.Run(probes);
+        Assert.AreEqual(CheckStatus.Error, strength.Status);
+        Assert.AreEqual("github_key could not be read.", strength.Summary, "the reason given is the real one");
+    }
+
+    [TestMethod]
+    public void FilesThatAreNotText_OrFarTooLarge_AreNotKeys()
+    {
+        FakeProbes probes = new FakeProbes()
+            .WithFileFailure(SshFixtures.Path("agent.sock"), ProbeFailure.Failed(IFileProbe.NotTextDetail))
+            .WithFile(SshFixtures.Path("archive.txt"), new string('x', 70_000));
+
+        Assert.AreEqual(CheckStatus.NotApplicable, Passphrase.Run(probes).Status);
+    }
+
+    [TestMethod]
+    public void AnUnknownKind_WithItsPublicFilePresent_IsNotBlamedOnAMissingFile()
+    {
+        FakeProbes probes = Keys(
+            ("odd", "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----\n"),
+            ("odd.pub", "something-new AAAA someone@example\n"));
+
+        CheckOutcome outcome = Strength.Run(probes);
+
+        Assert.AreEqual(CheckStatus.Error, outcome.Status);
+        Assert.AreEqual("Could not tell what kind of key odd is.", outcome.Summary);
+    }
+
+    [TestMethod]
     public void TheKeyItself_NeverAppearsInTheResult()
     {
         string key = SshFixtures.OpenSsh(SshFixtures.RsaBlob(2048), passphrase: false);

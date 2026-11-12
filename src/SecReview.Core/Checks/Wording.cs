@@ -22,25 +22,30 @@ public static class Wording
     /// <summary>"" for one, "s" for several.</summary>
     public static string Plural(int count) => count == 1 ? string.Empty : "s";
 
-    /// <summary>A length of time in the largest unit that fits: "45 s", "15 min", "2 h", "3 days".</summary>
+    /// <summary>
+    /// A length of time in its two largest units, never rounded up or to a neighbour: "45 s",
+    /// "15 min", "15 min 20 s", "8 h 13 min", "14 days 6 h". A time just over a limit therefore
+    /// never reads as the limit itself.
+    /// </summary>
     public static string Duration(TimeSpan time)
     {
-        if (time < TimeSpan.FromMinutes(1))
+        if (time < TimeSpan.Zero)
         {
-            return $"{(long)time.TotalSeconds} s";
+            time = TimeSpan.Zero;
         }
 
-        if (time < TimeSpan.FromHours(2))
-        {
-            return $"{(long)Math.Round(time.TotalMinutes)} min";
-        }
+        long days = (long)Math.Floor(time.TotalDays);
+        (long Value, string Unit)[] units =
+        [
+            (days, days == 1 ? "day" : "days"),
+            (time.Hours, "h"),
+            (time.Minutes, "min"),
+            (time.Seconds, "s"),
+        ];
 
-        if (time < TimeSpan.FromDays(2))
-        {
-            return $"{(long)Math.Round(time.TotalHours)} h";
-        }
-
-        return $"{(long)Math.Floor(time.TotalDays)} days";
+        // The largest unit that is not zero, and the next one down that is not zero either.
+        string[] shown = [.. units.Where(u => u.Value > 0).Take(2).Select(u => $"{u.Value} {u.Unit}")];
+        return shown.Length == 0 ? "0 s" : string.Join(' ', shown);
     }
 
     /// <summary>A date the same way everywhere: "12 October 2027".</summary>

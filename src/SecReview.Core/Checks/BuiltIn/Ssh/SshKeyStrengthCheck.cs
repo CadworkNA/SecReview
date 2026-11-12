@@ -37,12 +37,13 @@ public sealed class SshKeyStrengthCheck : ICheck
 
         var findings = new List<Finding>(keys.Count);
         var weak = new List<string>();
-        var unknown = new List<string>();
+        var unreadable = new List<string>();
+        var unknown = new List<SshKeyOnDisk>();
         foreach (SshKeyOnDisk key in keys)
         {
             if (key.Info is null)
             {
-                unknown.Add(key.FileName);
+                unreadable.Add(key.FileName);
                 findings.Add(Finding.Problem(key.FileName, key.Unreadable ?? "Could not be read", Expected));
                 continue;
             }
@@ -58,7 +59,7 @@ public sealed class SshKeyStrengthCheck : ICheck
                     findings.Add(Finding.Problem(key.FileName, description, Expected));
                     break;
                 default:
-                    unknown.Add(key.FileName);
+                    unknown.Add(key);
                     findings.Add(Finding.Problem(
                         key.FileName, key.Info.Kind == SshKeyKind.Rsa ? "RSA, size not readable" : "Kind not readable", Expected));
                     break;
@@ -71,12 +72,19 @@ public sealed class SshKeyStrengthCheck : ICheck
                 $"{Wording.JoinWithAnd(weak)} {(weak.Count == 1 ? "uses" : "use")} a weak algorithm or key size.", findings);
         }
 
+        if (unreadable.Count > 0)
+        {
+            return CheckOutcome.Error($"{Wording.JoinWithAnd(unreadable)} could not be read.", findings);
+        }
+
         if (unknown.Count > 0)
         {
-            // An encrypted key without its .pub file does not show what it is.
+            List<string> names = [.. unknown.Select(k => k.FileName)];
+            string summary = $"Could not tell what kind of key {Wording.JoinWithAnd(names)} {Wording.IsOrAre(names.Count)}";
+
+            // An encrypted key in an older format does not show what it is; its .pub file would.
             return CheckOutcome.Error(
-                $"Could not tell what kind of key {Wording.JoinWithAnd(unknown)} {Wording.IsOrAre(unknown.Count)}; " +
-                "the matching .pub file is missing.",
+                unknown.All(k => !k.HasPublicFile) ? $"{summary}; the matching .pub file is missing." : $"{summary}.",
                 findings);
         }
 

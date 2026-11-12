@@ -27,7 +27,12 @@ public sealed class DefenderCheck : ICheck
 
     private static readonly string[] PreferenceProperties = ["MAPSReporting"];
 
-    public CheckDefinition Definition { get; } = new(Id, CheckCategory.SystemIntegrity, Severity.High);
+    /// <summary>
+    /// Normally answered in full as a normal user. Where Defender's settings need administrator
+    /// rights, the administrator scan reads them, so the check must be part of it.
+    /// </summary>
+    public CheckDefinition Definition { get; } =
+        new(Id, CheckCategory.SystemIntegrity, Severity.High, AdminNeed.ForFullDetail);
 
     public CheckOutcome Run(CheckContext context)
     {

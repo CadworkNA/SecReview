@@ -113,10 +113,18 @@ public sealed class SshConfigCheck : ICheck
         return -1;
     }
 
-    /// <summary>"no" is off; "yes", a socket path or a variable name all forward an agent.</summary>
+    /// <summary>
+    /// OpenSSH reads "no" and "false" as off; "yes", "true", a socket path or a variable name
+    /// all forward an agent.
+    /// </summary>
     private static bool IsForwarding(string value) =>
-        value.Length > 0 && !value.Equals("no", StringComparison.OrdinalIgnoreCase);
+        value.Length > 0 &&
+        !value.Equals("no", StringComparison.OrdinalIgnoreCase) &&
+        !value.Equals("false", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>OpenSSH reads "no", "false" and "off" as: accept any host key.</summary>
     private static bool IsCheckingOff(string value) =>
-        value.Equals("no", StringComparison.OrdinalIgnoreCase) || value.Equals("off", StringComparison.OrdinalIgnoreCase);
+        value.Equals("no", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("off", StringComparison.OrdinalIgnoreCase);
 }

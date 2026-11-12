@@ -19,7 +19,7 @@ internal static class RegistryReader
     /// <param name="key">The key path.</param>
     /// <param name="name">The value name.</param>
     /// <param name="what">What is being read, for the message: "the Remote Desktop setting".</param>
-    /// <param name="value">The number, or null if the value is not set or is not a number.</param>
+    /// <param name="value">The number, or null if the value is not set.</param>
     public static CheckOutcome? Number(
         IRegistryProbe registry, RegistryRoot root, string key, string name, string what, out long? value)
     {
@@ -42,10 +42,15 @@ internal static class RegistryReader
                 result.Value.Text.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) => parsed,
             _ => null,
         };
-        return null;
+
+        // A value that is there but is not a number is not "not set": its meaning is unknown.
+        return value is null ? Unexpected(name, what, "a number") : null;
     }
 
-    /// <summary>A text value; null when it is not set, is empty or is not text.</summary>
+    /// <summary>
+    /// A text value; null when it is not set or is empty. A value of another kind is not
+    /// "not set" and gives the outcome for an unreadable setting.
+    /// </summary>
     public static CheckOutcome? Text(
         IRegistryProbe registry, RegistryRoot root, string key, string name, string what, out string? value)
     {
@@ -61,11 +66,19 @@ internal static class RegistryReader
             return ProbeOutcomes.FromFailure(result, what);
         }
 
-        if (result.Value!.Type == RegistryValueType.Text && result.Value.Text.Trim().Length > 0)
+        if (result.Value!.Type != RegistryValueType.Text)
+        {
+            return Unexpected(name, what, "text");
+        }
+
+        if (result.Value.Text.Trim().Length > 0)
         {
             value = result.Value.Text.Trim();
         }
 
         return null;
     }
+
+    private static CheckOutcome Unexpected(string name, string what, string expected) =>
+        CheckOutcome.Error($"Could not read {what}: the registry value {name} is not {expected}.");
 }

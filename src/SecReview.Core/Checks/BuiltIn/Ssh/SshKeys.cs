@@ -6,7 +6,8 @@ namespace SecReview.Checks.BuiltIn.Ssh;
 /// <param name="FileName">The file's name, without the folder.</param>
 /// <param name="Info">What the file says about itself; null if it could not be read.</param>
 /// <param name="Unreadable">Why the file could not be read, when it could not.</param>
-internal sealed record SshKeyOnDisk(string FileName, SshKeyInfo? Info, string? Unreadable);
+/// <param name="HasPublicFile">Whether a readable <c>.pub</c> file sits next to it.</param>
+internal sealed record SshKeyOnDisk(string FileName, SshKeyInfo? Info, string? Unreadable, bool HasPublicFile = false);
 
 /// <summary>Finds the private keys in the signed-in user's <c>.ssh</c> folder.</summary>
 internal static class SshKeys
@@ -50,7 +51,8 @@ internal static class SshKeys
         var keys = new List<SshKeyOnDisk>();
         foreach (FileEntry entry in entries.Value!)
         {
-            if (entry.IsDirectory || entry.Length is 0 or > MaximumKeyBytes ||
+            // The size of a link is not the size of the file it points to, so a link is read to find out.
+            if (entry.IsDirectory || (!entry.IsLink && entry.Length is 0 or > MaximumKeyBytes) ||
                 entry.Name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase) ||
                 NotKeys.Contains(entry.Name, StringComparer.OrdinalIgnoreCase))
             {
@@ -59,20 +61,20 @@ internal static class SshKeys
 
             string path = $@"{folder.Value}\{entry.Name}";
             ProbeResult<string> text = probes.Files.ReadText(path, MaximumKeyBytes);
-            if (text.Status == ProbeStatus.NotFound)
+            if (text.Status == ProbeStatus.NotFound || text.Detail == IFileProbe.NotTextDetail ||
+                text.Detail?.StartsWith(IFileProbe.TooLargeDetailStart, StringComparison.Ordinal) == true)
             {
+                // Gone since it was listed, not text, or far larger than any key: not a key file.
                 continue;
             }
 
             if (!text.IsOk)
             {
-                // Only a file named like a key is reported when unreadable; anything else in
-                // the folder that is not text is simply not a key.
-                if (entry.Name.StartsWith("id_", StringComparison.OrdinalIgnoreCase))
-                {
-                    keys.Add(new SshKeyOnDisk(entry.Name, null, text.Detail ?? "Could not be read"));
-                }
-
+                // It may be a key, and nothing can be said about it: reported, never skipped.
+                keys.Add(new SshKeyOnDisk(
+                    entry.Name,
+                    null,
+                    text.Status == ProbeStatus.AccessDenied ? "Access denied" : text.Detail ?? "Could not be read"));
                 continue;
             }
 
@@ -82,7 +84,8 @@ internal static class SshKeys
             }
 
             ProbeResult<string> publicKey = probes.Files.ReadText(path + ".pub", MaximumKeyBytes);
-            keys.Add(new SshKeyOnDisk(entry.Name, SshKeyFile.Parse(text.Value!, publicKey.IsOk ? publicKey.Value : null), null));
+            keys.Add(new SshKeyOnDisk(
+                entry.Name, SshKeyFile.Parse(text.Value!, publicKey.IsOk ? publicKey.Value : null), null, publicKey.IsOk));
         }
 
         return ProbeResult<IReadOnlyList<SshKeyOnDisk>>.Ok(keys);

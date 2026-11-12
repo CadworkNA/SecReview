@@ -55,10 +55,22 @@ public sealed class AutomaticUpdatesCheck : ICheck
 
         WindowsUpdateStatus status = read.Value!;
         DateTimeOffset now = context.Clock.GetUtcNow();
-        DateTimeOffset? pausedUntil = DateTimeOffset.TryParse(
-            expiryText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset expiry) && expiry > now
-            ? expiry
-            : null;
+        DateTimeOffset? pausedUntil = null;
+        if (expiryText is not null)
+        {
+            if (!DateTimeOffset.TryParse(
+                    expiryText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset expiry))
+            {
+                // A pause was recorded, but not when it ends: "not paused" would be a guess.
+                return CheckOutcome.Error("Windows records a pause of updates with an end date SecReview cannot read.");
+            }
+
+            if (expiry > now)
+            {
+                pausedUntil = expiry;
+            }
+        }
+
         bool paused = quality == 1 || pausedUntil is not null;
 
         (bool automatic, string mode) = status.Mode switch
@@ -102,17 +114,30 @@ public sealed class AutomaticUpdatesCheck : ICheck
 }
 
 /// <summary>
-/// Windows must have installed an update recently. Monthly security updates plus a margin give
-/// <see cref="MaximumAge"/>; a longer gap means updates are not arriving.
+/// Windows must have installed an update to itself recently. Monthly security updates plus a
+/// margin give <see cref="MaximumAgeDays"/>; a longer gap means updates are not arriving.
+/// <para>
+/// The date comes from Windows' list of installed updates, not from the update service's "last
+/// installed" date: that one also moves with every antivirus definition update, and would show
+/// a PC as current while its monthly updates fail.
+/// </para>
 /// </summary>
 public sealed class RecentUpdatesCheck : ICheck
 {
     public const string Id = "updates.recent";
 
-    public static readonly TimeSpan MaximumAge = TimeSpan.FromDays(35);
+    public const int MaximumAgeDays = 35;
 
-    private const string Item = "Last update installed";
+    internal const string WmiNamespace = @"ROOT\CIMV2";
+    internal const string WmiClass = "Win32_QuickFixEngineering";
+
+    private const string Item = "Last Windows update installed";
     private const string Expected = "Within 35 days";
+
+    private static readonly string[] Properties = ["HotFixID", "InstalledOn"];
+
+    /// <summary>Windows writes the date as month/day/year whatever the PC's language.</summary>
+    private static readonly string[] DateFormats = ["M/d/yyyy"];
 
     public CheckDefinition Definition { get; } = new(Id, CheckCategory.Updates, Severity.High);
 
@@ -120,30 +145,59 @@ public sealed class RecentUpdatesCheck : ICheck
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        ProbeResult<WindowsUpdateStatus> read = context.Probes.WindowsUpdate.GetStatus();
+        ProbeResult<IReadOnlyList<WmiObject>> read = context.Probes.Wmi.Query(WmiNamespace, WmiClass, Properties);
         if (!read.IsOk)
         {
-            return ProbeOutcomes.FromFailure(read, "when updates were last installed");
+            return ProbeOutcomes.FromFailure(read, "the list of installed updates");
         }
 
-        if (read.Value!.LastSuccessfulInstall is not { } last)
+        (DateOnly Date, string? Id)? latest = null;
+        int unreadable = 0;
+        foreach (WmiObject update in read.Value!)
         {
-            return CheckOutcome.Error("Windows does not say when it last installed an update.");
+            string? text = update.Text("InstalledOn")?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                // Some entries carry no date; they say nothing either way.
+                continue;
+            }
+
+            if (!DateOnly.TryParseExact(text, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date))
+            {
+                unreadable++;
+            }
+            else if (latest is null || date > latest.Value.Date)
+            {
+                latest = (date, update.Text("HotFixID"));
+            }
         }
 
-        TimeSpan age = context.Clock.GetUtcNow() - last;
-        if (age < TimeSpan.Zero)
+        DateOnly today = DateOnly.FromDateTime(context.Clock.GetUtcNow().UtcDateTime);
+        int age = latest is { } last ? Math.Max(0, today.DayNumber - last.Date.DayNumber) : int.MaxValue;
+        if (age > MaximumAgeDays && unreadable > 0)
         {
-            age = TimeSpan.Zero;
+            // A newer update may be among the entries whose date could not be read.
+            return CheckOutcome.Error("Windows lists installed updates with dates SecReview cannot read.");
         }
 
-        string found = age < TimeSpan.FromDays(1) ? "Today" : $"{(int)age.TotalDays} day{Wording.Plural((int)age.TotalDays)} ago";
-        return age > MaximumAge
-            ? CheckOutcome.Fail(
-                $"Windows last installed an update {(int)age.TotalDays} days ago.", Finding.Problem(Item, found, Expected))
-            : CheckOutcome.Pass(
-                age < TimeSpan.FromDays(1) ? "Windows installed an update today." : $"Windows installed an update {found}.",
-                Finding.Ok(Item, found, Expected));
+        if (latest is null)
+        {
+            return CheckOutcome.Error("Windows lists no installed updates with a date.");
+        }
+
+        string when = age switch
+        {
+            0 => "today",
+            1 => "yesterday",
+            _ => $"{age} days ago",
+        };
+        string found = string.IsNullOrWhiteSpace(latest.Value.Id)
+            ? char.ToUpperInvariant(when[0]) + when[1..]
+            : $"{char.ToUpperInvariant(when[0])}{when[1..]} ({latest.Value.Id})";
+
+        return age > MaximumAgeDays
+            ? CheckOutcome.Fail($"Windows last installed an update to itself {when}.", Finding.Problem(Item, found, Expected))
+            : CheckOutcome.Pass($"Windows installed an update to itself {when}.", Finding.Ok(Item, found, Expected));
     }
 }
 

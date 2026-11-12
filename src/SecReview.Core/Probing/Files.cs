@@ -21,6 +21,16 @@ public interface IFileProbe
     const int DefaultMaximumBytes = 1024 * 1024;
 
     /// <summary>
+    /// The <see cref="ProbeResult{T}.Detail"/> of a read that failed because the file is not
+    /// text. A caller looking for one kind of text file among others can tell this apart from a
+    /// file it was not allowed to read.
+    /// </summary>
+    const string NotTextDetail = "The file is not text and was not read.";
+
+    /// <summary>How the <see cref="ProbeResult{T}.Detail"/> of a read begins that failed because the file is too large.</summary>
+    const string TooLargeDetailStart = "The file is larger than";
+
+    /// <summary>
     /// The text of a file. Fails, rather than returning part of it, when the file is larger than
     /// <paramref name="maximumBytes"/> or is not text: a check must never judge half a file.
     /// </summary>

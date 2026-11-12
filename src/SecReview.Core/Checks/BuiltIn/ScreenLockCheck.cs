@@ -9,9 +9,10 @@ namespace SecReview.Checks.BuiltIn;
 /// <item>the machine inactivity limit, which also locks as soon as the display turns off;</item>
 /// <item>a screen saver that asks for sign-in (it needs a screen saver program to be set);</item>
 /// <item>sleep, when waking asks for sign-in;</item>
-/// <item>on a Modern Standby PC, the display turning off, when waking asks for sign-in; the
-/// user's "when should Windows require you to sign in again" delay is added.</item>
+/// <item>on a Modern Standby PC, the display turning off, when waking asks for sign-in.</item>
 /// </list>
+/// On a Modern Standby PC the user's "when should Windows require you to sign in again" delay
+/// is added to the last two.
 /// </summary>
 public sealed class ScreenLockCheck : ICheck
 {
@@ -140,7 +141,8 @@ public sealed class ScreenLockCheck : ICheck
 
         if (source.Sleep is { } sleep && source.RequirePasswordOnWake)
         {
-            ways.Add((sleep, "sleep"));
+            // On a Modern Standby PC "sleep" is standby too, and the same sign-in delay applies.
+            ways.Add((modernStandby ? sleep + delay : sleep, "sleep"));
         }
 
         if (source.DisplayOff is { } displayOff)

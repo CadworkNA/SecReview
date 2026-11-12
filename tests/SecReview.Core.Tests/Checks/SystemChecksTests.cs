@@ -33,6 +33,23 @@ public sealed class SystemChecksTests
     }
 
     [TestMethod]
+    public void Uac_AValueOfAnUnexpectedKind_IsCouldNotCheck_NotTheDefault()
+    {
+        FakeProbes text = new FakeProbes().WithRegistryValue(RegistryRoot.LocalMachine, UacCheck.Key, UacCheck.Value, RegistryValue.FromText("off"));
+        FakeProbes binary = new FakeProbes().WithRegistryValue(RegistryRoot.LocalMachine, UacCheck.Key, UacCheck.Value, RegistryValue.FromBinary([0]));
+
+        Assert.AreEqual(CheckStatus.Error, new UacCheck().Run(text).Status);
+        Assert.AreEqual(CheckStatus.Error, new UacCheck().Run(binary).Status);
+        StringAssert.Contains(new UacCheck().Run(binary).Summary, "EnableLUA is not a number");
+    }
+
+    [TestMethod]
+    public void Defender_IsPartOfTheAdministratorScan_WhichCanReadWhatANormalUserMayNot()
+    {
+        Assert.AreEqual(AdminNeed.ForFullDetail, new DefenderCheck().Definition.NeedsAdmin);
+    }
+
+    [TestMethod]
     public void Uac_Unreadable_IsNeverAPass()
     {
         var denied = new FakeProbes { RegistryFailure = ProbeFailure.AccessDenied() };

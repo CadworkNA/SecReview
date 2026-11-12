@@ -25,12 +25,19 @@ public sealed class DiskFileProbe : IFileProbe
                 path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096);
 
             // One byte more than allowed shows that a file is too large even if its size is
-            // not reported or changes while it is read.
-            byte[] buffer = new byte[maximumBytes + 1];
+            // not reported or changes while it is read. A small file gets a small buffer.
+            long reported = stream.CanSeek ? stream.Length : maximumBytes;
+            byte[] buffer = new byte[(int)Math.Min(reported, maximumBytes) + 1];
             int read = stream.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
+            if (read == buffer.Length && read <= maximumBytes && stream.ReadByte() >= 0)
+            {
+                // The file grew past its reported size while it was read; what was read is not all of it.
+                return ProbeFailure.Failed("The file changed while it was being read.");
+            }
+
             if (read > maximumBytes)
             {
-                return ProbeFailure.Failed($"The file is larger than {maximumBytes / 1024} KB and was not read.");
+                return ProbeFailure.Failed($"{IFileProbe.TooLargeDetailStart} {maximumBytes / 1024} KB and was not read.");
             }
 
             return Decode(buffer.AsSpan(0, read));
@@ -92,7 +99,7 @@ public sealed class DiskFileProbe : IFileProbe
     /// </summary>
     internal static ProbeResult<string> Decode(ReadOnlySpan<byte> bytes)
     {
-        const string NotText = "The file is not text and was not read.";
+        const string NotText = IFileProbe.NotTextDetail;
 
         try
         {

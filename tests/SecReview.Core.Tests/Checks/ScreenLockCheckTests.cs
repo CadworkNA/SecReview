@@ -115,6 +115,36 @@ public sealed class ScreenLockCheckTests
     }
 
     [TestMethod]
+    public void OnAModernStandbyPc_TheSignInDelayAppliesToSleepToo()
+    {
+        FakeProbes probes = Pc(Source(displayOff: 5, sleep: 5), modernStandby: true)
+            .WithRegistryNumber(RegistryRoot.CurrentUser, ScreenLockCheck.DesktopKey, ScreenLockCheck.DelayValue, 900);
+
+        CheckOutcome outcome = Check.Run(probes);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("This PC locks only after 20 min without use.", outcome.Summary);
+    }
+
+    [TestMethod]
+    public void OnAnOrdinaryPc_TheSignInDelayDoesNotApply()
+    {
+        FakeProbes probes = Pc(Source(displayOff: 5, sleep: 5))
+            .WithRegistryNumber(RegistryRoot.CurrentUser, ScreenLockCheck.DesktopKey, ScreenLockCheck.DelayValue, 900);
+
+        Assert.AreEqual("This PC locks after 5 min without use.", Check.Run(probes).Summary);
+    }
+
+    [TestMethod]
+    public void JustOverTheLimit_NeverReadsAsTheLimitItself()
+    {
+        CheckOutcome outcome = Check.Run(WithInactivityLimit(Pc(Source(displayOff: null, sleep: null)), 920));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("This PC locks only after 15 min 20 s without use.", outcome.Summary);
+    }
+
+    [TestMethod]
     public void OnAModernStandbyPc_WithoutSignInOnWake_TheDisplayTurningOffDoesNotCount()
     {
         Assert.AreEqual(

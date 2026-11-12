@@ -43,6 +43,7 @@ public sealed class SshConfigCheckTests
     [DataRow("Match all\n  ForwardAgent yes\n")]
     [DataRow("Match final all\n  ForwardAgent yes\n")]
     [DataRow("ForwardAgent $SSH_AUTH_SOCK\n")]
+    [DataRow("ForwardAgent true\n")]
     [DataRow("Host one\n  User a\nHost *\n  ForwardAgent yes # comment\n")]
     public void AgentForwardingForEveryHost_Fails(string text)
     {
@@ -79,6 +80,8 @@ public sealed class SshConfigCheckTests
     [TestMethod]
     [DataRow("StrictHostKeyChecking no\n")]
     [DataRow("Host *\n  StrictHostKeyChecking off\n")]
+    [DataRow("StrictHostKeyChecking false\n")]
+    [DataRow("StrictHostKeyChecking FALSE\n")]
     public void HostKeyCheckingOffForEveryHost_Fails(string text)
     {
         CheckOutcome outcome = Check.Run(Config(text));
@@ -91,9 +94,19 @@ public sealed class SshConfigCheckTests
     [DataRow("yes")]
     [DataRow("ask")]
     [DataRow("accept-new")]
+    [DataRow("true")]
     public void OtherHostKeyCheckingValues_Pass(string value)
     {
         Assert.AreEqual(CheckStatus.Pass, Check.Run(Config($"StrictHostKeyChecking {value}\n")).Status);
+    }
+
+    [TestMethod]
+    [DataRow("no")]
+    [DataRow("false")]
+    [DataRow("False")]
+    public void AgentForwardingSwitchedOff_InEitherSpelling_Passes(string value)
+    {
+        Assert.AreEqual(CheckStatus.Pass, Check.Run(Config($"Host *\n  ForwardAgent {value}\n")).Status);
     }
 
     [TestMethod]
