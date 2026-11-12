@@ -1,0 +1,16 @@
+# Generated release notes list the merged pull request titles, which carry a conventional prefix
+# (feat:, fix:, ...). Dependency updates are grouped apart through the label Dependabot applies.
+changelog:
+  exclude:
+    labels:
+      - skip-release-notes
+  categories:
+    - title: Changes
+      labels:
+        - "*"
+      exclude:
+        labels:
+          - dependencies
+    - title: Dependencies
+      labels:
+        - dependencies

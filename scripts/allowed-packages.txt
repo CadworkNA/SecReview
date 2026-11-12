@@ -1,0 +1,19 @@
+# Every NuGet package that may appear in a packages.lock.json, direct or transitive.
+# scripts\check-lockfiles.ps1 fails the build for anything else.
+# All are published by Microsoft. A third-party package needs the maintainer's approval.
+
+# Native AOT compiler and trimmer (added by the SDK for PublishAot / IsAotCompatible)
+Microsoft.DotNet.ILCompiler
+Microsoft.NET.ILLink.Tasks
+runtime.win-x64.Microsoft.DotNet.ILCompiler
+
+# Tests only (MSTest on Microsoft.Testing.Platform)
+MSTest.Analyzers
+MSTest.TestAdapter
+MSTest.TestFramework
+Microsoft.ApplicationInsights
+Microsoft.Testing.Extensions.Telemetry
+Microsoft.Testing.Extensions.TrxReport.Abstractions
+Microsoft.Testing.Platform
+Microsoft.Testing.Platform.MSBuild
+Microsoft.TestPlatform.ObjectModel
