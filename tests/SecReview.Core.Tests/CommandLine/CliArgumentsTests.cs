@@ -153,4 +153,53 @@ public sealed class CliArgumentsTests
             Assert.IsInstanceOfType<InvalidCommand>(CliArguments.Parse(bad), string.Join(' ', bad));
         }
     }
+
+    /// <summary>
+    /// Arguments put together at random, with a fixed seed, from everything either program
+    /// knows and from words that are close to it. Neither parser may throw, and the two
+    /// commands that run with administrator rights may only ever come out of the one form
+    /// they have: the command, "--pipe" and a pipe name of ours.
+    /// </summary>
+    [TestMethod]
+    public void ArgumentsAtRandom_NeverThrow_AndTheElevatedCommandsKeepTheirOneForm()
+    {
+        string pipe = SecReview.Elevation.ElevationPipe.NewName();
+        string[] words =
+        [
+            "--help", "-h", "/?", "--version", "--diagnose", "--report", "--elevated-scan", "--apply-update", "--pipe", pipe,
+            pipe.ToUpperInvariant(), pipe + "0", pipe[..^1], @"\\.\pipe\" + pipe, "SecReview.Elev.", "--url", "https://made-up.example/latest.json",
+            @"C:\made\up\report.json", "--smoke-test", "--demo", "mixed", "--screenshot", "shot.png", "--tray", "--show", "firewall.enabled",
+            "--error-report-test", "", " ", "--", "-", "\"", "--pipe=" + pipe, "--PIPE", "--Elevated-Scan", "a b", "\0", "\n", "..",
+        ];
+        var random = new Random(20261112);
+        int elevated = 0;
+
+        for (int round = 0; round < 20000; round++)
+        {
+            // Now and then the one accepted form, so that what is close to it comes up as well.
+            string[] args = random.Next(10) == 0
+                ? [random.Next(2) == 0 ? "--elevated-scan" : "--apply-update", "--pipe", pipe]
+                : [.. Enumerable.Range(0, random.Next(0, 6)).Select(_ => words[random.Next(words.Length)])];
+            if (random.Next(4) == 0 && args.Length > 0)
+            {
+                int at = random.Next(args.Length);
+                args[at] = Tests.Config.ConfigTesting.Damage(args[at], random);
+            }
+
+            CliCommand command = CliArguments.Parse(args);
+            Assert.IsNotNull(AppArguments.Parse(args), $"round {round}");
+
+            if (command is ElevatedScanCommand or ApplyUpdateCommand)
+            {
+                elevated++;
+                Assert.IsTrue(
+                    args is ["--elevated-scan" or "--apply-update", "--pipe", var name] && SecReview.Elevation.ElevationPipe.IsValidName(name),
+                    $"round {round}: an elevated command came out of: {string.Join(' ', args)}");
+                Assert.AreEqual(
+                    args[2], command is ElevatedScanCommand scan ? scan.PipeName : ((ApplyUpdateCommand)command).PipeName, $"round {round}");
+            }
+        }
+
+        Assert.IsTrue(elevated > 0, "the one accepted form must come up too, or the test proves nothing");
+    }
 }

@@ -43,6 +43,7 @@ public sealed class EditorUpdatesCheck : ICheck
 
         var findings = new List<Finding>();
         var weak = new List<string>();
+        var versionUnread = new List<string>();
         string? unreadable = null;
 
         foreach (EditorSettings editor in editors)
@@ -54,6 +55,7 @@ public sealed class EditorUpdatesCheck : ICheck
             }
 
             string item = $"{editor.Kind.Name}: wait before extension updates";
+            bool versionMatters = editor.Kind.FollowsVsCodeVersions && editor.Version is null;
 
             // VS Code itself can be managed by policy, which wins over the settings file.
             string? source = null;
@@ -72,10 +74,17 @@ public sealed class EditorUpdatesCheck : ICheck
             // The word "off" is only understood from the version that has the delay; before it, only false is.
             bool knowsTheWord = !(editor.Kind.FollowsVsCodeVersions && editor.Version is { } known && known < DelayFrom);
             string automaticSource = automatic is null ? editor.At("extensions.autoUpdate") : PolicySource;
+            bool byWord = automatic is null && editor.Get("extensions.autoUpdate") is { ValueKind: JsonValueKind.String };
             automatic ??= AutomaticUpdates(editor.Get("extensions.autoUpdate"), knowsTheWord);
             if (automatic == false)
             {
                 findings.Add(Finding.Ok($"{editor.Kind.Name}: automatic extension updates", "Off", Expected, automaticSource));
+                if (byWord && versionMatters)
+                {
+                    versionUnread.Add(editor.Kind.Name);
+                    findings.Add(Finding.Note($"{editor.Kind.Name} version", $"Not readable; \"off\" is understood from {DelayFrom}"));
+                }
+
                 continue;
             }
 
@@ -101,8 +110,9 @@ public sealed class EditorUpdatesCheck : ICheck
             if (delay is { } set && set >= WeekInHours)
             {
                 findings.Add(Finding.Ok(item, Hours(set), Expected, source));
-                if (editor.Kind.FollowsVsCodeVersions && editor.Version is null)
+                if (versionMatters)
                 {
+                    versionUnread.Add(editor.Kind.Name);
                     findings.Add(Finding.Note($"{editor.Kind.Name} version", $"Not readable; the wait is honoured from {DelayFrom}"));
                 }
             }
@@ -127,9 +137,11 @@ public sealed class EditorUpdatesCheck : ICheck
 
         findings.Add(Finding.Note("What the wait covers", "Updates of extensions you have; a newly installed extension is not delayed"));
         return CheckOutcome.Pass(
-            editors.Length == 1
-                ? $"{editors[0].Kind.Name} waits a week before installing extension updates, or does not update them by itself."
-                : "Your editors wait a week before installing extension updates, or do not update them by themselves.",
+            versionUnread.Count > 0
+                ? $"The extension update settings of {Wording.JoinWithAnd(versionUnread)} are in order; they hold from version {DelayFrom}, and the installed version could not be read."
+                : editors.Length == 1
+                    ? $"{editors[0].Kind.Name} waits a week before installing extension updates, or does not update them by itself."
+                    : "Your editors wait a week before installing extension updates, or do not update them by themselves.",
             findings);
     }
 

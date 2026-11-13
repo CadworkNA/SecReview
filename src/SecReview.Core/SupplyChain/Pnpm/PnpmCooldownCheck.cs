@@ -75,7 +75,11 @@ public sealed class PnpmCooldownCheck : ICheck
             };
             AddVersion(pnpm, byVariable);
             return enough
-                ? CheckOutcome.Pass($"pnpm waits {wait} before installing a new release.", byVariable)
+                ? CheckOutcome.Pass(
+                    pnpm.Version is null
+                        ? $"pnpm is set to wait {wait}; the installed version could not be read, and pnpm 10 would ignore this variable."
+                        : $"pnpm waits {wait} before installing a new release.",
+                    byVariable)
                 : CheckOutcome.Fail(
                     set.Length == TimeSpan.Zero
                         ? "pnpm's wait for new releases is switched off."

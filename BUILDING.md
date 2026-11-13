@@ -22,7 +22,8 @@ Run `build.ps1` from PowerShell 7 (`pwsh`). Its header lists every switch; the c
 ```
 
 Output: `artifacts\stage` (what ships), `artifacts\symbols` and, with `-Installer`,
-`artifacts\installer`. The script ends with a smoke test that opens the app window for a moment.
+`artifacts\installer`. The script ends with a smoke test that opens the app window for a moment,
+and holds what it measured against the [budgets](#budgets).
 
 Run the tests again without rebuilding:
 
@@ -54,10 +55,47 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.App` | `SecReview.exe` (WinUI 3, Native AOT, unpackaged, Windows App SDK copied next to it). `Program.Main` picks the role before XAML starts |
 | `tests/SecReview.Core.Tests` | MSTest unit tests for `Core` |
 | `tools/SecReview.IndexBuilder` | Builds the list of known-malicious packages from a checkout of the OpenSSF malicious-packages feed. Compiles the same source files the apps read the list with. Not shipped |
-| `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships: every binary not ours must be signed by Microsoft and chain to a pinned root, every other file must match its recorded hash) |
+| `scripts/` | Build checks: `check-lockfiles.ps1` with `allowed-packages.txt` (package allow-list), `check-source-text.ps1` (no hidden or bidirectional control characters in the repo), `check-stage.ps1` with `stage-files.txt` (what ships: every binary not ours must be signed by Microsoft and chain to a pinned root, every other file must match its recorded hash), `check-budgets.ps1` with `budgets.psd1` (size and time limits) |
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 | `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
+| `.github/workflows/codeql.yml`, `scorecard.yml` | CodeQL's security queries over the C# code and the workflows, and the OpenSSF Scorecard. Both do nothing while the repository is private and start by themselves once it is public |
+
+## Damaged input
+
+Whatever SecReview reads can be damaged or written by someone else: settings files, the
+registry, its own files, the answer of its helper, an update's description. Nothing read may
+make it throw, hang or call something safe that it could not judge.
+
+- **Every check test is a mutation test too.** After a test has run a check against its fake
+  PC, the test helper runs the check again against damaged copies of that PC
+  (`tests/.../Checks/DamagedCopies.cs`): one file, registry value or variable the check read
+  is damaged per round, as text or, for JSON, by putting a value of another kind in a
+  value's place. The check must answer, in time, with one short line. A new check gets this
+  from its ordinary tests.
+- **Each reader has its own seeded test** with what must still hold after damage: the
+  settings-file readers, SSH keys, the list of known-malicious packages, saved results and
+  settings, `latest.json` and `update.json`, the helper's answer, the rule files, and both
+  programs' arguments.
+- **A deeper run:** set `SECREVIEW_TEST_DAMAGE` to a number to multiply the rounds, for
+  example `$env:SECREVIEW_TEST_DAMAGE = 100` before `dotnet test`. Seeds are fixed, so a
+  failure repeats, and its message shows the damaged text.
+- **Text in a result is one line.** A summary and each cell of "found versus expected" lose
+  their line breaks, control characters and invisible direction marks, and are cut at 1000
+  characters (`Wording.OneLine`), whatever the check put into them.
+
+## Budgets
+
+`scripts\budgets.psd1` limits what SecReview weighs and how long it takes: the installed
+folder, the two programs, the list, the setup program; the helper's start, a whole scan, the
+window from start to drawn; and what the icon uses while it waits. `build.ps1` measures them
+on every build and fails when one is over. The measurements are written to
+`artifacts\budgets.json` and, on GitHub, to the run's summary.
+
+- A limit is not a target: each leaves room for a slow build machine and catches the change
+  that doubles something unnoticed. Raising one is a reviewed change to that file.
+- The icon is measured on build machines only, like its smoke test, and only in a build that
+  knows no server.
 
 ## Administrator checks
 
@@ -186,7 +224,9 @@ silent updater.
   A look that fails is shown as such, with the reason, and never reads as "up to date".
 - **`latest.json`** is written by the release workflow and attached to the release:
   version, the setup program's address and SHA-256, the date, what is new. Anything not
-  wholly right makes the manifest unusable. A version is three numbers and, optionally, a
+  wholly right makes the manifest unusable. "What's new" in the window is made from the
+  release's generated notes: one plain line per `feat:` ("New: ...") and `fix:` ("Fixed: ...")
+  pull request; authors, addresses and other kinds of change are left out. A version is three numbers and, optionally, a
   pre-release part, and nothing else; no text from the server takes part in a file name.
 - **"Update now"** starts `SecReviewCli.exe --apply-update --pipe <name>` through the Windows
   prompt. The helper takes only the pipe to report on. It reads the manifest again itself,

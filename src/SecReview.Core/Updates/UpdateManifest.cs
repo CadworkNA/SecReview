@@ -14,7 +14,7 @@ namespace SecReview.Updates;
 /// <param name="Url">Where the setup program is. HTTPS, on a host the build allows.</param>
 /// <param name="Sha256">The setup program's SHA-256, 64 lower-case hexadecimal digits.</param>
 /// <param name="Published">When the release was published.</param>
-/// <param name="Notes">What is new, as plain text; may be empty.</param>
+/// <param name="Notes">What is new, as plain lines (see <see cref="ReleaseNotes"/>); may be empty.</param>
 public sealed record UpdateManifest(string Version, Uri Url, string Sha256, DateTimeOffset Published, string Notes)
 {
     /// <summary>A manifest larger than this is not one.</summary>
@@ -86,7 +86,7 @@ public sealed record UpdateManifest(string Version, Uri Url, string Sha256, Date
         }
 
         problem = null;
-        return new UpdateManifest(stored.Version, url, stored.Sha256, published, CleanNotes(stored.Notes));
+        return new UpdateManifest(stored.Version, url, stored.Sha256, published, CleanNotes(ReleaseNotes.Plain(stored.Notes)));
     }
 
     /// <summary>The bytes of a manifest, as the release workflow writes it and <see cref="Parse"/> reads it.</summary>
@@ -95,7 +95,7 @@ public sealed record UpdateManifest(string Version, Uri Url, string Sha256, Date
         UpdateJson.Default.Stored);
 
     /// <summary>Plain text of a sensible length: no control characters other than line breaks.</summary>
-    private static string CleanNotes(string? notes)
+    internal static string CleanNotes(string? notes)
     {
         if (string.IsNullOrWhiteSpace(notes))
         {

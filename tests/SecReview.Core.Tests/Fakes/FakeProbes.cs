@@ -3,6 +3,17 @@ using SecReview.Probing;
 namespace SecReview.Tests.Fakes;
 
 /// <summary>
+/// Changes what a fake PC hands out, for tests that damage their input. The name says what is
+/// being read: "file C:\...", "registry value ..." or "variable NAME".
+/// </summary>
+internal interface ITamper
+{
+    string Text(string name, string text);
+
+    long Number(string name, long number);
+}
+
+/// <summary>
 /// Stand-ins for the machine. Each returns what the test set. A reading the test did not set
 /// fails outright, so a check that reads more than its test expects shows up as a failure
 /// rather than as a plausible result. A registry value or service that was not added is
@@ -178,8 +189,15 @@ internal sealed class FakeProbes
         return this;
     }
 
-    public SystemProbes Build() => new(
-        Registry: new RegistryProbe(this),
+    public SystemProbes Build() => Build(tamper: null);
+
+    /// <summary>
+    /// The same PC with its texts and numbers passed through <paramref name="tamper"/> on the
+    /// way out: file contents, registry values and environment variables. The fake itself is
+    /// left as the test set it up.
+    /// </summary>
+    public SystemProbes Build(ITamper? tamper) => new(
+        Registry: new RegistryProbe(this, tamper),
         Services: new ServiceProbe(this),
         Wmi: new WmiProbe(this),
         Firewall: new FirewallProbe(this),
@@ -190,8 +208,8 @@ internal sealed class FakeProbes
         WindowsUpdate: new WindowsUpdateProbe(this),
         AuditPolicy: new AuditPolicyProbe(this),
         UserRights: new UserRightsProbe(this),
-        Files: new FileProbe(this),
-        Environment: new EnvironmentProbe(this),
+        Files: new FileProbe(this, tamper),
+        Environment: new EnvironmentProbe(this, tamper),
         Platform: new PlatformProbe(this));
 
     /// <summary>A firewall state with all three profiles set the same way.</summary>
@@ -225,7 +243,7 @@ internal sealed class FakeProbes
     private static string RegistryPath(RegistryRoot root, string keyPath, string valueName) =>
         $"{root}\\{keyPath.Trim('\\')}\\\\{valueName}";
 
-    private sealed class RegistryProbe(FakeProbes owner) : IRegistryProbe
+    private sealed class RegistryProbe(FakeProbes owner, ITamper? tamper) : IRegistryProbe
     {
         public ProbeResult<RegistryValue> GetValue(RegistryRoot root, string keyPath, string valueName)
         {
@@ -234,9 +252,26 @@ internal sealed class FakeProbes
                 return failure;
             }
 
-            return owner._registryValues.TryGetValue(RegistryPath(root, keyPath, valueName), out var value)
-                ? value
-                : ProbeFailure.NotFound();
+            string path = RegistryPath(root, keyPath, valueName);
+            if (!owner._registryValues.TryGetValue(path, out var value))
+            {
+                return ProbeFailure.NotFound();
+            }
+
+            if (tamper is null || !value.IsOk)
+            {
+                return value;
+            }
+
+            string name = $"registry value {path}";
+            return ProbeResult<RegistryValue>.Ok(value.Value!.Type switch
+            {
+                RegistryValueType.Number => RegistryValue.FromNumber(tamper.Number(name, value.Value.Number)),
+                RegistryValueType.Text => RegistryValue.FromText(tamper.Text(name, value.Value.Text)),
+                RegistryValueType.TextList => RegistryValue.FromTextList(
+                    [.. value.Value.TextList.Select((item, index) => tamper.Text($"{name} [{index}]", item))]),
+                _ => value.Value,
+            });
         }
 
         public ProbeResult<IReadOnlyList<string>> GetSubKeyNames(RegistryRoot root, string keyPath) =>
@@ -359,7 +394,7 @@ internal sealed class FakeProbes
     }
 
     /// <summary>Files held in memory. A file or folder that was not added is "not found", as on disk.</summary>
-    private sealed class FileProbe(FakeProbes owner) : IFileProbe
+    private sealed class FileProbe(FakeProbes owner, ITamper? tamper) : IFileProbe
     {
         public ProbeResult<string> ReadText(string path, int maximumBytes = IFileProbe.DefaultMaximumBytes)
         {
@@ -371,6 +406,11 @@ internal sealed class FakeProbes
             if (!owner._files.TryGetValue(path, out ProbeResult<string> file))
             {
                 return ProbeFailure.NotFound();
+            }
+
+            if (tamper is not null && file.IsOk)
+            {
+                file = ProbeResult<string>.Ok(tamper.Text($"file {path}", file.Value!));
             }
 
             return file.IsOk && file.Value!.Length > maximumBytes
@@ -426,11 +466,14 @@ internal sealed class FakeProbes
         public ProbeResult<CodeIntegrityState> GetCodeIntegrity() => owner.CodeIntegrity;
     }
 
-    private sealed class EnvironmentProbe(FakeProbes owner) : IEnvironmentProbe
+    private sealed class EnvironmentProbe(FakeProbes owner, ITamper? tamper) : IEnvironmentProbe
     {
         public ProbeResult<string> Folder(KnownFolder folder) => ProbeResult<string>.Ok(FolderPath(folder));
 
-        public string? Variable(string name) => owner._variables.GetValueOrDefault(name);
+        public string? Variable(string name) =>
+            owner._variables.TryGetValue(name, out string? value)
+                ? tamper is null ? value : tamper.Text($"variable {name}", value)
+                : null;
 
         public ProbeResult<TimeSpan> Uptime() => owner.Uptime;
     }

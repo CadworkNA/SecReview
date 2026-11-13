@@ -305,7 +305,9 @@ jobs:
           # latest.json: what installed copies read to learn of this version, and what the
           # update helper reads again before it installs. Once the release is published and
           # is the newest, GitHub serves this file at releases/latest/download/latest.json.
-          notes=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body | sed -n '/^## What.s Changed/,$p' | head -c 1800)
+          # The notes are the generated list of changes as it is; the programs show the
+          # features and fixes in it as plain lines and leave out the rest.
+          notes=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body | sed -n '/^## What.s Changed/,$p' | head -c 8000)
           jq -n --arg version "$VERSION" \
             --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$setup" \
             --arg sha256 "$(sha256sum "release/$setup" | cut -d' ' -f1)" \

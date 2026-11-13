@@ -84,8 +84,20 @@ public enum FindingStatus
 /// <param name="Expected">The value expected, for example "On"; empty for a note.</param>
 /// <param name="Status">Whether the row is fine, a problem, or a note.</param>
 /// <param name="Source">Where the value came from (a registry path, a file and line), if useful.</param>
+/// <remarks>
+/// Every text is kept to one line of a sensible length (<see cref="Wording.OneLine"/>): a
+/// value read from a file can hold anything, and a row is shown, reported and announced.
+/// </remarks>
 public sealed record Finding(string Item, string Found, string Expected, FindingStatus Status, string? Source = null)
 {
+    public string Item { get; init; } = Wording.OneLine(Item);
+
+    public string Found { get; init; } = Wording.OneLine(Found);
+
+    public string Expected { get; init; } = Wording.OneLine(Expected);
+
+    public string? Source { get; init; } = Source is null ? null : Wording.OneLine(Source);
+
     public static Finding Ok(string item, string found, string expected, string? source = null) =>
         new(item, found, expected, FindingStatus.Ok, source);
 
@@ -110,6 +122,9 @@ public sealed record CheckOutcome(
     IReadOnlyList<Finding> Findings,
     bool ManagedByPolicy = false)
 {
+    /// <summary>One line, whatever the check put into it (<see cref="Wording.OneLine"/>).</summary>
+    public string Summary { get; init; } = Wording.OneLine(Summary);
+
     public static CheckOutcome Pass(string summary, params IReadOnlyList<Finding> findings) =>
         new(CheckStatus.Pass, summary, findings);
 

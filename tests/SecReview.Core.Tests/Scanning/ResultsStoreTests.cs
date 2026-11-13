@@ -136,10 +136,10 @@ public sealed class ResultsStoreTests
         Assert.IsTrue(store.Save(scan));
         ScanResult read = store.Load(Checks, Texts)!;
 
-        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Summary.Length);
+        Assert.AreEqual(Wording.MaximumLength, read.Checks[0].Result.Outcome.Summary.Length);
         Assert.AreEqual(1000, read.Checks[0].Result.Outcome.Findings.Count);
-        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Findings[0].Found.Length);
-        Assert.AreEqual(4000, read.Checks[0].Result.Outcome.Findings[0].Source!.Length);
+        Assert.AreEqual(Wording.MaximumLength, read.Checks[0].Result.Outcome.Findings[0].Found.Length);
+        Assert.AreEqual(Wording.MaximumLength, read.Checks[0].Result.Outcome.Findings[0].Source!.Length);
     }
 
     [TestMethod]

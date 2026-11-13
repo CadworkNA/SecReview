@@ -91,6 +91,16 @@ public sealed class EditorChecksTests
         CheckOutcome unknown = Updates.Run(Code("{ \"extensions.autoUpdateDelay\": 168 }", version: null));
         Assert.AreEqual(CheckStatus.Pass, unknown.Status);
         Assert.IsTrue(unknown.Rows().Any(r => r.StartsWith("VS Code version: Not readable", StringComparison.Ordinal)));
+        Assert.AreEqual(
+            "The extension update settings of VS Code are in order; they hold from version 1.125.0, and the installed version could not be read.",
+            unknown.Summary);
+
+        // The word "off" is as new as the wait; false has always been understood.
+        CheckOutcome word = Updates.Run(Code("{ \"extensions.autoUpdate\": \"off\" }", version: null));
+        Assert.AreEqual(CheckStatus.Pass, word.Status);
+        StringAssert.Contains(word.Summary, "the installed version could not be read");
+        CheckOutcome plain = Updates.Run(Code("{ \"extensions.autoUpdate\": false }", version: null));
+        Assert.AreEqual("VS Code waits a week before installing extension updates, or does not update them by itself.", plain.Summary);
 
         // The older folder layout is read too.
         FakeProbes flat = new FakeProbes()
