@@ -141,6 +141,12 @@ jobs:
           SIGN: ${{ steps.version.outputs.sign }}
         run: ./scripts/test-install.ps1 -Setup "artifacts/installer/SecReview-$env:VERSION-setup.exe" -Stage artifacts/stage -Version $env:VERSION -Signed:($env:SIGN -eq 'true')
 
+      # The administrator pipe against two other accounts on this disposable machine: another
+      # standard user is refused, an administrator of another account is let in.
+      - name: Administrator pipe with two other accounts
+        shell: pwsh
+        run: ./scripts/test-two-accounts.ps1
+
       # What is in the install folder, and the packages it was built from (SPDX 2.2).
       - name: SBOM
         shell: pwsh
