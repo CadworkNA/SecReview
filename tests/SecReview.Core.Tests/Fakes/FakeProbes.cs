@@ -40,6 +40,15 @@ internal sealed class FakeProbes
 
     public ProbeResult<IReadOnlyList<DriveEncryption>> DriveEncryption { get; set; } = NotSetUp;
 
+    /// <summary>
+    /// The drives listed without the shell. Unset, the drives of <see cref="DriveEncryption"/>
+    /// (or its failure).
+    /// </summary>
+    public ProbeResult<IReadOnlyList<FixedDrive>>? FixedDrives { get; set; }
+
+    /// <summary>How often the BitLocker state was asked of the shell.</summary>
+    public int ShellDriveReads { get; private set; }
+
     public ProbeResult<WindowsUpdateStatus> WindowsUpdate { get; set; } = NotSetUp;
 
     /// <summary>The setting every asked-for audit subcategory has, or the failure of the read.</summary>
@@ -464,7 +473,16 @@ internal sealed class FakeProbes
 
     private sealed class DriveEncryptionProbe(FakeProbes owner) : IDriveEncryptionProbe
     {
-        public ProbeResult<IReadOnlyList<DriveEncryption>> GetFixedDrives() => owner.DriveEncryption;
+        public ProbeResult<IReadOnlyList<DriveEncryption>> GetFixedDrives()
+        {
+            owner.ShellDriveReads++;
+            return owner.DriveEncryption;
+        }
+
+        public ProbeResult<IReadOnlyList<FixedDrive>> ListFixedDrives() =>
+            owner.FixedDrives ?? (owner.DriveEncryption.IsOk
+                ? ProbeResult<IReadOnlyList<FixedDrive>>.Ok([.. owner.DriveEncryption.Value!.Select(d => new FixedDrive(d.Drive, d.IsSystemDrive))])
+                : owner.DriveEncryption.ToFailure());
     }
 
     private sealed class WindowsUpdateProbe(FakeProbes owner) : IWindowsUpdateProbe

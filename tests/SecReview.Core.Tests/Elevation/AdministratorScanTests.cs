@@ -5,6 +5,7 @@ using SecReview.Checks;
 using SecReview.Checks.BuiltIn;
 using SecReview.CommandLine;
 using SecReview.Elevation;
+using SecReview.Probing;
 using SecReview.Scanning;
 using SecReview.Tests.Checks;
 using SecReview.Tests.Fakes;
@@ -347,14 +348,98 @@ public sealed class AdministratorScanTests
     public void TheHelperIsOnlyStartedFromAFolderOrdinaryUsersCannotWriteTo(string appFolder, bool helperExists, string? expected)
     {
         string[] protectedFolders = [@"C:\Program Files", @"C:\Program Files (x86)", ""];
-
-        string? why = AdministratorScan.WhyUnavailable(appFolder, protectedFolders, path =>
+        FakeProbes probes = new FakeProbes().WithStandardWindows();
+        if (helperExists)
         {
-            Assert.IsTrue(path.EndsWith(@"\SecReviewCli.exe", StringComparison.Ordinal), path);
-            return helperExists;
-        });
+            probes.WithFile(Path.GetFullPath(appFolder).TrimEnd('\\') + @"\SecReviewCli.exe", "");
+        }
+
+        string? why = AdministratorScan.WhyUnavailable(
+            appFolder,
+            protectedFolders,
+            path =>
+            {
+                Assert.IsTrue(path.EndsWith(@"\SecReviewCli.exe", StringComparison.Ordinal), path);
+                return helperExists;
+            },
+            probes.Build().Access);
 
         Assert.AreEqual(expected, why);
+    }
+
+    private const string Installed = @"C:\Program Files\SecReview";
+    private const string NotProtected =
+        "The administrator checks are not offered: accounts that are not administrators can change SecReview's files. Install it again.";
+
+    private static string? WhyUnavailable(FakeProbes probes, string appFolder = Installed) =>
+        AdministratorScan.WhyUnavailable(
+            appFolder,
+            [@"C:\Program Files", @"C:\Program Files (x86)"],
+            _ => true,
+            probes.WithFile(appFolder + @"\SecReviewCli.exe", "").Build().Access);
+
+    [TestMethod]
+    public void AStandardInstall_OffersTheChecks()
+    {
+        Assert.IsNull(WhyUnavailable(new FakeProbes().WithStandardWindows()));
+    }
+
+    [TestMethod]
+    [DataRow(Installed, DisplayName = "SecReview's folder")]
+    [DataRow(Installed + @"\SecReviewCli.exe", DisplayName = "the helper itself")]
+    [DataRow(@"C:\Program Files", DisplayName = "Program Files")]
+    public void UsersWhoCanChangeTheHelperOrAFolderAboveIt_GetNoAdministratorChecks(string loosened)
+    {
+        FakeProbes probes = new FakeProbes().WithStandardWindows().WithAccess(loosened, FakeAccess.UsersModify);
+
+        Assert.AreEqual(NotProtected, WhyUnavailable(probes));
+    }
+
+    [TestMethod]
+    public void AVendorFolderUsersCanChange_IsAsBadAsSecReviewsOwn()
+    {
+        // Whoever can rename C:\Program Files\Vendor can put another SecReview in its place.
+        FakeProbes probes = new FakeProbes().WithStandardWindows()
+            .WithAccess(@"C:\Program Files\Vendor", FakeAccess.Protected.Allow(FakeAccess.Users, FakeAccess.Level.Modify));
+
+        Assert.AreEqual(NotProtected, WhyUnavailable(probes, @"C:\Program Files\Vendor\SecReview"));
+    }
+
+    [TestMethod]
+    public void UsersWhoCanOnlyAddFiles_StillGetNoAdministratorChecks()
+    {
+        // A file added beside the helper can be a library it loads.
+        FakeProbes probes = new FakeProbes().WithStandardWindows().WithAccess(Installed, FakeAccess.UsersAdd);
+
+        Assert.AreEqual(NotProtected, WhyUnavailable(probes));
+    }
+
+    [TestMethod]
+    public void ANamedAccountThatCanChangeTheFolder_IsNotTakenOnTrust()
+    {
+        FakeProbes probes = new FakeProbes().WithStandardWindows()
+            .WithAccess(Installed, FakeAccess.Protected.Allow(FakeAccess.SomeAccount, FakeAccess.Level.Modify));
+
+        Assert.AreEqual(NotProtected, WhyUnavailable(probes));
+    }
+
+    [TestMethod]
+    public void UsersWhoCanChangeAFolderOutsideTheChain_DoNotMatter()
+    {
+        // C:\ lets users make folders, as on every Windows; it is above Program Files.
+        FakeProbes probes = new FakeProbes().WithStandardWindows()
+            .WithAccess(@"C:\Program Files\Other", FakeAccess.UsersModify);
+
+        Assert.IsNull(WhyUnavailable(probes));
+    }
+
+    [TestMethod]
+    public void PermissionsThatCannotBeRead_OrALinkedFolder_GetNoAdministratorChecks()
+    {
+        const string Unread = "The administrator checks are not offered: the permissions of SecReview's folder could not be read.";
+
+        Assert.AreEqual(Unread, WhyUnavailable(new FakeProbes().WithStandardWindows().WithAccessFailure(Installed, ProbeFailure.AccessDenied())));
+        Assert.AreEqual(Unread, WhyUnavailable(new FakeProbes().WithStandardWindows().WithLink(Installed)));
     }
 
     [TestMethod]

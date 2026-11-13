@@ -55,11 +55,24 @@ public sealed record DriveEncryption(
     };
 }
 
+/// <summary>One fixed drive, without its BitLocker state.</summary>
+/// <param name="Drive">The drive, for example "C:".</param>
+/// <param name="IsSystemDrive">Whether Windows is installed on it.</param>
+public sealed record FixedDrive(string Drive, bool IsSystemDrive);
+
 public interface IDriveEncryptionProbe
 {
     /// <summary>
-    /// Every fixed drive with its BitLocker state. A drive whose state cannot be read is listed
-    /// as <see cref="DriveEncryptionState.Unreadable"/>; it does not hide the other drives.
+    /// Every fixed drive with its BitLocker state as the Windows shell reports it. A drive whose
+    /// state cannot be read is listed as <see cref="DriveEncryptionState.Unreadable"/>; it does
+    /// not hide the other drives.
     /// </summary>
     ProbeResult<IReadOnlyList<DriveEncryption>> GetFixedDrives();
+
+    /// <summary>
+    /// Every fixed drive, without asking the shell. For a process with administrator rights:
+    /// the shell is the part of Windows other software can extend, and BitLocker's own
+    /// management class gives the state there instead.
+    /// </summary>
+    ProbeResult<IReadOnlyList<FixedDrive>> ListFixedDrives();
 }

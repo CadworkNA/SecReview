@@ -114,6 +114,10 @@ answer from a pipe.
   exactly the administrator checks of this version, read with administrator rights.
 - **Only from Program Files.** The helper runs elevated, so it must be a file an ordinary
   user cannot replace. A copy of SecReview anywhere else shows why the button is not there.
+  The permissions are read too: the helper, its folder and every folder above it up to
+  Program Files must be changeable by administrators and Windows only, and none may be a link.
+- **No Windows shell with administrator rights.** Drive encryption is read from BitLocker's
+  own management class; the shell, which other software can extend, is not loaded.
 - **Saying no at the prompt** changes nothing: the checks stay "needs administrator".
 - **Afterwards** an ordinary scan keeps an administrator answer, with its date, for 30 days,
   but only for checks it cannot read at all. Where it reads something itself (drive

@@ -11,6 +11,8 @@ namespace SecReview.Probing.Windows;
 /// Reads each fixed drive's BitLocker state from the shell property
 /// <c>System.Volume.BitLockerProtection</c>, the same value Explorer uses for the drive's lock
 /// icon. Unlike the BitLocker management interfaces, it needs no administrator rights.
+/// <see cref="ListFixedDrives"/> lists the same drives without the shell, for a process that
+/// has administrator rights.
 /// </summary>
 [SupportedOSPlatform(MinimumWindows.Platform)]
 internal sealed class WindowsDriveEncryptionProbe : IDriveEncryptionProbe
@@ -29,30 +31,20 @@ internal sealed class WindowsDriveEncryptionProbe : IDriveEncryptionProbe
                 return WindowsError.FromHResult(found.Value, What);
             }
 
-            string systemRoot = Path.GetPathRoot(Environment.SystemDirectory) ?? string.Empty;
-
             var drives = new List<DriveEncryption>();
-            foreach (DriveInfo drive in DriveInfo.GetDrives())
+            foreach ((FixedDrive drive, string root) in FixedDrives())
             {
-                if (drive.DriveType != DriveType.Fixed)
-                {
-                    continue;
-                }
-
-                string name = drive.Name.TrimEnd('\\');
-                bool isSystem = drive.Name.Equals(systemRoot, StringComparison.OrdinalIgnoreCase);
-
                 // One drive that cannot be read (locked, offline, damaged) must not hide the
                 // others, least of all the system drive.
-                ProbeResult<int?> value = ReadValueGuarded(drive.Name, key);
+                ProbeResult<int?> value = ReadValueGuarded(root, key);
                 drives.Add(value.IsOk
-                    ? new DriveEncryption(name, isSystem, DriveEncryption.Interpret(value.Value), value.Value)
+                    ? new DriveEncryption(drive.Drive, drive.IsSystemDrive, DriveEncryption.Interpret(value.Value), value.Value)
                     : new DriveEncryption(
-                        name,
-                        isSystem,
+                        drive.Drive,
+                        drive.IsSystemDrive,
                         DriveEncryptionState.Unreadable,
                         RawValue: null,
-                        Detail: value.Detail ?? $"Windows would not report the state of {name} ({value.Status})."));
+                        Detail: value.Detail ?? $"Windows would not report the state of {drive.Drive} ({value.Status})."));
             }
 
             return ProbeResult<IReadOnlyList<DriveEncryption>>.Ok(drives);
@@ -60,6 +52,32 @@ internal sealed class WindowsDriveEncryptionProbe : IDriveEncryptionProbe
         catch (Exception exception)
         {
             return WindowsError.FromException(exception, What);
+        }
+    }
+
+    public ProbeResult<IReadOnlyList<FixedDrive>> ListFixedDrives()
+    {
+        try
+        {
+            return ProbeResult<IReadOnlyList<FixedDrive>>.Ok([.. FixedDrives().Select(d => d.Drive)]);
+        }
+        catch (Exception exception)
+        {
+            return WindowsError.FromException(exception, "Listing the fixed drives");
+        }
+    }
+
+    /// <summary>The fixed drives, from the drive list alone (no shell), with each one's root ("C:\").</summary>
+    private static IEnumerable<(FixedDrive Drive, string Root)> FixedDrives()
+    {
+        string systemRoot = Path.GetPathRoot(Environment.SystemDirectory) ?? string.Empty;
+        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        {
+            if (drive.DriveType == DriveType.Fixed)
+            {
+                bool isSystem = drive.Name.Equals(systemRoot, StringComparison.OrdinalIgnoreCase);
+                yield return (new FixedDrive(drive.Name.TrimEnd('\\'), isSystem), drive.Name);
+            }
         }
     }
 
