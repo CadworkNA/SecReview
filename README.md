@@ -26,7 +26,8 @@ It needs administrator rights once, to install for everyone who uses the PC; Sec
 runs without them. Windows 10 22H2 or Windows 11, 64-bit.
 
 - SecReview opens from the Start menu. Its icon in the notification area shows how the PC is
-  doing and tells you when a check starts failing.
+  doing and tells you when a check starts failing; the notification stays in the
+  notification centre, and "Show" opens SecReview on that check.
 - To remove it: Settings, Apps, Installed apps, SecReview, Uninstall. Your settings and last
   results stay in `%LOCALAPPDATA%\SecReview`; delete that folder to remove them too.
 

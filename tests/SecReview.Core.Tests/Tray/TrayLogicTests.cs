@@ -165,16 +165,18 @@ public sealed class TrayLogicTests
     {
         ScannedCheck one = Check("a", CheckOutcome.Fail("Windows Firewall is off for the Public network."));
 
-        (string title, string text) = TrayLogic.Notification([one])!.Value;
+        (string title, string text, string? checkId) = TrayLogic.Notification([one])!;
         Assert.AreEqual(Texts[FirewallCheck.Id].TitleFail, title);
         Assert.AreEqual("Windows Firewall is off for the Public network.", text);
+        Assert.AreEqual(one.Definition.Id, checkId, "a click opens the window on it");
 
-        (string manyTitle, string manyText) = TrayLogic.Notification([one, one, one, one, one])!.Value;
+        (string manyTitle, string manyText, string? manyId) = TrayLogic.Notification([one, one, one, one, one])!;
         Assert.AreEqual("5 checks started failing", manyTitle);
         StringAssert.EndsWith(manyText, "; and more");
+        Assert.IsNull(manyId, "several: the window as it is");
 
         ScannedCheck wordy = Check("a", CheckOutcome.Fail(new string('w', 900)));
-        Assert.IsTrue(TrayLogic.Notification([wordy])!.Value.Text.Length <= 200);
+        Assert.IsTrue(TrayLogic.Notification([wordy])!.Text.Length <= 200);
     }
 
     [TestMethod]

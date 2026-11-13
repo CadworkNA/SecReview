@@ -9,7 +9,10 @@
 ;          add /MERGETASKS="!autostart" to leave out the icon at sign-in
 ;
 ; What setup changes on the PC, all of it removed by the uninstaller:
-;   - the files in {autopf}\SecReview and a Start menu shortcut;
+;   - the files in {autopf}\SecReview and a Start menu shortcut, which carries SecReview's
+;     identity for app notifications and the class Windows starts when one is clicked;
+;   - that class, HKLM\Software\Classes\CLSID\{ToastActivator}: it starts
+;     "SecReview.exe --notification-click", which takes nothing from the command line;
 ;   - one value under HKLM\...\Run that starts the notification-area icon at sign-in (a task,
 ;     on by default; each user can switch the icon off in SecReview's settings);
 ;   - the entry in "Installed apps".
@@ -19,6 +22,11 @@
 #define AppName "SecReview"
 #define AppExe "SecReview.exe"
 #define CliExe "SecReviewCli.exe"
+; App notifications: the identity Windows files them under and the class it starts for a
+; click. Both are in SecReview.Tray.AppNotification too (a test compares them). Never change them.
+#define AppUserModelId "Cadwork.SecReview"
+#define ToastActivator "164B92DB-C7E7-4DDB-B345-C9BFAD05817F"
+#define NotificationClickSwitch "--notification-click"
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -83,9 +91,15 @@ Name: autostart; Description: "Keep SecReview in the notification area (starts w
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
+; The identity and the class are what make SecReview's notifications stay in the notification
+; centre and open the window when clicked.
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "{#AppUserModelId}"; AppUserModelToastActivatorCLSID: "{#ToastActivator}"
 
 [Registry]
+; What Windows starts when a notification is clicked. The click's arguments come from Windows,
+; and SecReview takes only what its own notifications hold.
+Root: HKLM; Subkey: "Software\Classes\CLSID\{{{#ToastActivator}}"; ValueType: string; ValueName: ""; ValueData: "{#AppName} notification click"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\CLSID\{{{#ToastActivator}}\LocalServer32"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" {#NotificationClickSwitch}"
 ; The notification-area icon at sign-in, for every user. Removed when the task is not chosen
 ; (also on an upgrade) and on uninstall.
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExe}"" --tray"; Flags: uninsdeletevalue; Tasks: autostart

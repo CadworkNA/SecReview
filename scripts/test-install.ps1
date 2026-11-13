@@ -26,8 +26,14 @@ $app = Join-Path $env:ProgramFiles 'SecReview'
 $runKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{9133D268-5237-4719-B107-00C0C086FCDE}_is1'
 $shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\SecReview.lnk'
+# App notifications: the identity on the shortcut and the class Windows starts for a click
+# (installer\SecReview.iss and SecReview.Tray.AppNotification).
+$appUserModelId = 'Cadwork.SecReview'
+$activator = '164B92DB-C7E7-4DDB-B345-C9BFAD05817F'
+$activatorKey = "HKLM:\SOFTWARE\Classes\CLSID\{$activator}"
 # Where the installed programs keep this user's settings and results: the real place.
 $data = Join-Path $env:LOCALAPPDATA 'SecReview'
+$log = Join-Path $data 'logs\SecReview.log'
 $work = Join-Path $root 'artifacts\install-test'
 if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -112,6 +118,16 @@ function Assert-Installed([string] $version, [bool] $autostart) {
     $expected = if ($autostart) { "`"$app\SecReview.exe`" --tray" } else { $null }
     Assert ((Get-RunValue) -eq $expected) "the sign-in entry is '$(Get-RunValue)', expected '$expected'."
 
+    # The shortcut carries SecReview's identity for notifications and the class a click
+    # starts; the class starts the installed program with one switch and nothing else.
+    $link = (New-Object -ComObject Shell.Application).NameSpace((Split-Path $shortcut)).ParseName((Split-Path $shortcut -Leaf))
+    $linkId = [string] $link.ExtendedProperty('System.AppUserModel.ID')
+    $linkActivator = ([string] $link.ExtendedProperty('System.AppUserModel.ToastActivatorCLSID')).Trim('{', '}')
+    Assert ($linkId -eq $appUserModelId) "the shortcut's identity is '$linkId', expected '$appUserModelId'."
+    Assert ($linkActivator -eq $activator) "the shortcut's notification class is '$linkActivator', expected '$activator'."
+    $server = (Get-Item -LiteralPath "$activatorKey\LocalServer32" -ErrorAction SilentlyContinue)?.GetValue('')
+    Assert ($server -eq "`"$app\SecReview.exe`" --notification-click") "the notification class starts '$server'."
+
     # An ordinary user must not be able to change the programs: the administrator checks run
     # the helper from here with administrator rights.
     foreach ($path in $app, (Join-Path $app 'SecReviewCli.exe'), (Join-Path $app 'SecReview.exe'), (Join-Path $app 'licenses')) {
@@ -160,6 +176,72 @@ Assert (Test-Path (Join-Path $data 'results.json')) "the installed window left n
 Assert ((Get-Running).Count -eq 0) 'the window''s automated run left a SecReview process behind (it must not start the notification-area icon).'
 Write-Host "Installed programs: report with $($checks.Count) checks, window shown and closed, results kept in the user's profile."
 
+# A click on a notification, delivered as Windows delivers it: COM starts the installed
+# program through setup's class and hands it the click. A click SecReview's notifications
+# could have made opens the window; anything else opens nothing.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+[ComImport, Guid("53E31837-6600-4A81-9395-75CFFE746F94"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface INotificationActivationCallback
+{
+    void Activate([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, [MarshalAs(UnmanagedType.LPWStr)] string invokedArgs, IntPtr data, uint count);
+}
+
+public static class NotificationClick
+{
+    public static void Send(Guid activator, string appUserModelId, string arguments)
+    {
+        object callback = Activator.CreateInstance(Type.GetTypeFromCLSID(activator, true));
+        try { ((INotificationActivationCallback)callback).Activate(appUserModelId, arguments, IntPtr.Zero, 0); }
+        finally { Marshal.ReleaseComObject(callback); }
+    }
+}
+'@
+
+function Get-ClickProcess {
+    @(Get-CimInstance Win32_Process -Filter "Name = 'SecReview.exe'" | Where-Object { $_.CommandLine -like '*--notification-click*' })
+}
+
+function Get-LogLength { if (Test-Path $log) { (Get-Item $log).Length } else { 0 } }
+
+# What the log gained since a length in bytes (the log is UTF-8).
+function Get-LogSince([long] $start) {
+    if (-not (Test-Path $log)) { return '' }
+    $bytes = [System.IO.File]::ReadAllBytes($log)
+    if ($bytes.Length -le $start) { return '' }
+    [System.Text.Encoding]::UTF8.GetString($bytes, $start, $bytes.Length - $start)
+}
+
+$logStart = Get-LogLength
+[NotificationClick]::Send([guid] $activator, $appUserModelId, 'show:C:\made\up')
+foreach ($attempt in 1..30) {
+    if ((Get-ClickProcess).Count -eq 0) { break }
+    Start-Sleep -Seconds 1
+}
+Assert ((Get-ClickProcess).Count -eq 0) 'a click with arguments SecReview never writes left the program running.'
+$said = Get-LogSince $logStart
+Assert ($said -match 'did not come from SecReview') "a refused click was not logged as such: $said"
+
+# SecReview's own click opens the window, an ordinary one, which also starts the icon. Both
+# are ended as soon as the click was taken, before the steps below start their own icon.
+$logStart = Get-LogLength
+[NotificationClick]::Send([guid] $activator, $appUserModelId, 'show:firewall.enabled')
+foreach ($attempt in 1..30) {
+    if ((Get-LogSince $logStart) -match 'opens the window') { break }
+    Start-Sleep -Seconds 1
+}
+$said = Get-LogSince $logStart
+Assert ($said -match 'opens the window') "SecReview's own click did not open the window: $said"
+Get-Running | Stop-Process -Force
+foreach ($attempt in 1..15) {
+    if ((Get-Running).Count -eq 0) { break }
+    Start-Sleep -Seconds 1
+}
+Assert ((Get-Running).Count -eq 0) 'SecReview kept running after the click test was ended.'
+Write-Host 'Notification clicks through Windows: SecReview''s own opens the window, anything else opens nothing.'
+
 # --- 2. An upgrade while the notification-area icon is running, leaving out the sign-in entry.
 # The same programs packed as a later version: this tests the setup program, not the programs.
 # To see that it really replaces and cleans up, one installed file is damaged and a file that
@@ -206,6 +288,7 @@ Assert (-not (Test-Path $app)) "the uninstall left files: $((Get-ChildItem $app 
 Assert ($null -eq (Get-RunValue)) 'the uninstall left the sign-in entry.'
 Assert (-not (Test-Path -LiteralPath $uninstallKey)) 'the uninstall left the entry in "Installed apps".'
 Assert (-not (Test-Path -LiteralPath $shortcut)) 'the uninstall left the Start menu shortcut.'
+Assert (-not (Test-Path -LiteralPath $activatorKey)) 'the uninstall left the notification class.'
 Assert ((Get-Running).Count -eq 0) 'the uninstall left SecReview running.'
 Assert (Test-Path (Join-Path $data 'results.json')) "the uninstall removed the user's own data in $data."
-Write-Host 'Uninstalled with the icon running: programs, sign-in entry, shortcut and the "Installed apps" entry are gone; the user''s settings and results are left.'
+Write-Host 'Uninstalled with the icon running: programs, sign-in entry, shortcut, notification class and the "Installed apps" entry are gone; the user''s settings and results are left.'

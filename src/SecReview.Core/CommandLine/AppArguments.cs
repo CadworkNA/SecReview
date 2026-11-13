@@ -24,9 +24,21 @@ public static class AppArguments
     /// <summary>Followed by a check's identifier: open the window on that check.</summary>
     public const string ShowSwitch = "--show";
 
+    /// <summary>
+    /// Windows starts SecReview with this when one of its notifications is clicked (setup
+    /// registers it). The click's arguments then come from Windows, not the command line.
+    /// </summary>
+    public const string NotificationClickSwitch = "--notification-click";
+
     public static AppRole Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
+
+        // COM may add its own switch when it starts a program it registered.
+        if (args is [NotificationClickSwitch] or [NotificationClickSwitch, "-Embedding" or "/Embedding"])
+        {
+            return new NotificationClickRole();
+        }
 
         if (args is [TraySwitch])
         {
