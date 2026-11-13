@@ -134,6 +134,15 @@ public sealed class TwoAccountPipeTests
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(500));
+            if (!File.Exists(result))
+            {
+                // Say what Task Scheduler made of it: state, last result, last run.
+                string state = await RunPowerShell(
+                    $"$t = Get-ScheduledTask -TaskName '{task}'; $i = $t | Get-ScheduledTaskInfo; " +
+                    "\"state $($t.State), last result 0x$('{0:X}' -f $i.LastTaskResult), last run $($i.LastRunTime), logon $($t.Principal.LogonType), level $($t.Principal.RunLevel)\"");
+                Assert.Fail($"The elevated client as {user} wrote no result; task: {state.Trim()}");
+            }
+
             return await ReadResult(result, user);
         }
         finally
@@ -142,12 +151,13 @@ public sealed class TwoAccountPipeTests
         }
     }
 
-    private static async Task RunPowerShell(string command, params (string Name, string Value)[] environment)
+    private static async Task<string> RunPowerShell(string command, params (string Name, string Value)[] environment)
     {
         var start = new ProcessStartInfo(PowerShell)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
         foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", command })
@@ -161,11 +171,13 @@ public sealed class TwoAccountPipeTests
         }
 
         using Process process = Process.Start(start) ?? throw new InvalidOperationException("PowerShell did not start.");
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
         Task<string> errors = process.StandardError.ReadToEndAsync();
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await process.WaitForExitAsync(limit.Token);
         string written = await errors;
         Assert.AreEqual(0, process.ExitCode, $"PowerShell failed: {written}");
+        return await output;
     }
 
     private static async Task<Attempt> ReadResult(string path, string user)
