@@ -201,22 +201,84 @@ public sealed class DriveEncryptionCheckTests
     }
 
     [TestMethod]
-    public void Elevated_DetailsCannotBeRead_ButTheNormalViewIsDefinite_StillAnswers()
+    public void Elevated_DetailsCannotBeRead_IsCouldNotCheck_TheShellIsNotAskedInstead()
     {
         FakeProbes probes = With(System(DriveEncryptionState.Off, 2));
         probes.WithWmiFailure(
             DriveEncryptionCheck.WmiNamespace, DriveEncryptionCheck.WmiClass, ProbeFailure.Failed("WMI failed."));
 
-        Assert.AreEqual(CheckStatus.Fail, Check.Run(probes, elevated: true).Status);
+        CheckOutcome outcome = Check.Run(probes, elevated: true);
+
+        Assert.AreEqual(CheckStatus.Error, outcome.Status);
+        StringAssert.Contains(outcome.Summary, "WMI failed.");
+        Assert.AreEqual("Could not be read", outcome.Findings.Single().Found);
+        Assert.AreEqual(0, probes.ShellDriveReads);
+    }
+
+    [TestMethod]
+    public void Elevated_NeverAsksTheShell()
+    {
+        // With administrator rights the shell (which other software can extend) is not loaded.
+        FakeProbes probes = Elevated(DriveEncryptionState.Other, ("C:", 1, 1));
+
+        Assert.AreEqual(CheckStatus.Pass, Check.Run(probes, elevated: true).Status);
+        Assert.AreEqual(0, probes.ShellDriveReads);
+    }
+
+    [TestMethod]
+    public void Elevated_TheDrivesComeFromTheDriveList_NotFromTheShell()
+    {
+        // The shell's answer could not even be read; the elevated check does not need it.
+        var probes = new FakeProbes
+        {
+            DriveEncryption = ProbeFailure.Failed("The shell failed."),
+            FixedDrives = ProbeResult<IReadOnlyList<FixedDrive>>.Ok([new("C:", IsSystemDrive: true), new("D:", IsSystemDrive: false)]),
+        };
+        probes.WithWmiObjects(
+            DriveEncryptionCheck.WmiNamespace,
+            DriveEncryptionCheck.WmiClass,
+            FakeProbes.Wmi(("DriveLetter", "C:"), ("ProtectionStatus", 1L), ("ConversionStatus", 1L)),
+            FakeProbes.Wmi(("DriveLetter", "D:"), ("ProtectionStatus", 1L), ("ConversionStatus", 1L)));
+
+        CheckOutcome outcome = Check.Run(probes, elevated: true);
+
+        Assert.AreEqual(CheckStatus.Pass, outcome.Status);
+        Assert.AreEqual("BitLocker is on for all 2 drives.", outcome.Summary);
+    }
+
+    [TestMethod]
+    public void Elevated_ADriveBitLockerDoesNotList_IsCouldNotCheck_NeverAPass()
+    {
+        FakeProbes probes = With(System(DriveEncryptionState.On), Data("D:", DriveEncryptionState.On));
+        probes.WithWmiObjects(
+            DriveEncryptionCheck.WmiNamespace,
+            DriveEncryptionCheck.WmiClass,
+            FakeProbes.Wmi(("DriveLetter", "C:"), ("ProtectionStatus", 1L), ("ConversionStatus", 1L)));
+
+        CheckOutcome outcome = Check.Run(probes, elevated: true);
+
+        Assert.AreEqual(CheckStatus.Error, outcome.Status);
+        StringAssert.Contains(outcome.Summary, "D:");
+        Assert.AreEqual("Not reported by Windows", outcome.Findings[1].Found);
+    }
+
+    [TestMethod]
+    public void Elevated_DrivesCannotBeListed_IsCouldNotCheck()
+    {
+        var probes = new FakeProbes { FixedDrives = ProbeFailure.Failed("Listing failed.") };
+
+        Assert.AreEqual(CheckStatus.Error, Check.Run(probes, elevated: true).Status);
     }
 
     [TestMethod]
     public void NotElevated_NeverReadsTheAdministratorDetails()
     {
         // No WMI answer is set up: a read would fail the fake loudly. The check must not try.
-        CheckOutcome outcome = Check.Run(With(System(DriveEncryptionState.On, 1)), elevated: false);
+        FakeProbes probes = With(System(DriveEncryptionState.On, 1));
+        CheckOutcome outcome = Check.Run(probes, elevated: false);
 
         Assert.AreEqual(CheckStatus.Pass, outcome.Status);
+        Assert.IsTrue(probes.ShellDriveReads > 0, "a normal user's check reads the shell");
     }
 
     [TestMethod]

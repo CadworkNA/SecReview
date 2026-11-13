@@ -8,7 +8,9 @@ namespace SecReview.Checks.BuiltIn;
 /// As a normal user only "on" and "off" can be told apart for certain (Windows documents no
 /// more than that for what it shows a normal user), so any other state is reported as needing
 /// the administrator check. With administrator rights the documented BitLocker management
-/// class answers precisely: on, off, suspended, still encrypting or decrypting.
+/// class answers precisely: on, off, suspended, still encrypting or decrypting. There the shell
+/// is not asked at all: it is the part of Windows other software can extend, and it has no
+/// place in a process with administrator rights.
 /// </para>
 /// </summary>
 public sealed class DriveEncryptionCheck : ICheck
@@ -29,30 +31,43 @@ public sealed class DriveEncryptionCheck : ICheck
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        ProbeResult<IReadOnlyList<DriveEncryption>> result = context.Probes.DriveEncryption.GetFixedDrives();
-        if (!result.IsOk)
+        string? detailsFailure = null;
+        List<(FixedDrive Drive, Verdict Verdict, string Found)> states;
+        if (context.IsElevated)
         {
-            return ProbeOutcomes.FromFailure(result, "the BitLocker state of the drives");
+            ProbeResult<IReadOnlyList<FixedDrive>> listed = context.Probes.DriveEncryption.ListFixedDrives();
+            if (!listed.IsOk)
+            {
+                return ProbeOutcomes.FromFailure(listed, "the fixed drives");
+            }
+
+            Dictionary<string, WmiObject> details = ReadDetails(context.Probes.Wmi, out detailsFailure);
+            states = [.. listed.Value!.Select(drive =>
+            {
+                (Verdict verdict, string found) = details.TryGetValue(drive.Drive, out WmiObject? detail)
+                    ? FromDetail(detail)
+                    : (Verdict.Unknown, detailsFailure is null ? "Not reported by Windows" : "Could not be read");
+                return (drive, verdict, found);
+            })];
+        }
+        else
+        {
+            ProbeResult<IReadOnlyList<DriveEncryption>> result = context.Probes.DriveEncryption.GetFixedDrives();
+            if (!result.IsOk)
+            {
+                return ProbeOutcomes.FromFailure(result, "the BitLocker state of the drives");
+            }
+
+            states = [.. result.Value!.Select(drive =>
+            {
+                (Verdict verdict, string found) = FromShell(drive);
+                return (new FixedDrive(drive.Drive, drive.IsSystemDrive), verdict, found);
+            })];
         }
 
-        IReadOnlyList<DriveEncryption> drives = result.Value!;
-        if (!drives.Any(d => d.IsSystemDrive))
+        if (!states.Any(s => s.Drive.IsSystemDrive))
         {
             return CheckOutcome.Error("Windows did not report the drive it is installed on.");
-        }
-
-        string? detailsFailure = null;
-        Dictionary<string, WmiObject> details = context.IsElevated
-            ? ReadDetails(context.Probes.Wmi, out detailsFailure)
-            : [];
-
-        var states = new List<(DriveEncryption Drive, Verdict Verdict, string Found)>(drives.Count);
-        foreach (DriveEncryption drive in drives)
-        {
-            (Verdict verdict, string found) = details.TryGetValue(drive.Drive, out WmiObject? detail)
-                ? FromDetail(detail)
-                : FromShell(drive);
-            states.Add((drive, verdict, found));
         }
 
         List<Finding> findings = [.. states.Select(s =>
@@ -98,7 +113,7 @@ public sealed class DriveEncryptionCheck : ICheck
         }
 
         return CheckOutcome.Pass(
-            drives.Count == 1 ? $"BitLocker is on for {drives[0].Drive}." : $"BitLocker is on for all {drives.Count} drives.",
+            states.Count == 1 ? $"BitLocker is on for {states[0].Drive.Drive}." : $"BitLocker is on for all {states.Count} drives.",
             findings);
     }
 
@@ -151,8 +166,7 @@ public sealed class DriveEncryptionCheck : ICheck
         ProbeResult<IReadOnlyList<WmiObject>> volumes = wmi.Query(WmiNamespace, WmiClass, WmiProperties);
         if (!volumes.IsOk)
         {
-            // Falls back to what a normal user sees; an unconfirmed drive then becomes
-            // "could not check", with this reason, rather than a guess.
+            // Every drive then becomes "could not check", with this reason, rather than a guess.
             failure = volumes.Detail ?? $"Reading them ended with: {volumes.Status}.";
             return details;
         }

@@ -5,6 +5,8 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using SecReview.Catalogue;
 using SecReview.Checks;
+using SecReview.Checks.BuiltIn.Programs;
+using SecReview.Probing;
 using SecReview.Scanning;
 using Windows.Win32;
 
@@ -73,28 +75,74 @@ public static class AdministratorScan
     /// <summary>
     /// Why the administrator checks cannot be run from this copy of SecReview; null when they
     /// can. The helper is started with administrator rights, so it must be a file an ordinary
-    /// user cannot replace: SecReview has to be installed under Program Files.
+    /// user cannot replace: SecReview has to be installed under Program Files, and the helper,
+    /// its folder and every folder above it up to Program Files must be changeable by
+    /// administrators and Windows only. Whoever else could change one of them would choose
+    /// what runs with those rights.
     /// </summary>
     /// <param name="appDirectory">The folder the app runs from.</param>
     /// <param name="protectedFolders">Folders only administrators can write to (Program Files).</param>
     /// <param name="fileExists">Whether a file exists.</param>
-    public static string? WhyUnavailable(string appDirectory, IReadOnlyList<string> protectedFolders, Func<string, bool> fileExists)
+    /// <param name="access">Reads the permissions of the helper and its folders.</param>
+    public static string? WhyUnavailable(
+        string appDirectory, IReadOnlyList<string> protectedFolders, Func<string, bool> fileExists, IAccessProbe access)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appDirectory);
         ArgumentNullException.ThrowIfNull(protectedFolders);
         ArgumentNullException.ThrowIfNull(fileExists);
+        ArgumentNullException.ThrowIfNull(access);
 
         string app = Path.GetFullPath(appDirectory).TrimEnd('\\') + "\\";
-        bool isProtected = protectedFolders
+        string? root = protectedFolders
             .Where(folder => !string.IsNullOrWhiteSpace(folder))
             .Select(folder => Path.GetFullPath(folder).TrimEnd('\\') + "\\")
-            .Any(folder => app.Length > folder.Length && app.StartsWith(folder, StringComparison.OrdinalIgnoreCase));
-        if (!isProtected)
+            .FirstOrDefault(folder => app.Length > folder.Length && app.StartsWith(folder, StringComparison.OrdinalIgnoreCase));
+        if (root is null)
         {
             return "The administrator checks can be run once SecReview is installed for everyone (in Program Files).";
         }
 
-        return fileExists(app + HelperFileName) ? null : "The administrator checks cannot be run: a part of SecReview is missing. Install it again.";
+        if (!fileExists(app + HelperFileName))
+        {
+            return "The administrator checks cannot be run: a part of SecReview is missing. Install it again.";
+        }
+
+        return WhyNotProtected(app, root, access);
+    }
+
+    /// <summary>
+    /// Null when only administrators and Windows can change the helper and every folder from
+    /// its own up to <paramref name="root"/>; otherwise why the checks are not offered.
+    /// </summary>
+    private static string? WhyNotProtected(string app, string root, IAccessProbe access)
+    {
+        var paths = new List<string> { app + HelperFileName };
+        for (string? folder = app.TrimEnd('\\'); folder is not null; folder = Path.GetDirectoryName(folder))
+        {
+            paths.Add(folder);
+            if (string.Equals(folder + "\\", root, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+        }
+
+        foreach (string path in paths)
+        {
+            // A link is refused by the probe: its target could be anywhere.
+            ProbeResult<SecurityReading> reading = access.ReadPath(path);
+            if (!reading.IsOk)
+            {
+                return "The administrator checks are not offered: the permissions of SecReview's folder could not be read.";
+            }
+
+            ChangeAccess others = AccessRules.Evaluate(reading.Value!);
+            if (others.Rights != ChangeRights.None || others.OtherAccounts > 0)
+            {
+                return "The administrator checks are not offered: accounts that are not administrators can change SecReview's files. Install it again.";
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

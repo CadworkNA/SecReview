@@ -98,14 +98,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 _updates = UpdateService.ForThisBuild(AppData.Directory, WindowsProbes.Create().Registry);
             }
 
-            _administratorUnavailable = AdministratorScan.WhyUnavailable(
-                AppContext.BaseDirectory,
-                new[]
-                {
-                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                },
-                File.Exists);
+            _administratorUnavailable = WindowsProbes.IsSupported
+                ? AdministratorScan.WhyUnavailable(
+                    AppContext.BaseDirectory,
+                    new[]
+                    {
+                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                    },
+                    File.Exists,
+                    WindowsProbes.Create().Access)
+                : $"SecReview needs {WindowsProbes.MinimumWindowsName} or later.";
         }
     }
 
