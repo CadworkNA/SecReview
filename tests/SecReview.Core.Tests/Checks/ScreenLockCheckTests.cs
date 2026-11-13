@@ -259,6 +259,14 @@ public sealed class ScreenLockCheckTests
     }
 
     [TestMethod]
+    public void AnInactivityLimitTooLargeForATime_IsALimitThatNeverComes()
+    {
+        CheckOutcome outcome = Check.Run(WithInactivityLimit(Pc(Source(displayOff: null, sleep: null)), long.MaxValue));
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+    }
+
+    [TestMethod]
     public void TheEarliestWayToLock_IsTheOneReported()
     {
         FakeProbes probes = WithInactivityLimit(WithScreenSaver(Pc(Source(displayOff: null, sleep: 12)), timeoutSeconds: "120"), 600);

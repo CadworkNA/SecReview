@@ -354,6 +354,15 @@ public sealed class PnpmChecksTests
     }
 
     [TestMethod]
+    public void Cooldown_TheVariable_WithAVersionThatCannotBeRead_SaysWhichPnpmIgnoresIt()
+    {
+        CheckOutcome outcome = Cooldown.Run(WithVariable(Pnpm(version: null, yaml: "storeDir: D:\\store\n"), PnpmCooldownCheck.Variable, "20160"));
+
+        Assert.AreEqual(CheckStatus.Pass, outcome.Status);
+        Assert.AreEqual("pnpm is set to wait 14 days; the installed version could not be read, and pnpm 10 would ignore this variable.", outcome.Summary);
+    }
+
+    [TestMethod]
     public void Cooldown_InRc_TheLastLineIsTheOneInForce()
     {
         CheckOutcome outcome = Cooldown.Run(Pnpm(version: "10.34.9", rc: "minimum-release-age=10080\nminimum-release-age=60\n"));

@@ -78,6 +78,54 @@ public sealed class UpdateTests
     }
 
     [TestMethod]
+    public void WhatIsNew_IsTheFeaturesAndFixes_AsPlainLines()
+    {
+        // What GitHub generates for a release, with made-up authors.
+        const string Generated = """
+            ## What's Changed
+            ### Changes
+            * feat: the notification-area icon by @made-up-author in https://github.com/made-up/secreview/pull/31
+            * fix(tray): a second icon ends at once by @made-up-author in https://github.com/made-up/secreview/pull/32
+            * feat!: settings are kept per user (#33)
+            * docs: how to build by @made-up-author in https://github.com/made-up/secreview/pull/34
+            * ci: pin the runner by @made-up-author in https://github.com/made-up/secreview/pull/35
+            * A change without a prefix by @someone-else in https://github.com/made-up/secreview/pull/36
+            ### Dependencies
+            * build(deps): bump a package from 1.0.0 to 1.0.1 by @dependabot[bot] in https://github.com/made-up/secreview/pull/37
+
+            ## New Contributors
+            * @someone-else made their first contribution in https://github.com/made-up/secreview/pull/36
+
+            **Full Changelog**: https://github.com/made-up/secreview/compare/v1.3.0...v1.4.0
+            """;
+
+        string plain = ReleaseNotes.Plain(Generated);
+
+        Assert.AreEqual(
+            "New: The notification-area icon\nFixed: A second icon ends at once\nNew: Settings are kept per user\nA change without a prefix",
+            plain.ReplaceLineEndings("\n"));
+        Assert.AreEqual(plain, ReleaseNotes.Plain(plain), "plain lines stay as they are");
+        Assert.IsFalse(plain.Contains('@') || plain.Contains("https://", StringComparison.Ordinal) || plain.Contains('#') || plain.Contains('*'));
+    }
+
+    [TestMethod]
+    public void WhatIsNew_IsEmpty_WhenNothingInTheReleaseIsForUsers()
+    {
+        Assert.AreEqual(string.Empty, ReleaseNotes.Plain(null));
+        Assert.AreEqual(string.Empty, ReleaseNotes.Plain(" \n"));
+        Assert.AreEqual(string.Empty, ReleaseNotes.Plain("## What's Changed\n* chore: tidy up by @made-up-author in https://github.com/made-up/secreview/pull/40\n* test: more cases (#41)\n"));
+        Assert.AreEqual("Two new checks.", ReleaseNotes.Plain("Two new checks."), "text written by hand is kept");
+    }
+
+    [TestMethod]
+    public void WhatIsNew_FromAManifest_IsShownPlain()
+    {
+        string notes = "## What's Changed\\n* feat: two new checks by @made-up-author in https://github.com/made-up/secreview/pull/41\\n\\n**Full Changelog**: https://github.com/made-up/secreview/compare/v1.3.0...v1.4.0";
+
+        Assert.AreEqual("New: Two new checks", UpdateManifest.Parse(Manifest(notes: notes), Source, Now, out _)!.Notes);
+    }
+
+    [TestMethod]
     [DataRow("version", """{"url":"U","sha256":"H","published":"2026-11-01T10:00:00Z"}""")]
     [DataRow("version", """{"version":"v1.4.0","url":"U","sha256":"H","published":"2026-11-01T10:00:00Z"}""")]
     [DataRow("version", """{"version":"1.4","url":"U","sha256":"H","published":"2026-11-01T10:00:00Z"}""")]
@@ -114,6 +162,69 @@ public sealed class UpdateTests
         Assert.AreEqual(UpdateManifest.MaximumNotesLength, manifest.Notes.Length);
         Assert.IsFalse(UpdateManifest.Parse(Manifest(notes: "a\\u0007b\\nc"), Source, Now, out _)!.Notes.Contains('\u0007'));
         Assert.AreEqual("a\nc", UpdateManifest.Parse(Manifest(notes: "a\\nc"), Source, Now, out _)!.Notes);
+    }
+
+    [TestMethod]
+    public void ADamagedManifest_IsRefusedWithAReason_OrIsStillWhollyRight()
+    {
+        string good = Encoding.UTF8.GetString(Manifest(notes: "Two new checks.\\nOne fix."));
+        var random = new Random(20261112);
+
+        for (int round = 0; round < 5000; round++)
+        {
+            byte[] damaged = Encoding.UTF8.GetBytes(DamagedCopies.DamageText(good, random));
+
+            UpdateManifest? manifest = UpdateManifest.Parse(damaged, Source, Now, out string? problem);
+
+            if (manifest is null)
+            {
+                Assert.IsFalse(string.IsNullOrWhiteSpace(problem), $"round {round}");
+                continue;
+            }
+
+            Assert.IsNull(problem, $"round {round}");
+            Assert.IsTrue(UpdateRules.IsReleaseVersion(manifest.Version), $"round {round}: version {manifest.Version}");
+            Assert.IsTrue(Source.Allows(manifest.Url), $"round {round}: address {manifest.Url}");
+            Assert.IsTrue(manifest.Sha256.Length == 64 && manifest.Sha256.All(char.IsAsciiHexDigitLower), $"round {round}: checksum");
+            Assert.IsTrue(manifest.Published.Year >= 2025 && manifest.Published <= Now.AddDays(1), $"round {round}: date {manifest.Published}");
+            Assert.IsTrue(
+                manifest.Notes.Length <= UpdateManifest.MaximumNotesLength && !manifest.Notes.Any(c => c != '\n' && char.IsControl(c)),
+                $"round {round}: notes");
+        }
+    }
+
+    [TestMethod]
+    public void ADamagedStateFile_ReadsAsNotKnown_OrAsAStateFitToShow()
+    {
+        var states = new[]
+        {
+            new UpdateState { CheckedAt = Now.AddHours(-1), Outcome = UpdateOutcome.Available, CheckedBy = "1.3.0", Available = "1.4.0", Published = Now.AddDays(-3), Notes = "Two new checks.\nOne fix." },
+            new UpdateState { CheckedAt = Now.AddHours(-1), Outcome = UpdateOutcome.Failed, CheckedBy = "1.3.0", Problem = "Could not look for updates: the server could not be reached." },
+            new UpdateState { CheckedAt = Now.AddHours(-1), Outcome = UpdateOutcome.UpToDate, CheckedBy = "1.3.0" },
+        };
+
+        foreach (UpdateState good in states)
+        {
+            string text = System.Text.Json.JsonSerializer.Serialize(good, UpdateJson.Default.UpdateState);
+            var random = new Random(20261112);
+            for (int round = 0; round < 3000; round++)
+            {
+                UpdateState read = UpdateStateStore.FromBytes(Encoding.UTF8.GetBytes(DamagedCopies.DamageText(text, random))).For("1.3.0", Now);
+
+                Assert.IsTrue(Enum.IsDefined(read.Outcome), $"round {round}");
+                if (read.Outcome == UpdateOutcome.Available)
+                {
+                    Assert.IsTrue(UpdateRules.IsReleaseVersion(read.Available) && UpdateRules.IsNewer(read.Available, "1.3.0"), $"round {round}: {read.Available}");
+                }
+
+                Assert.IsTrue(
+                    read.Problem is null || (read.Problem.Trim().Length > 0 && read.Problem.Length <= 300 && !read.Problem.Any(char.IsControl)),
+                    $"round {round}: the problem is shown as one line");
+                Assert.IsTrue(
+                    read.Notes is null || (read.Notes.Length <= UpdateManifest.MaximumNotesLength && !read.Notes.Any(c => c != '\n' && char.IsControl(c))),
+                    $"round {round}: the notes are plain text");
+            }
+        }
     }
 
     // --- Versions and timing.

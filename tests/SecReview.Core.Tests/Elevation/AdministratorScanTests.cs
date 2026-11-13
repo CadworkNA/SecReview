@@ -6,6 +6,7 @@ using SecReview.Checks.BuiltIn;
 using SecReview.CommandLine;
 using SecReview.Elevation;
 using SecReview.Scanning;
+using SecReview.Tests.Checks;
 using SecReview.Tests.Fakes;
 
 namespace SecReview.Tests.Elevation;
@@ -354,6 +355,52 @@ public sealed class AdministratorScanTests
         });
 
         Assert.AreEqual(expected, why);
+    }
+
+    [TestMethod]
+    public void ADamagedAnswer_IsRefused_OrIsStillEveryAdministratorCheckReadElevated()
+    {
+        ICheck[] expected = [.. Checks.Where(check => CheckRunner.IsIncluded(check.Definition, CheckSelection.AdministratorOnly))];
+        DateTimeOffset when = DateTimeOffset.UtcNow.AddMinutes(-1);
+        byte[] good = ResultsStore.ToBytes(new ScanResult(
+            [.. expected.Select(check => new ScannedCheck(
+                check.Definition,
+                Texts[check.Definition.Id],
+                new CheckResult(check.Definition.Id, CheckOutcome.Fail("Off.", Finding.Problem("Setting", "Off", "On", @"HKLM\made\up")), when, Elevated: true, TimeSpan.FromMilliseconds(20))))],
+            when,
+            Elevated: true));
+        Assert.AreEqual(AdministratorScanOutcome.Completed, AdministratorScan.Accept(good, expected, Texts).Outcome, "the undamaged answer is taken");
+        string text = System.Text.Encoding.UTF8.GetString(good);
+        var random = new Random(20261112);
+        int taken = 0;
+
+        for (int round = 0; round < 3000; round++)
+        {
+            byte[] damaged = System.Text.Encoding.UTF8.GetBytes(DamagedCopies.DamageText(text, random));
+
+            AdministratorScanResult result = AdministratorScan.Accept(damaged, expected, Texts);
+
+            if (result.Outcome == AdministratorScanOutcome.Completed)
+            {
+                taken++;
+                Assert.IsTrue(result.Scan!.Elevated, $"round {round}");
+                Assert.AreEqual(expected.Length, result.Scan.Checks.Count, $"round {round}");
+                CollectionAssert.AreEquivalent(
+                    expected.Select(check => check.Definition.Id).ToArray(), result.Scan.Checks.Select(check => check.Result.CheckId).ToArray(), $"round {round}");
+                Assert.IsTrue(
+                    result.Scan.Checks.All(check =>
+                        check.Result.Elevated && Enum.IsDefined(check.Result.Outcome.Status) && !string.IsNullOrWhiteSpace(check.Result.Outcome.Summary)),
+                    $"round {round}");
+            }
+            else
+            {
+                Assert.AreEqual(AdministratorScanOutcome.Failed, result.Outcome, $"round {round}");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(result.Problem), $"round {round}");
+                Assert.IsNull(result.Scan, $"round {round}");
+            }
+        }
+
+        Assert.IsTrue(taken > 0, "some damage (a changed word in a summary) leaves a usable answer; the test must see both cases");
     }
 
     [TestMethod]

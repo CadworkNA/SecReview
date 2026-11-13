@@ -31,6 +31,56 @@ public sealed class WordingTests
     }
 
     [TestMethod]
+    public void OneLine_LeavesOrdinaryTextAlone()
+    {
+        const string Text = "Registry for @company: plain HTTP (C:\\Users\\tester\\.npmrc, line 2)";
+
+        Assert.AreSame(Text, Wording.OneLine(Text));
+        Assert.AreEqual(string.Empty, Wording.OneLine(null));
+        Assert.AreEqual("caf\u00E9 \u65E5\u672C \uD83D\uDE00", Wording.OneLine("caf\u00E9 \u65E5\u672C \uD83D\uDE00"), "letters of any language and character pairs stay");
+    }
+
+    [TestMethod]
+    public void OneLine_TurnsLineBreaksAndControlCharactersIntoSpaces_AndDropsWhatIsNotShown()
+    {
+        Assert.AreEqual("a b  c d e", Wording.OneLine("a\nb\r\nc\td\0e"));
+        Assert.AreEqual("a b c", Wording.OneLine("a\u2028b\u2029c"), "Unicode's own line and paragraph breaks");
+
+        // A direction override would show "gpj.exe" as "exe.jpg"; zero-width characters hide a difference between two names.
+        Assert.AreEqual("abcgpj.exe", Wording.OneLine("abc\u202Egpj.exe"));
+        Assert.AreEqual("paypal", Wording.OneLine("pay\u200Bpal\uFEFF"));
+    }
+
+    [TestMethod]
+    public void OneLine_CutsALongText_WithoutLeavingHalfACharacter()
+    {
+        string cut = Wording.OneLine(new string('a', 5000));
+        Assert.AreEqual(Wording.MaximumLength, cut.Length);
+        Assert.IsTrue(cut.EndsWith('\u2026'));
+
+        Assert.AreEqual(Wording.MaximumLength, Wording.OneLine(new string('a', Wording.MaximumLength)).Length, "exactly the limit is not cut");
+        string full = "\n" + new string('a', Wording.MaximumLength - 1);
+        Assert.AreEqual(" " + new string('a', Wording.MaximumLength - 1), Wording.OneLine(full), "nor is a text that only needed cleaning");
+
+        string pair = Wording.OneLine(new string('a', Wording.MaximumLength - 2) + "\uD83D\uDE00" + "bbb");
+        Assert.IsFalse(pair.Any(char.IsSurrogate), "the pair that straddles the cut is left out whole");
+    }
+
+    [TestMethod]
+    public void AResult_IsOneLineEach_WhateverACheckPutIntoIt()
+    {
+        var finding = Finding.Problem("Registry for @com\rpany", "plain\nHTTP", "HTTPS\u202E", "C:\\made-up\\.npmrc,\tline 2");
+        CheckOutcome outcome = CheckOutcome.Fail("npm: registry for @com\rpany: plain HTTP.", finding);
+
+        Assert.AreEqual("npm: registry for @com pany: plain HTTP.", outcome.Summary);
+        Assert.AreEqual("Registry for @com pany", finding.Item);
+        Assert.AreEqual("plain HTTP", finding.Found);
+        Assert.AreEqual("HTTPS", finding.Expected);
+        Assert.AreEqual("C:\\made-up\\.npmrc, line 2", finding.Source);
+        Assert.IsNull(Finding.Note("a", "b").Source);
+    }
+
+    [TestMethod]
     public void JoinWithAnd_ReadsNaturally()
     {
         Assert.AreEqual(string.Empty, Wording.JoinWithAnd([]));

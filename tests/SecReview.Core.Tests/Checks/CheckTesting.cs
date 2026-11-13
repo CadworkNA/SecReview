@@ -9,8 +9,18 @@ internal static class CheckTesting
     /// <summary>The moment every check that looks at the time is tested at.</summary>
     public static readonly DateTimeOffset Now = new(2026, 11, 11, 9, 0, 0, TimeSpan.Zero);
 
-    public static CheckOutcome Run(this ICheck check, FakeProbes probes, bool elevated = false, DateTimeOffset? now = null) =>
-        check.Run(new CheckContext(probes.Build(), new FixedClock(now ?? Now), elevated, CancellationToken.None));
+    /// <summary>
+    /// The check's answer for this fake PC. The check is then run against damaged copies of the
+    /// same PC too (see <see cref="DamagedCopies"/>), so every test that runs a check also
+    /// proves that the check survives damage to what that test made it read.
+    /// </summary>
+    public static CheckOutcome Run(this ICheck check, FakeProbes probes, bool elevated = false, DateTimeOffset? now = null)
+    {
+        var clock = new FixedClock(now ?? Now);
+        CheckOutcome outcome = check.Run(new CheckContext(probes.Build(), clock, elevated, CancellationToken.None));
+        DamagedCopies.Verify(check, probes, clock, elevated);
+        return outcome;
+    }
 
     /// <summary>The findings as "item: found (expected) [status]" lines, for compact assertions.</summary>
     public static string[] Rows(this CheckOutcome outcome) =>

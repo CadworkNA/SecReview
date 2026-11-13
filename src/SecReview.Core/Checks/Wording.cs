@@ -16,6 +16,75 @@ public static class Wording
         };
     }
 
+    /// <summary>The longest text a result shows in one place.</summary>
+    public const int MaximumLength = 1000;
+
+    /// <summary>
+    /// A text made fit to show as one line. Results carry text read from files, settings and
+    /// variables, which can hold anything: line breaks and other control characters become
+    /// spaces, characters that are not shown but change how text reads (direction marks,
+    /// zero-width characters) are left out, and a text longer than
+    /// <see cref="MaximumLength"/> is cut short.
+    /// </summary>
+    public static string OneLine(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        if (text.Length <= MaximumLength && !text.Any(c => Fit(c) != Fitness.Shown))
+        {
+            return text;
+        }
+
+        var line = new System.Text.StringBuilder(Math.Min(text.Length, MaximumLength));
+        foreach (char c in text)
+        {
+            Fitness fitness = Fit(c);
+            if (fitness == Fitness.LeftOut)
+            {
+                continue;
+            }
+
+            line.Append(fitness == Fitness.Shown ? c : ' ');
+            if (line.Length > MaximumLength)
+            {
+                break;
+            }
+        }
+
+        if (line.Length > MaximumLength)
+        {
+            // Cut, with a sign that it was; half of a character pair is not left behind.
+            line.Length = MaximumLength - 1;
+            if (char.IsHighSurrogate(line[^1]))
+            {
+                line.Length--;
+            }
+
+            line.Append('…');
+        }
+
+        return line.ToString();
+    }
+
+    private enum Fitness
+    {
+        Shown,
+        ShownAsSpace,
+        LeftOut,
+    }
+
+    private static Fitness Fit(char c) => char.GetUnicodeCategory(c) switch
+    {
+        System.Globalization.UnicodeCategory.Control or
+        System.Globalization.UnicodeCategory.LineSeparator or
+        System.Globalization.UnicodeCategory.ParagraphSeparator => Fitness.ShownAsSpace,
+        System.Globalization.UnicodeCategory.Format => Fitness.LeftOut,
+        _ => Fitness.Shown,
+    };
+
     /// <summary>"is" for one, "are" for several.</summary>
     public static string IsOrAre(int count) => count == 1 ? "is" : "are";
 

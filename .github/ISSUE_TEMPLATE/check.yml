@@ -1,0 +1,38 @@
+name: Check request
+description: Something SecReview should check, or a check that should judge differently.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SecReview only reads: a check looks at a setting, a file or the registry, and never
+        changes or runs anything. **Do not paste settings, paths or names from a real PC.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What should be checked
+      description: The setting or file, and the state that is unsafe.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: What can go wrong when it is set the unsafe way. One or two sentences.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Where it is documented
+      description: The page of Microsoft's or the tool's own documentation that describes the setting.
+      placeholder: https://learn.microsoft.com/...
+    validations:
+      required: false
+  - type: textarea
+    id: fix
+    attributes:
+      label: How a user fixes it
+      description: The steps, if you know them.
+    validations:
+      required: false

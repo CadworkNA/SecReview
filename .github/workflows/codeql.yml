@@ -1,0 +1,55 @@
+name: CodeQL
+
+# Static analysis of the C# code and of these workflows, with GitHub's security queries.
+# Findings appear under Security, Code scanning, and on the pull request that adds them.
+#
+# Code scanning is free for public repositories only: the job does nothing until this
+# repository is public, and starts by itself then.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '41 4 * * 2'
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      security-events: write   # upload the findings
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [csharp, actions]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The code is read, not built: the programs only build on Windows, and the analysis
+      # does not need them to.
+      - name: Set up CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}

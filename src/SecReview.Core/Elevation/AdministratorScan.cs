@@ -143,18 +143,7 @@ public static class AdministratorScan
                 return Failed("The administrator checks sent more than they should; their answer was not used.");
             }
 
-            if (ResultsStore.FromBytes(document, expected, texts) is not { } scan || scan.Checks.Count != expected.Length)
-            {
-                return Failed("The administrator checks' answer could not be used.");
-            }
-
-            // An answer read without administrator rights is not what was asked for.
-            if (!scan.Elevated || scan.Checks.Any(check => !check.Result.Elevated))
-            {
-                return Failed("The administrator checks ran without administrator rights; their answer was not used.");
-            }
-
-            return new AdministratorScanResult(AdministratorScanOutcome.Completed, scan);
+            return Accept(document, expected, texts);
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         {
@@ -168,9 +157,29 @@ public static class AdministratorScan
         {
             return Failed($"The administrator checks could not be run: {exception.Message}");
         }
-
-        static AdministratorScanResult Failed(string problem) => new(AdministratorScanOutcome.Failed, Problem: problem);
     }
+
+    /// <summary>
+    /// The helper's answer as a scan, or why it is not used. It is read like <c>results.json</c>
+    /// and must hold exactly the checks asked for, every one read with administrator rights.
+    /// </summary>
+    internal static AdministratorScanResult Accept(ReadOnlySpan<byte> document, IReadOnlyList<ICheck> expected, CheckTexts texts)
+    {
+        if (ResultsStore.FromBytes(document, expected, texts) is not { } scan || scan.Checks.Count != expected.Count)
+        {
+            return Failed("The administrator checks' answer could not be used.");
+        }
+
+        // An answer read without administrator rights is not what was asked for.
+        if (!scan.Elevated || scan.Checks.Any(check => !check.Result.Elevated))
+        {
+            return Failed("The administrator checks ran without administrator rights; their answer was not used.");
+        }
+
+        return new AdministratorScanResult(AdministratorScanOutcome.Completed, scan);
+    }
+
+    private static AdministratorScanResult Failed(string problem) => new(AdministratorScanOutcome.Failed, Problem: problem);
 
     /// <summary>The pipe: the first of its name, one connection at a time, for this PC's administrators only.</summary>
     internal static NamedPipeServerStream CreatePipe(string name, bool alsoThisUser)

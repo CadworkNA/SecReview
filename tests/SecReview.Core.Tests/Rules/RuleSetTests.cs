@@ -224,4 +224,52 @@ public sealed class RuleSetTests
 
         StringAssert.Contains(exception.Message, "test.json");
     }
+
+    /// <summary>
+    /// The shipped rule files, damaged thousands of times with a fixed seed. A damaged file is
+    /// refused by name, or what is left is still rules: each then runs, on a PC where nothing
+    /// is set, to a proper answer. Nothing else may come out of it.
+    /// </summary>
+    [TestMethod]
+    public void DamagedRuleFiles_AreRefusedByName_OrGiveRulesThatStillAnswer()
+    {
+        System.Reflection.Assembly core = typeof(RuleSet).Assembly;
+        string[] files = [.. core.GetManifestResourceNames().Where(name => name.StartsWith("SecReview.Rules.", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal))];
+        Assert.IsTrue(files.Length >= 5, $"only {files.Length} rule files found");
+        var context = new CheckContext(new Fakes.FakeProbes().Build(), TimeProvider.System, IsElevated: false, CancellationToken.None);
+        int accepted = 0;
+
+        foreach (string file in files)
+        {
+            using var reader = new StreamReader(core.GetManifestResourceStream(file)!);
+            string good = reader.ReadToEnd();
+            var random = new Random(20261112);
+
+            for (int round = 0; round < 250; round++)
+            {
+                string damaged = Tests.Checks.DamagedCopies.DamageText(good, random);
+                IReadOnlyList<RuleDefinition> rules;
+                try
+                {
+                    rules = Parse(damaged);
+                }
+                catch (JsonException refused)
+                {
+                    StringAssert.Contains(refused.Message, "test.json", $"{file}, round {round}");
+                    continue;
+                }
+
+                accepted++;
+                foreach (RuleDefinition rule in rules)
+                {
+                    Assert.IsNull(RuleSet.Problem(rule), $"{file}, round {round}: an accepted rule holds together");
+                    CheckOutcome outcome = new RuleCheck(rule).Run(context);
+                    Assert.IsTrue(
+                        Enum.IsDefined(outcome.Status) && !string.IsNullOrWhiteSpace(outcome.Summary), $"{file}, round {round}: rule {rule.Id} gave no proper answer");
+                }
+            }
+        }
+
+        Assert.IsTrue(accepted > 0, "some damage (a changed word in a sentence) leaves valid rules; the test must see both cases");
+    }
 }

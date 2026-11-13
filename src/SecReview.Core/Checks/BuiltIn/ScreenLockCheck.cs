@@ -59,7 +59,9 @@ public sealed class ScreenLockCheck : ICheck
         }
 
         PowerSettings power = powerRead.Value!;
-        TimeSpan? limit = limitSeconds is > 0 ? TimeSpan.FromSeconds(limitSeconds.Value) : null;
+        // Capped like the delay below: a number too large to be a length of time is still a
+        // limit, only one that never comes.
+        TimeSpan? limit = limitSeconds is > 0 ? TimeSpan.FromSeconds(Math.Min(limitSeconds.Value, int.MaxValue)) : null;
         TimeSpan delay = TimeSpan.FromSeconds(Math.Clamp(delaySeconds ?? 0, 0, int.MaxValue));
 
         (TimeSpan After, string Because)? pluggedIn = LocksAfter(power.PluggedIn, power.ModernStandby, limit, screenSaver, delay);

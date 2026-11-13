@@ -242,6 +242,9 @@ function Invoke-App([string[]] $Arguments, [int] $TimeoutSeconds = 90, [hashtabl
     }
 }
 
+# What this build measures on the way, held against scripts\budgets.psd1 at the end.
+$measured = [ordered]@{}
+
 Invoke-Step 'Smoke test' {
     $cli = Join-Path $stage 'SecReviewCli.exe'
 
@@ -249,6 +252,10 @@ Invoke-Step 'Smoke test' {
     if ($LASTEXITCODE -ne 0 -or $shown -ne "SecReview $Version") {
         throw "--version printed '$shown' (exit $LASTEXITCODE), expected 'SecReview $Version'."
     }
+
+    # How long the helper takes to start: the best of three, so that a virus scanner looking
+    # at a program it has not seen before does not count.
+    $measured.HelperStartMs = (1..3 | ForEach-Object { (Measure-Command { & $cli --version | Out-Null }).TotalMilliseconds } | Measure-Object -Minimum).Minimum
 
     & $cli --no-such-command 2>$null | Out-Null
     if ($LASTEXITCODE -ne 2) { throw "An unknown command exited with $LASTEXITCODE, expected 2." }
@@ -269,8 +276,10 @@ Invoke-Step 'Smoke test' {
     # The checks must run from the compiled helper and produce a well-formed report. Whether
     # this machine passes them is not the build's business.
     $reportPath = Join-Path $root 'artifacts\smoke.report.json'
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
     & $cli --report $reportPath | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "SecReviewCli --report exited with $LASTEXITCODE, expected 0." }
+    $measured.ScanMs = $timer.ElapsedMilliseconds
     $report = Get-Content $reportPath -Raw | ConvertFrom-Json
     $counts = $report.counts
     $total = $counts.pass + $counts.fail + $counts.needsAdmin + $counts.notApplicable + $counts.error
@@ -333,7 +342,7 @@ Invoke-Step 'Smoke test' {
 
     # The window must load and draw from the staged folder (catches a missing DLL or resource
     # file, which only shows at start-up). Exit codes: SecReview.CommandLine.ExitCode.
-    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    $timer.Restart()
     $exit = Invoke-App '--smoke-test'
     if ($exit -ne 0) {
         throw "SecReview.exe --smoke-test ended with '$exit', expected 0.$(Get-AppLog)"
@@ -360,6 +369,33 @@ Invoke-Step 'Smoke test' {
         # it does not have is still a window.
         $exit = Invoke-App '--show', 'no.such.check', '--smoke-test'
         if ($exit -ne 0) { throw "SecReview.exe --show no.such.check --smoke-test ended with '$exit', expected 0.$(Get-AppLog)" }
+
+        # What the icon uses while it waits. It has just scanned, so the next scan is hours
+        # away, and it leaves its first minute alone in any case: these ten seconds are idle.
+        # Not in a build that knows a server (the update address, the error-report address):
+        # an automated run asks no server, and this one is the icon as users have it.
+        if (-not $UpdateUrl -and -not $ErrorReportAddress) {
+            $start = [System.Diagnostics.ProcessStartInfo]::new((Join-Path $stage 'SecReview.exe'))
+            $start.UseShellExecute = $false
+            $start.Environment['SECREVIEW_DATA_DIR'] = $appData
+            $start.ArgumentList.Add('--tray')
+            $icon = [System.Diagnostics.Process]::Start($start)
+            try {
+                Start-Sleep -Seconds 8
+                if ($icon.HasExited) { throw "SecReview.exe --tray ended by itself with $($icon.ExitCode).$(Get-AppLog)" }
+                $icon.Refresh()
+                $before = $icon.TotalProcessorTime
+                Start-Sleep -Seconds 10
+                if ($icon.HasExited) { throw "SecReview.exe --tray ended by itself with $($icon.ExitCode).$(Get-AppLog)" }
+                $icon.Refresh()
+                $measured.IconIdleCpuMs = ($icon.TotalProcessorTime - $before).TotalMilliseconds
+                $measured.IconMemoryMB = $icon.PrivateMemorySize64 / 1MB
+            } finally {
+                if (-not $icon.HasExited) { $icon.Kill() }
+                $icon.Dispose()
+            }
+            Write-Host ('SecReview.exe --tray: waiting, it used {0:N0} ms of processor time in 10 s and holds {1:N0} MB.' -f $measured.IconIdleCpuMs, $measured.IconMemoryMB)
+        }
     } else {
         Write-Host 'SecReview.exe --tray: not run here (build machines only).'
     }
@@ -374,11 +410,17 @@ Invoke-Step 'Smoke test' {
     # The last state also opens every dialog once and checks it the same way.
     foreach ($state in 'mixed', 'all-pass', 'first-run', 'ignored', 'loading', 'failed', 'dialogs') {
         $picture = Join-Path $shots "demo-$state.png"
+        $timer.Restart()
         $exit = Invoke-App '--demo', $state, '--screenshot', $picture
+        $took = $timer.ElapsedMilliseconds
         if ($exit -ne 0 -or -not (Test-Path $picture) -or (Get-Item $picture).Length -lt 10KB) {
             throw "SecReview.exe --demo $state --screenshot ended with '$exit' and no usable picture.$(Get-AppLog)"
         }
-        Write-Host "Screenshot: artifacts\screenshots\demo-$state.png ($([int]((Get-Item $picture).Length / 1KB)) KB)."
+        Write-Host "Screenshot: artifacts\screenshots\demo-$state.png ($([int]((Get-Item $picture).Length / 1KB)) KB, $took ms)."
+
+        # From start to a drawn window, a saved picture and the end: the quickest of the
+        # states, the one with the dialogs aside (it opens every dialog in turn).
+        if ($state -ne 'dialogs' -and (-not $measured.Contains('WindowMs') -or $took -lt $measured.WindowMs)) { $measured.WindowMs = $took }
     }
 
     # What an error report holds. The app raises made-up errors that carry this PC's user
@@ -456,6 +498,13 @@ Invoke-Step 'Smoke test' {
 $files = Get-ChildItem $stage -Recurse -File
 'Staged: {0} files, {1:N1} MB' -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB)
 
+# The list is counted apart: it grows with the feed, not with SecReview.
+$list = $files | Where-Object Name -eq 'known-malicious.idx'
+$measured.StagedFolderMB = (($files | Where-Object Name -ne 'known-malicious.idx' | Measure-Object Length -Sum).Sum) / 1MB
+$measured.WindowProgramMB = (Get-Item (Join-Path $stage 'SecReview.exe')).Length / 1MB
+$measured.HelperProgramMB = (Get-Item (Join-Path $stage 'SecReviewCli.exe')).Length / 1MB
+if ($list) { $measured.MaliciousListMB = $list.Length / 1MB }
+
 if ($Installer) {
     # The setup program: the staged folder, packed. Compiled here, never run here.
     $installerOut = Join-Path $root 'artifacts\installer'
@@ -499,4 +548,8 @@ if ($Installer) {
         }
     }
     'Setup: {0}, {1:N1} MB, SHA-256 {2}' -f $setup.Name, ($setup.Length / 1MB), (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $measured.SetupProgramMB = $setup.Length / 1MB
 }
+
+# Size, start-up and scan time, and the icon's idle use, against scripts\budgets.psd1.
+Invoke-Step 'Check budgets' { & (Join-Path $root 'scripts\check-budgets.ps1') -Measured $measured }

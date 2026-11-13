@@ -6,7 +6,7 @@
     "why": "An unlocked PC left alone gives anyone who walks by your files, mail and saved passwords.",
     "fix": [
       "Open Settings > System > Power & battery and set the screen and sleep times to 15 minutes or less.",
-      "Open Settings > Accounts > Sign-in options and choose that Windows asks you to sign in again every time.",
+      "Open Settings > Accounts > Sign-in options and have Windows ask you to sign in again every time you were away.",
       "Lock by hand with Windows+L whenever you leave your desk."
     ],
     "timeToFix": "2 min",
@@ -333,7 +333,7 @@
   "sc.uv.cooldown": {
     "name": "uv release cooldown",
     "titlePass": "uv waits before installing new releases",
-    "titleFail": "uv installs brand-new releases",
+    "titleFail": "uv installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
       "Open %APPDATA%\\uv\\uv.toml in a text editor; create the file if it is missing.",
@@ -365,7 +365,7 @@
     "why": "A token in a plain file or a permanent variable can be read by every program you run, a malicious package's install step included.",
     "fix": [
       "For a sign-in in uv's credentials file, run uv auth logout with the service named in the details.",
-      "For a variable, press Windows+R, run rundll32 sysdm.cpl,EditEnvironmentVariables and delete it.",
+      "For a variable, press Start, open Edit environment variables for your account and delete it.",
       "Replace the token at the service, since it was stored in the open, and keep the new one in your password manager."
     ],
     "timeToFix": "5 min",
@@ -378,8 +378,7 @@
     "titleFail": "pnpm installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
-      "Open a terminal and run pnpm config set --global minimumReleaseAge 10080.",
-      "That is 7 days in minutes; pnpm 11 and later keep it in config.yaml.",
+      "Open a terminal and run pnpm config set --global minimumReleaseAge 10080, which is 7 days in minutes.",
       "Update pnpm if it is older than 10.16."
     ],
     "timeToFix": "2 min",
@@ -474,8 +473,7 @@
     "titleFail": "npm installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
-      "Open a terminal and run npm config set min-release-age 7.",
-      "That is 7 days; npm keeps it in the .npmrc file in your user folder.",
+      "Open a terminal and run npm config set min-release-age 7, which is 7 days.",
       "Update npm if it is older than 11.10, with npm install -g npm."
     ],
     "timeToFix": "2 min",
@@ -490,7 +488,7 @@
     "fix": [
       "Open .yarnrc.yml in your user folder in a text editor; create the file if it is missing.",
       "Add a line with npmMinimalAgeGate: \"7d\" and save.",
-      "The setting needs Yarn 4.10 or later; older projects need yarn set version stable."
+      "Run yarn set version stable in each project whose Yarn is older than 4.10."
     ],
     "timeToFix": "2 min",
     "settingsLink": null,
@@ -503,8 +501,8 @@
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
       "Open .bunfig.toml in your user folder in a text editor; create the file if it is missing.",
-      "Under an [install] line, add minimumReleaseAge = 604800 and save.",
-      "That is 7 days in seconds; the setting needs Bun 1.3 or later, so run bun upgrade if yours is older."
+      "Under an [install] line, add minimumReleaseAge = 604800, which is 7 days in seconds, and save.",
+      "Run bun upgrade if your Bun is older than 1.3."
     ],
     "timeToFix": "2 min",
     "settingsLink": null,
@@ -516,9 +514,8 @@
     "titleFail": "pip installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
-      "Open a terminal and run pip config set global.uploaded-prior-to P7D.",
-      "That is 7 days; pip keeps it in pip.ini under %APPDATA%\\pip.",
-      "The setting needs pip 26.1 or later in each Python: python -m pip install --upgrade pip."
+      "Open a terminal and run pip config set global.uploaded-prior-to P7D, which is 7 days.",
+      "Update pip to 26.1 or later in each Python, with python -m pip install --upgrade pip."
     ],
     "timeToFix": "2 min",
     "settingsLink": null,
@@ -530,8 +527,8 @@
     "titleFail": "Poetry installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
-      "Open a terminal and run poetry config solver.min-release-age 7.",
-      "That is 7 days; the setting needs Poetry 2.4 or later, so run poetry self update if yours is older."
+      "Open a terminal and run poetry config solver.min-release-age 7, which is 7 days.",
+      "Run poetry self update if your Poetry is older than 2.4."
     ],
     "timeToFix": "2 min",
     "settingsLink": null,
@@ -543,8 +540,8 @@
     "titleFail": "PDM installs releases that are too new",
     "why": "Most malicious package versions are found and removed within days. A week's wait keeps them off this PC.",
     "fix": [
-      "Open a terminal and run pdm config strategy.exclude-newer 7d.",
-      "That is 7 days; the setting needs PDM 2.27 or later, so run pdm self update if yours is older."
+      "Open a terminal and run pdm config strategy.exclude-newer 7d, which is 7 days.",
+      "Run pdm self update if your PDM is older than 2.27."
     ],
     "timeToFix": "2 min",
     "settingsLink": null,
@@ -665,7 +662,7 @@
     "name": "Secrets in variables",
     "titlePass": "No permanent variable holds a token or password",
     "titleFail": "Permanent variables hold tokens or passwords",
-    "why": "Every program you run inherits these variables. An install script of a bad package reads them first.",
+    "why": "Every program you run inherits these variables. A malicious package's install script reads them first.",
     "fix": [
       "Press Start, type environment variables, and open Edit environment variables for your account.",
       "Delete the variable named in the details.",
@@ -732,10 +729,10 @@
     "references": []
   },
   "sc.nuget.cooldown": {
-    "name": "NuGet release wait",
+    "name": "NuGet release cooldown",
     "titlePass": "NuGet waits a week before picking new versions",
     "titleFail": "NuGet picks new package versions at once",
-    "why": "Most bad packages are found and removed within days. A wait keeps a version published an hour ago out of your builds.",
+    "why": "Most malicious package versions are found and removed within days. A week's wait keeps them out of your builds.",
     "fix": [
       "Open the NuGet.Config file named in the details.",
       "Add minPublishAgeHours=\"168\" to each source's line under packageSources.",
@@ -762,7 +759,7 @@
   "sc.docker.settings": {
     "name": "Docker protections",
     "titlePass": "Docker checks TLS and keeps its control port closed",
-    "titleFail": "A Docker setting weakens it",
+    "titleFail": "A Docker setting switches off a protection",
     "why": "A registry without TLS checks can hand you a tampered image. An open control port gives anyone who reaches it your PC.",
     "fix": [
       "In Docker Desktop, open Settings, General, and switch off Expose daemon on tcp://localhost:2375 without TLS.",
@@ -819,7 +816,7 @@
     "name": "Editor extension updates",
     "titlePass": "Your editor waits before installing extension updates",
     "titleFail": "Your editor installs extension updates within hours",
-    "why": "An extension runs with all your rights. When one is taken over, the bad update reaches every PC that updates at once.",
+    "why": "An extension runs with all your rights. When one is taken over, the malicious update reaches every PC that updates at once.",
     "fix": [
       "In the editor, open Settings and search for extensions.autoUpdateDelay.",
       "Set it to 168. In Cursor, set extensions.installCooldownHours to 168 instead.",
@@ -958,7 +955,7 @@
     "name": "Defender exclusions",
     "titlePass": "Microsoft Defender's exclusions are narrow",
     "titleFail": "Microsoft Defender skips where downloaded code lands",
-    "why": "Defender does not scan what is excluded. A bad package in an excluded folder runs without ever being looked at.",
+    "why": "Defender does not scan what is excluded. A malicious package in an excluded folder runs without ever being looked at.",
     "fix": [
       "Open Windows Security, Virus & threat protection, Manage settings.",
       "Under Exclusions, select Add or remove exclusions.",

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SecReview.Checks;
 using SecReview.Diagnostics;
 
 namespace SecReview.Updates;
@@ -110,17 +111,19 @@ public sealed class UpdateStateStore
         try
         {
             UpdateState? read = bytes.Length <= MaximumBytes ? JsonSerializer.Deserialize(bytes, UpdateJson.Default.UpdateState) : null;
-            if (read is not { Version: UpdateState.CurrentVersion })
+            // An outcome written as a number that is none of the outcomes is not one.
+            if (read is not { Version: UpdateState.CurrentVersion } || !Enum.IsDefined(read.Outcome))
             {
                 return new UpdateState();
             }
 
-            // Text from the file is shown in the window: kept to a sensible length.
+            // Text from the file is shown in the window and in a result: kept to a sensible
+            // length, and to what can be shown. The file is the user's own and can hold anything.
             return read with
             {
                 Available = Fit(read.Available, 64),
-                Notes = Fit(read.Notes, UpdateManifest.MaximumNotesLength),
-                Problem = Fit(read.Problem, 300),
+                Notes = read.Notes is null ? null : UpdateManifest.CleanNotes(read.Notes),
+                Problem = Line(read.Problem, 300),
                 CheckedBy = Fit(read.CheckedBy, 64),
             };
         }
@@ -145,4 +148,11 @@ public sealed class UpdateStateStore
     }
 
     private static string? Fit(string? text, int maximum) => text is null || text.Length <= maximum ? text : text[..maximum];
+
+    /// <summary>One line that says something, or null.</summary>
+    private static string? Line(string? text, int maximum)
+    {
+        string line = Wording.OneLine(text).Trim();
+        return line.Length == 0 ? null : Fit(line, maximum);
+    }
 }

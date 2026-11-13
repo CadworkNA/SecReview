@@ -178,7 +178,8 @@ public sealed class ResultsStore
     /// <summary>A saved outcome; null when it holds something this version does not know or that cannot be SecReview's.</summary>
     private static CheckOutcome? Outcome(StoredCheck saved)
     {
-        if (!Known<CheckStatus>(saved.Status, out CheckStatus status) || !IsText(saved.Summary) || string.IsNullOrWhiteSpace(saved.Summary) ||
+        // The summary must still say something once it is made fit to show.
+        if (!Known<CheckStatus>(saved.Status, out CheckStatus status) || !IsText(saved.Summary) || string.IsNullOrWhiteSpace(Wording.OneLine(saved.Summary)) ||
             saved.Findings is null || saved.Findings.Count > MaximumFindings)
         {
             return null;
