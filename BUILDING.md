@@ -231,8 +231,8 @@ SecReview says when there is a newer version and installs it when the user asks.
 silent updater.
 
 - **One address, compiled in.** Official builds get the address of `latest.json`
-  (`build.ps1 -UpdateUrl`, from the repository variable `UPDATE_URL`). Nothing on a PC can
-  point SecReview elsewhere. A build without it never looks and never installs.
+  (`build.ps1 -UpdateUrl`, written in `full.yml`, so a change is part of the code's history).
+  Nothing on a PC can point SecReview elsewhere. A build without it never looks and never installs.
 - **Looking** (once a day, by the window or the icon; the answer is kept in `update.json`
   for both): one anonymous request that carries the product's name and version and nothing
   about the PC. HTTPS only, on the manifest's own host (for GitHub, also where it serves
