@@ -21,6 +21,6 @@
     WindowMs        = 6000    # SecReview.exe --demo --screenshot: start, draw, save a picture, close (1 500)
 
     # The notification-area icon while it waits for its next scan. Build machines only.
-    IconIdleCpuMs   = 500     # processor time used in 10 seconds of waiting
-    IconMemoryMB    = 150     # memory that is its own
+    IconIdleCpuMs   = 250     # processor time used in 10 seconds of waiting (0)
+    IconMemoryMB    = 50      # memory that is its own (6.9)
 }
