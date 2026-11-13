@@ -7,6 +7,9 @@
     <IsTestProject>true</IsTestProject>
     <!-- MSTest on Microsoft.Testing.Platform: the test project is its own runner. -->
     <EnableMSTestRunner>true</EnableMSTestRunner>
+    <!-- The notification-click test calls SecReview through Windows' COM, as Windows does,
+         with the same pointer declarations the app uses. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +29,8 @@
   <ItemGroup>
     <!-- The icon file, for the test that holds it to what the code draws. -->
     <EmbeddedResource Include="..\..\resources\SecReview.ico" LogicalName="SecReview.ico" Condition="Exists('..\..\resources\SecReview.ico')" />
+    <!-- The setup script, for the test that holds its notification registration to the code's. -->
+    <EmbeddedResource Include="..\..\installer\SecReview.iss" LogicalName="SecReview.iss" />
   </ItemGroup>
 
 </Project>

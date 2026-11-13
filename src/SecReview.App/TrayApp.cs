@@ -107,6 +107,15 @@ internal static class TrayApp
         IRegistryProbe registry = WindowsProbes.Create().Registry;
         TraySession? session = null;
 
+        // App notifications are the installed copy's: setup registered them for it. With
+        // administrator rights (where they are always on) the icon shows its own.
+        bool installed = AppNotification.IsInstalledCopy(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles));
+        bool elevated = WindowsProbes.IsProcessElevated();
+        AppNotifier? notifier = installed && !elevated && !role.SmokeTest ? new AppNotifier(log) : null;
+        log.Info(notifier is not null
+            ? "Notifications: app notifications, or the icon's own where Windows does not take them."
+            : $"Notifications: the icon's own ({(role.SmokeTest ? "automated run" : elevated ? "administrator rights" : "not the installed copy")}).");
+
         // Once a day the icon also looks for a newer SecReview. What it finds is kept for the
         // window, and the check "SecReview is up to date" reads it at the next scan.
         UpdateService updates = UpdateService.ForThisBuild(data, registry);
@@ -130,6 +139,7 @@ internal static class TrayApp
                 OnUnexpectedError = (checkId, error) => reporter.Report(error, checkId),
             }.RunAsync(CheckSelection.All, WindowsProbes.IsProcessElevated()),
             OpenWindow = checkId => OpenWindow(checkId, log),
+            Notify = notification => notifier?.Show(notification) ?? AppNotificationOutcome.Unavailable,
             OnError = (where, exception) =>
             {
                 log.Error(where, exception);

@@ -164,17 +164,24 @@ public static class TrayLogic
         ];
     }
 
-    /// <summary>The notification for checks that started failing; null when there are none.</summary>
-    public static (string Title, string Text)? Notification(IReadOnlyList<ScannedCheck> newFailures)
+    /// <summary>
+    /// The notification for checks that started failing, with the check a click opens when
+    /// there is one; null when there are none.
+    /// </summary>
+    public static TrayNotification? Notification(IReadOnlyList<ScannedCheck> newFailures)
     {
         ArgumentNullException.ThrowIfNull(newFailures);
         return newFailures.Count switch
         {
             0 => null,
-            1 => (Cut(newFailures[0].Title, MaximumNotificationTitle), Cut(newFailures[0].Result.Outcome.Summary, MaximumNotificationText)),
-            _ => (
+            1 => new TrayNotification(
+                Cut(newFailures[0].Title, MaximumNotificationTitle),
+                Cut(newFailures[0].Result.Outcome.Summary, MaximumNotificationText),
+                newFailures[0].Definition.Id),
+            _ => new TrayNotification(
                 string.Create(CultureInfo.InvariantCulture, $"{newFailures.Count} checks started failing"),
-                Cut(string.Join("; ", newFailures.Take(3).Select(check => check.Title)) + (newFailures.Count > 3 ? "; and more" : string.Empty), MaximumNotificationText)),
+                Cut(string.Join("; ", newFailures.Take(3).Select(check => check.Title)) + (newFailures.Count > 3 ? "; and more" : string.Empty), MaximumNotificationText),
+                CheckId: null),
         };
     }
 

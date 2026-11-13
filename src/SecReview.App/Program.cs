@@ -4,6 +4,9 @@ using SecReview.Checks;
 using SecReview.CommandLine;
 using SecReview.Diagnostics;
 using SecReview.Instances;
+using SecReview.Probing.Windows;
+using SecReview.Tray;
+using SecReview.Tray.Windows;
 
 namespace SecReview.App;
 
@@ -20,6 +23,9 @@ internal static class Program
     /// <summary>A second start waits this long for the open window to answer before opening its own.</summary>
     private static readonly TimeSpan HandOverLimit = TimeSpan.FromSeconds(8);
 
+    /// <summary>A start for a notification click waits this long for Windows to hand the click over.</summary>
+    private static readonly TimeSpan NotificationClickLimit = TimeSpan.FromSeconds(30);
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -30,6 +36,9 @@ internal static class Program
 
             case TrayRole tray:
                 return TrayApp.Run(tray);
+
+            case NotificationClickRole:
+                return RunNotificationClick();
 
             case ErrorReportTestRole test:
                 return ErrorReportSelfTest.Run(test.OutputPath);
@@ -43,9 +52,53 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Started by Windows for a click on one of SecReview's notifications: takes the click,
+    /// then is the window, on the check it names. Arguments that are not SecReview's open nothing.
+    /// </summary>
+    private static int RunNotificationClick()
+    {
+        if (!WindowsProbes.IsSupported)
+        {
+            return ExitCode.UnsupportedWindows;
+        }
+
+        AppLog log = AppLog.ForThisProcess();
+        string? arguments;
+        try
+        {
+            if (!NotificationClicks.TryReceive(AppNotification.ActivatorId, NotificationClickLimit, out arguments))
+            {
+                log.Info("Started for a notification click, but Windows handed none over.");
+                return ExitCode.Ok;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            log.Error("A notification click could not be taken", exception);
+            return ExitCode.UnhandledError;
+        }
+
+        if (!AppNotification.TryReadArguments(arguments, out string? check))
+        {
+            log.Info("A notification click did not come from SecReview's notifications and opened nothing.");
+            return ExitCode.Ok;
+        }
+
+        log.Info("A notification click opens the window.");
+        return RunWindow(new UiRole(ShowCheck: check));
+    }
+
     private static int RunWindow(UiRole role)
     {
         bool automated = role.SmokeTest || role.ScreenshotPath is not null;
+
+        // The installed copy's window belongs with its Start menu shortcut (and a pin of it on
+        // the taskbar), however it was started: the shortcut carries this identity.
+        if (WindowsProbes.IsSupported && AppNotification.IsInstalledCopy(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)))
+        {
+            AppIdentity.UseForThisProcess();
+        }
         using Timer? watchdog = automated
             ? new Timer(
                 _ => Environment.Exit(ExitCode.SmokeTestTimedOut), null, AutomatedRunLimit, Timeout.InfiniteTimeSpan)

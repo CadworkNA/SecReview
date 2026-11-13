@@ -120,6 +120,22 @@ public sealed class AppArgumentsTests
     }
 
     [TestMethod]
+    public void ANotificationClick_IsARoleOfItsOwn_AndTakesNothingButWhatComAdds()
+    {
+        Assert.IsInstanceOfType<NotificationClickRole>(AppArguments.Parse(["--notification-click"]));
+        Assert.IsInstanceOfType<NotificationClickRole>(AppArguments.Parse(["--notification-click", "-Embedding"]));
+        Assert.IsInstanceOfType<NotificationClickRole>(AppArguments.Parse(["--notification-click", "/Embedding"]));
+
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--notification-click", "firewall.enabled"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--notification-click", "--show", "firewall.enabled"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--notification-click", "-Embedding", "x"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--notification-click", "--notification-click"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["-Embedding", "--notification-click"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["--demo", "--notification-click"]));
+        Assert.IsInstanceOfType<InvalidRole>(AppArguments.Parse(["-Embedding"]));
+    }
+
+    [TestMethod]
     public void Show_NamesTheCheckToOpenTheWindowOn_AndNothingButACheck()
     {
         Assert.AreEqual("firewall.enabled", Assert.IsInstanceOfType<UiRole>(AppArguments.Parse(["--show", "firewall.enabled"])).ShowCheck);

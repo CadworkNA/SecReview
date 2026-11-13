@@ -43,7 +43,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `src/SecReview.Core/SupplyChain` | The developer supply-chain checks, a folder per tool or topic (uv, pnpm, Scoop, npm, Yarn, pip, NuGet, Cargo, Go, Git, editors, AI agents and MCP servers, Docker, winget, Chocolatey, environment variables, stored credentials): release cooldowns, unsafe package sources, switched-off protections, secrets stored as plain text. No tool is ever run: versions come from files, and where none records one the result says so. A check does not apply when its tool is absent |
 | `src/SecReview.Core/Malware` | Known-malicious package matching: the index format (compact, checksummed, searched in place), version ordering per registry, the reader for OSV advisories, and the places packages are looked for (global packages, Python environments, editor extensions, download caches). Names are compared first and a version is read only for a listed name; what is installed never leaves the PC |
 | `src/SecReview.Core/Elevation` | The administrator checks: the pipe's name and rules, what the helper does when started elevated, and the app's side (make the pipe, start the helper through the Windows prompt, verify who answers, read the answer) |
-| `src/SecReview.Core/Tray` | The notification-area icon: when the checks run again, what the icon, its tooltip and a notification say (`TrayLogic`), the icon's picture drawn in code (`TrayIconImage`), what the process behind it does (`TraySession`), and under `Windows/` the icon itself |
+| `src/SecReview.Core/Tray` | The notification-area icon: when the checks run again, what the icon, its tooltip and a notification say (`TrayLogic`), the icon's picture drawn in code (`TrayIconImage`), what the process behind it does (`TraySession`), what an app notification holds and what a click on one may ask for (`AppNotification`), and under `Windows/` the icon itself and the class that takes a click from Windows |
 | `src/SecReview.Core/Updates` | Looking for a newer version (`latest.json`, the allowed addresses, what was found), the check "SecReview is up to date", and installing an update: the helper's rules, the window's side, and under `Windows/` the signature check and the administrators-only folder |
 | `src/SecReview.Core/Instances` | How SecReview's processes find each other: one window and one icon per user, the signal from the window to the icon, and a second start handing over to the open window |
 | `src/SecReview.Core/Scanning` | Runs the catalogue and pairs results with wording, handing each result over as it arrives; filters, groups and the headline; the last scan kept in `results.json`; the made-up results behind `--demo` |
@@ -136,6 +136,16 @@ check starts failing.
 - **A notification** only for a check that was known not to fail and now does. The first scan
   of a PC, an ignored check and one that was already failing are not news. Clicking it opens
   the window on that check (`SecReview.exe --show <check>`).
+- **App notifications** (title, reason, a "Show" button; they stay in the notification
+  centre) from the installed copy, without administrator rights. Elsewhere, or when Windows
+  does not know SecReview (setup's registration is missing), the icon shows its own. When
+  the user or the organisation switched SecReview's notifications off in Windows, nothing is
+  shown.
+- **A click on an app notification** makes Windows start `SecReview.exe --notification-click`
+  through setup's class, even after the icon has ended. That process takes the click from
+  Windows (`NotificationClicks`), then opens the window. It accepts only what SecReview's
+  notifications hold (`show` or `show:<check>`), since any program of the user can send a
+  "click".
 - **The icon** is green only when everything checked is in order; orange when something
   needs attention; grey when nothing is known, something could not be checked, or the checks
   are paused. A scan older than two intervals and a day no longer makes it green. Checks that
@@ -152,13 +162,15 @@ check starts failing.
 - **One of each:** a second icon ends at once; a second window brings the open one forward.
   The names they find each other by are local to the user's Windows session and carry the
   data folder, so a copy run with `SECREVIEW_DATA_DIR` is a set of its own.
-- **Nothing is registered with Windows by the app.** Starting at sign-in is the installer's
-  entry; the switch in Settings is what the icon looks at when it starts, and it ends itself
-  when the switch is off. The notification is the icon's own (no app registration).
+- **Nothing is registered with Windows by the app.** Starting at sign-in and app
+  notifications are the installer's entries; the switch in Settings is what the icon looks at
+  when it starts, and it ends itself when the switch is off.
 - **Testing:** the rules run in unit tests against a fake icon and a clock. The icon itself
   runs on build machines only (`--tray --smoke-test`: put up the icon, run the checks once,
   save, exit); `build.ps1` skips it elsewhere, because Windows remembers every icon it has
-  shown. Clicking the icon, its menu and the notification cannot be exercised by a build.
+  shown. A notification click is taken through COM within one process in a unit test, and
+  from another process by the installed program in `scripts\test-install.ps1`. Clicking the
+  icon, its menu and showing a notification cannot be exercised by a build.
 
 ## The setup program and releases
 
@@ -171,6 +183,10 @@ setup changes on a PC; the uninstaller removes all of it and leaves each user's 
   the folder holds exactly the new version.
 - **Start at sign-in** is one value under `HKLM\...\Run` (`SecReview.exe --tray`), a task
   that is on by default. Each user can still switch the icon off in Settings.
+- **App notifications:** the Start menu shortcut carries SecReview's identity
+  (`Cadwork.SecReview`) and the class Windows starts for a click; that class is one key under
+  `HKLM\Software\Classes\CLSID`. The installed window takes the same identity, so it joins
+  the shortcut pinned to the taskbar.
 - **Silent:** `SecReview-<version>-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`; add
   `/MERGETASKS="!autostart"` to leave out the icon at sign-in.
 - **Running copies are ended** by setup and by the uninstaller, for every signed-in user.

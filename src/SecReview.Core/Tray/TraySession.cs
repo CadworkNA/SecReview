@@ -62,6 +62,12 @@ public sealed class TrayEnvironment
     /// <summary>Told what went wrong and where. Must not throw.</summary>
     public required Action<string, Exception> OnError { get; init; }
 
+    /// <summary>
+    /// Shows a registered app notification. When it says <see cref="AppNotificationOutcome.Unavailable"/>
+    /// the icon shows its own instead. Must not throw.
+    /// </summary>
+    public Func<TrayNotification, AppNotificationOutcome> Notify { get; init; } = _ => AppNotificationOutcome.Unavailable;
+
     /// <summary>Whether the taskbar is dark right now.</summary>
     public Func<bool> DarkTaskbar { get; init; } = () => true;
 
@@ -270,8 +276,13 @@ public sealed class TraySession
             IReadOnlyList<ScannedCheck> news = TrayLogic.NewFailures(before, kept, _settings.IgnoredIds());
             if (_settings.NotifyNewFailures && !TrayLogic.IsSnoozed(_settings, now) && TrayLogic.Notification(news) is { } notification)
             {
-                _notifiedCheck = news.Count == 1 ? news[0].Definition.Id : null;
-                _icon.Notify(notification.Title, notification.Text);
+                // The app notification opens the window by itself when clicked; the icon's own
+                // tells the icon, which opens it on this check.
+                _notifiedCheck = notification.CheckId;
+                if (_environment.Notify(notification) == AppNotificationOutcome.Unavailable)
+                {
+                    _icon.Notify(notification.Title, notification.Text);
+                }
             }
         }
 #pragma warning disable CA1031 // Posted to the icon's thread, where nothing may be thrown.

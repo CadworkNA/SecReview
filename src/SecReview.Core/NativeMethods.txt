@@ -134,6 +134,12 @@ TOKEN_ELEVATION_TYPE
 LoadImage
 SendMessage
 WM_SETICON
+// App notifications: the window's identity, and taking a click from Windows. The tests call
+// the callback through Windows as the notification platform does.
+SetCurrentProcessExplicitAppUserModelID
+CoRegisterClassObject
+CoRevokeClassObject
+INotificationActivationCallback
 WinVerifyTrust
 WINTRUST_DATA
 WINTRUST_FILE_INFO

@@ -24,6 +24,12 @@ public sealed record UiRole(
 public sealed record TrayRole(bool SmokeTest = false) : AppRole;
 
 /// <summary>
+/// One of SecReview's notifications was clicked: take the click from Windows, then open the
+/// window on what it asks for. Nothing comes from the command line.
+/// </summary>
+public sealed record NotificationClickRole : AppRole;
+
+/// <summary>
 /// Write what error reports would hold to a file, without sending anything, and exit. Used by
 /// the build to prove that no name, path or secret gets into a report.
 /// </summary>

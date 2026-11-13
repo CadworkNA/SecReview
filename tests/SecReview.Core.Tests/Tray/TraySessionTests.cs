@@ -21,6 +21,8 @@ public sealed class TraySessionTests
     private readonly List<string?> _opened = [];
     private readonly List<string> _errors = [];
     private string _folder = string.Empty;
+    private readonly List<TrayNotification> _appNotifications = [];
+    private AppNotificationOutcome _appOutcome = AppNotificationOutcome.Unavailable;
     private Func<Task<ScanResult>> _scan = () => throw new InvalidOperationException("No scan was expected.");
     private int _scans;
 
@@ -51,6 +53,11 @@ public sealed class TraySessionTests
         },
         Clock = _clock,
         OpenWindow = _opened.Add,
+        Notify = notification =>
+        {
+            _appNotifications.Add(notification);
+            return _appOutcome;
+        },
         OnError = (where, exception) => _errors.Add($"{where}: {exception.GetType().Name}"),
         Checks = Checks,
         Texts = Texts,
@@ -147,6 +154,49 @@ public sealed class TraySessionTests
         _clock.Advance(TimeSpan.FromHours(4));
         await Tick(session);
         Assert.AreEqual(1, _icon.Notifications.Count, "still failing is not news");
+    }
+
+    [TestMethod]
+    [DataRow(AppNotificationOutcome.Shown, DisplayName = "shown")]
+    [DataRow(AppNotificationOutcome.SwitchedOff, DisplayName = "switched off in Windows")]
+    public async Task AnAppNotification_ThatWindowsTakesOrTheUserSwitchedOff_LeavesTheIconQuiet(AppNotificationOutcome outcome)
+    {
+        _appOutcome = outcome;
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        ScansAnswer();
+        await Tick(session);
+
+        ScansAnswer(Checks[0]);
+        _clock.Advance(TimeSpan.FromHours(4));
+        await Tick(session);
+
+        Assert.AreEqual(1, _appNotifications.Count);
+        Assert.AreEqual(new TrayNotification(Texts[FirewallCheck.Id].TitleFail, "It is off.", FirewallCheck.Id), _appNotifications[0]);
+        Assert.AreEqual(0, _icon.Notifications.Count, "never both, and not around the user's choice");
+    }
+
+    [TestMethod]
+    public async Task WhereAppNotificationsAreUnavailable_TheIconShowsItsOwn()
+    {
+        TraySession session = Session();
+        session.Start();
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        ScansAnswer();
+        await Tick(session);
+
+        ScansAnswer(Checks[0], Checks[1]);
+        _clock.Advance(TimeSpan.FromHours(4));
+        await Tick(session);
+
+        Assert.AreEqual(1, _appNotifications.Count, "tried first");
+        Assert.IsNull(_appNotifications[0].CheckId, "two checks: the window as it is");
+        Assert.AreEqual(1, _icon.Notifications.Count);
+        Assert.AreEqual(("2 checks started failing", _appNotifications[0].Text), _icon.Notifications[0]);
+
+        session.Handle(TrayCommand.NotificationClicked);
+        CollectionAssert.AreEqual(new string?[] { null }, _opened);
     }
 
     [TestMethod]
