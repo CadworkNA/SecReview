@@ -233,6 +233,21 @@
     "settingsLink": null,
     "references": []
   },
+  "network.proxy": {
+    "name": "Proxy configuration script",
+    "titlePass": "No proxy script is fetched over an unprotected connection",
+    "titleFail": "The proxy script is fetched over plain HTTP",
+    "why": "The script decides where your web traffic goes. Fetched over plain HTTP, anyone on the network can swap it and send your traffic through their own server.",
+    "fix": [
+      "Open Settings > Network & internet > Proxy.",
+      "Under Use setup script, select Edit and change the address to one that starts with https://.",
+      "If you do not know the script, turn Use setup script off.",
+      "If the setting is greyed out, tell IT."
+    ],
+    "timeToFix": "5 min",
+    "settingsLink": "ms-settings:network-proxy",
+    "references": []
+  },
   "disk.encryption": {
     "name": "Disk encryption",
     "titlePass": "Disk encryption is on",
@@ -447,6 +462,21 @@
       "Delete a task that is not needed, or reinstall its product under Program Files."
     ],
     "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.revocation": {
+    "name": "Revoked certificates",
+    "titlePass": "Windows checks whether certificates were revoked",
+    "titleFail": "Windows does not check whether certificates were revoked",
+    "why": "A stolen certificate is revoked so that nothing trusts it any more. With the check off, a program or website that uses one is still accepted.",
+    "fix": [
+      "Press Start, type Internet Options and open it.",
+      "On the Advanced tab, under Security, tick Check for publisher's certificate revocation.",
+      "Tick Check for server certificate revocation, select OK and restart the PC.",
+      "If a box is greyed out, tell IT: it is set by policy."
+    ],
+    "timeToFix": "5 min",
     "settingsLink": null,
     "references": []
   },
@@ -947,6 +977,21 @@
     "settingsLink": null,
     "references": []
   },
+  "sc.transfer.credentials": {
+    "name": "File transfer passwords",
+    "titlePass": "File transfer tools keep no readable passwords",
+    "titleFail": "A file transfer tool keeps a password that can be read back",
+    "why": "FileZilla and WinSCP encrypt a saved password only when a master password is set; PuTTY keeps a proxy password as written. Any program running as you can read the rest and sign in to those servers.",
+    "fix": [
+      "FileZilla: open Edit, Settings, Interface, Passwords, and protect them with a master password.",
+      "PuTTY: load the saved session, open Connection, Proxy, clear the password and save.",
+      "WinSCP: open Preferences, Security, and turn on Use master password.",
+      "Or delete the saved site, and sign in with a key that has a passphrase where the server allows it."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
   "sc.editor.updates": {
     "name": "Editor extension updates",
     "titlePass": "Your editor waits before installing extension updates",
@@ -1083,6 +1128,21 @@
       "Delete the certificate unless you know which tool added it and still use that tool."
     ],
     "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "sc.trust.rootkeys": {
+    "name": "Certificate authority keys",
+    "titlePass": "No trusted certificate authority keeps its key on this PC",
+    "titleFail": "A trusted certificate authority keeps its key on this PC",
+    "why": "Any program that copies the key can pose as any website or package registry to this PC. Debugging proxies and local HTTPS tools set this up.",
+    "fix": [
+      "Find the tool that added it: a debugging proxy or a local HTTPS tool.",
+      "Use that tool's own command to remove its certificate authority when you are done with it.",
+      "Or press Start, type certmgr.msc and open Trusted Root Certification Authorities, Certificates.",
+      "Delete the certificate with the thumbprint from the details."
+    ],
+    "timeToFix": "10 min",
     "settingsLink": null,
     "references": []
   },

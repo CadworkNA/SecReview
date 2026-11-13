@@ -577,4 +577,24 @@ public sealed class RuleCheckTests
     {
         Assert.AreEqual(CheckStatus.Error, Run(Rule(), new FakeProbes()).Status);
     }
+
+    [TestMethod]
+    [DataRow(null, CheckStatus.Pass)]
+    [DataRow("0", CheckStatus.Pass)]
+    [DataRow("10", CheckStatus.Pass)]
+    [DataRow("11", CheckStatus.Fail)]
+    [DataRow("25", CheckStatus.Fail)]
+    [DataRow("many", CheckStatus.Error)]
+    public void TheShippedCachedSignInsRule_ReadsTheNumberWindowsKeepsAsText(string? kept, CheckStatus expected)
+    {
+        RuleDefinition rule = RuleSet.Shipped.Single(r => r.Id == "harden.cached-logons");
+        var probes = new FakeProbes();
+        if (kept is not null)
+        {
+            probes.WithRegistryValue(
+                RegistryRoot.LocalMachine, AutomaticLogonCheck.WinlogonKey, "CachedLogonsCount", RegistryValue.FromText(kept));
+        }
+
+        Assert.AreEqual(expected, new RuleCheck(rule).Run(probes).Status);
+    }
 }
