@@ -924,7 +924,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             case DemoState.Failed:
                 Headline = "The checks could not run";
-                Failure = "SecReview needs Windows 10 version 22H2 or later.";
+                Failure = $"SecReview needs {WindowsProbes.MinimumWindowsName} or later.";
                 HasFailed = true;
                 return;
 
