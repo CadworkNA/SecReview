@@ -9,18 +9,15 @@ param([Parameter(Mandatory, ValueFromRemainingArguments)] [string[]] $Files)
 
 $ErrorActionPreference = 'Stop'
 
-# The module that talks to the signing service: the exact version azure/artifact-signing-action v2.0.0 uses.
-$moduleVersion = '0.1.8'
-
 foreach ($name in 'SIGNING_ACCOUNT_NAME', 'CERTIFICATE_PROFILE_NAME') {
     if (-not [Environment]::GetEnvironmentVariable($name)) { throw "$name is not set." }
 }
 $endpoint = if ($env:SIGNING_ENDPOINT) { $env:SIGNING_ENDPOINT } else { 'https://wus2.codesigning.azure.net/' }
 
-if (-not (Get-Module -ListAvailable ArtifactSigning | Where-Object Version -eq $moduleVersion)) {
-    Install-Module ArtifactSigning -RequiredVersion $moduleVersion -Force -Repository PSGallery -Scope CurrentUser
-}
-Import-Module ArtifactSigning -RequiredVersion $moduleVersion
+# The module that talks to the signing service and the tools it uses, each checked by its
+# SHA-256 (signing-tools.ps1).
+$modulePath = & (Join-Path $PSScriptRoot 'signing-tools.ps1')
+Import-Module -Name $modulePath
 
 # Inno Setup hands over temporary files with names such as "uninst.e32.tmp". The signing
 # tools go by the extension, so those are signed as copies named .exe and copied back.
