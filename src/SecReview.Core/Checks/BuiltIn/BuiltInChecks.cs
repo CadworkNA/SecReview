@@ -30,6 +30,7 @@ public static class BuiltInChecks
         new RemoteServicesCheck(),
         new SharedFoldersCheck(),
         new FirewallProgramsCheck(),
+        new ProxyCheck(),
 
         // System integrity
         new DriveEncryptionCheck(),
@@ -49,6 +50,7 @@ public static class BuiltInChecks
         new ScheduledTasksCheck(),
 
         // Hardening (the rest of this category is written as rules)
+        new RevocationCheck(),
         new SoftwareKeysCheck(),
     ];
 }

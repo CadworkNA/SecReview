@@ -80,7 +80,7 @@ answer here in the same pull request.
 | crypto_call | Nothing is implemented here: .NET's and Windows' implementations are called. |
 | crypto_floss | The functions used (SHA-256, TLS, Authenticode verification) all have open-source implementations. |
 | crypto_keylength | SHA-256 for files; TLS and signature key lengths are those of Windows and of the signing service. SecReview creates no keys. |
-| crypto_working | No MD5, SHA-1, DES or RC4 in the programs. (The build script names Microsoft's root certificates by their SHA-1 thumbprint, as Windows shows them; nothing is secured by that hash.) |
+| crypto_working | No MD5, SHA-1, DES or RC4 in the programs. (Certificates are named by their SHA-1 thumbprint, as Windows shows them: Microsoft's roots in the build script, and trusted authorities in the check that looks for their key on the PC. Nothing is secured by that hash.) |
 | crypto_weaknesses | As above. |
 | crypto_pfs | N/A: SecReview implements no key agreement; its two HTTPS requests use Windows' TLS. |
 | crypto_password_storage | N/A: SecReview stores no passwords. |
