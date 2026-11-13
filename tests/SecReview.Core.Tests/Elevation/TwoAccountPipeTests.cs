@@ -6,10 +6,12 @@ using SecReview.Elevation;
 namespace SecReview.Tests.Elevation;
 
 /// <summary>
-/// The administrator pipe, as the window makes it, with clients from two other accounts: a
-/// standard user must be refused, and an administrator of another account (whoever answers the
-/// Windows prompt) let in. Needs two accounts on the machine, so it runs on GitHub's disposable
-/// build machines only, through <c>scripts/test-two-accounts.ps1</c>; anywhere else it says so.
+/// The administrator pipe, as the window makes it, with clients from two other accounts.
+/// Another standard user is refused, and so is an administrator of another account without
+/// elevation (what a program of theirs has before the Windows prompt). The same administrator
+/// with elevation, which is what the helper has after the prompt, is let in. Needs two accounts
+/// on the machine, so it runs on GitHub's disposable build machines only, through
+/// <c>scripts/test-two-accounts.ps1</c>; anywhere else it says so.
 /// </summary>
 [TestClass]
 [SupportedOSPlatform("windows")]
@@ -19,13 +21,14 @@ public sealed class TwoAccountPipeTests
     private const string OtherAdministratorVariable = "SECREVIEW_TEST_OTHER_ADMINISTRATOR";
     private const string PasswordVariable = "SECREVIEW_TEST_PASSWORD";
 
-    /// <summary>The client's exit codes: connected and wrote; refused; anything else.</summary>
-    private const int Connected = 0;
-    private const int Refused = 5;
+    private static readonly string PowerShell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+
+    /// <summary>What a client reports: whether it got in, and whether it ran elevated.</summary>
+    private sealed record Attempt(string Outcome, bool Elevated);
 
     [TestMethod]
     [TestCategory("TwoAccounts")]
-    public async Task AnotherStandardUserIsRefused_AnAdministratorOfAnotherAccountIsLetIn()
+    public async Task OnlyAnElevatedAdministrator_GetsIn_FromAnyAccount()
     {
         string? standardUser = Environment.GetEnvironmentVariable(StandardUserVariable);
         string? otherAdministrator = Environment.GetEnvironmentVariable(OtherAdministratorVariable);
@@ -39,52 +42,137 @@ public sealed class TwoAccountPipeTests
             string.IsNullOrEmpty(standardUser) || string.IsNullOrEmpty(otherAdministrator) || string.IsNullOrEmpty(password),
             "All three test account variables must be set.");
 
-        string name = ElevationPipe.NewName();
-        using NamedPipeServerStream pipe = AdministratorScan.CreatePipe(name, alsoThisUser: false);
-        Task waiting = pipe.WaitForConnectionAsync();
+        string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SecReviewPipeTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string name = ElevationPipe.NewName();
+            using NamedPipeServerStream pipe = AdministratorScan.CreatePipe(name, alsoThisUser: false);
+            Task waiting = pipe.WaitForConnectionAsync();
 
-        Assert.AreEqual(Refused, await ConnectAs(standardUser!, password!, name), "another standard user is refused");
-        Assert.IsFalse(waiting.IsCompleted, "nothing connected");
+            Attempt standard = await StartedWithPassword(standardUser!, password!, name, folder);
+            Assert.AreEqual(new Attempt("refused", Elevated: false), standard, "another standard user is refused");
 
-        Assert.AreEqual(Connected, await ConnectAs(otherAdministrator!, password!, name), "an administrator of another account is let in");
-        await waiting.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.AreEqual(1, pipe.ReadByte(), "what that administrator wrote arrives");
+            Attempt notElevated = await StartedWithPassword(otherAdministrator!, password!, name, folder);
+            Assert.AreEqual(new Attempt("refused", Elevated: false), notElevated, "another administrator is refused before elevation");
+            Assert.IsFalse(waiting.IsCompleted, "nothing connected");
+
+            Attempt elevated = await StartedElevated(otherAdministrator!, password!, name, folder);
+            Assert.AreEqual(new Attempt("connected", Elevated: true), elevated, "an elevated administrator of another account is let in");
+            await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreEqual(1, pipe.ReadByte(), "what that administrator wrote arrives");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 
     /// <summary>
-    /// Starts Windows PowerShell as <paramref name="user"/> to open the pipe and write one byte.
-    /// Returns its exit code: <see cref="Connected"/>, <see cref="Refused"/>, or another number
-    /// for anything else.
+    /// The client: opens the pipe, writes one byte, and writes "outcome|elevated" to the result
+    /// file. Outcome is "connected", "refused" or the error.
     /// </summary>
-    private static async Task<int> ConnectAs(string user, string password, string pipeName)
-    {
-        string script =
-            "$c = [System.IO.Pipes.NamedPipeClientStream]::new('.', '" + pipeName + "', [System.IO.Pipes.PipeDirection]::Out); " +
-            "try { $c.Connect(5000); $c.WriteByte(1); $c.Flush(); $c.Dispose(); exit " + Connected + " } " +
-            "catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }; " +
-            "if ($e -is [System.UnauthorizedAccessException]) { exit " + Refused + " }; [Console]::Error.WriteLine($e.Message); exit 1 }";
+    private static string ClientScript(string pipeName, string resultPath) =>
+        "$elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)\r\n" +
+        "$c = [System.IO.Pipes.NamedPipeClientStream]::new('.', '" + pipeName + "', [System.IO.Pipes.PipeDirection]::Out)\r\n" +
+        "try { $c.Connect(5000); $c.WriteByte(1); $c.Flush(); $c.Dispose(); $outcome = 'connected' }\r\n" +
+        "catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }\r\n" +
+        "  $outcome = if ($e -is [System.UnauthorizedAccessException]) { 'refused' } else { $e.Message } }\r\n" +
+        "Set-Content -LiteralPath '" + resultPath + "' -Value \"$outcome|$elevated\" -Encoding ASCII\r\n";
 
-        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"))
+    /// <summary>
+    /// Started with the account's password (CreateProcessWithLogonW): what a program of that
+    /// user runs with, without elevation.
+    /// </summary>
+    private static async Task<Attempt> StartedWithPassword(string user, string password, string pipeName, string folder)
+    {
+        string result = Path.Combine(folder, user + "-password.txt");
+        string script = Path.Combine(folder, user + "-password.ps1");
+        await File.WriteAllTextAsync(script, ClientScript(pipeName, result));
+
+        var start = new ProcessStartInfo(PowerShell)
         {
             UserName = user,
             PasswordInClearText = password,
             LoadUserProfile = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardError = true,
             WorkingDirectory = Environment.SystemDirectory,
         };
-        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", script })
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script })
         {
             start.ArgumentList.Add(argument);
         }
 
         using Process client = Process.Start(start) ?? throw new InvalidOperationException("The client did not start.");
-        Task<string> errors = client.StandardError.ReadToEndAsync();
         using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await client.WaitForExitAsync(limit.Token);
+        return await ReadResult(result, user);
+    }
+
+    /// <summary>
+    /// Started as a scheduled task that runs with the account's highest rights: for an
+    /// administrator, the full rights the helper has after the Windows prompt.
+    /// </summary>
+    private static async Task<Attempt> StartedElevated(string user, string password, string pipeName, string folder)
+    {
+        string result = Path.Combine(folder, user + "-elevated.txt");
+        string script = Path.Combine(folder, user + "-elevated.ps1");
+        await File.WriteAllTextAsync(script, ClientScript(pipeName, result));
+        string task = "SecReviewPipeTest-" + Guid.NewGuid().ToString("N");
+
+        string register =
+            $"$a = New-ScheduledTaskAction -Execute '{PowerShell}' -Argument '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{script}\"'; " +
+            $"Register-ScheduledTask -TaskName '{task}' -Action $a -User $env:SR_TASK_USER -Password $env:SR_TASK_PASSWORD -RunLevel Highest -Force | Out-Null; " +
+            $"Start-ScheduledTask -TaskName '{task}'";
+        try
+        {
+            await RunPowerShell(register, ("SR_TASK_USER", user), ("SR_TASK_PASSWORD", password));
+            for (int attempt = 0; attempt < 60 && !File.Exists(result); attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1));
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            return await ReadResult(result, user);
+        }
+        finally
+        {
+            await RunPowerShell($"Unregister-ScheduledTask -TaskName '{task}' -Confirm:$false -ErrorAction SilentlyContinue");
+        }
+    }
+
+    private static async Task RunPowerShell(string command, params (string Name, string Value)[] environment)
+    {
+        var start = new ProcessStartInfo(PowerShell)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+        };
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", command })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        foreach ((string name, string value) in environment)
+        {
+            start.Environment[name] = value;
+        }
+
+        using Process process = Process.Start(start) ?? throw new InvalidOperationException("PowerShell did not start.");
+        Task<string> errors = process.StandardError.ReadToEndAsync();
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        await process.WaitForExitAsync(limit.Token);
         string written = await errors;
-        Assert.IsTrue(client.ExitCode is Connected or Refused, $"The client as {user} ended with {client.ExitCode}: {written}");
-        return client.ExitCode;
+        Assert.AreEqual(0, process.ExitCode, $"PowerShell failed: {written}");
+    }
+
+    private static async Task<Attempt> ReadResult(string path, string user)
+    {
+        Assert.IsTrue(File.Exists(path), $"The client as {user} wrote no result.");
+        string[] parts = (await File.ReadAllTextAsync(path)).Trim().Split('|');
+        Assert.AreEqual(2, parts.Length, $"The client as {user} wrote: {string.Join('|', parts)}");
+        return new Attempt(parts[0], bool.Parse(parts[1]));
     }
 }
