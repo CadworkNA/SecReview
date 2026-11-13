@@ -125,12 +125,13 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SIGN: ${{ steps.version.outputs.sign }}
           ERROR_REPORT_ADDRESS: ${{ secrets.SENTRY_DSN || vars.SENTRY_DSN }}
-          # Where the programs look for updates: the address of latest.json. Unset, they never look.
-          UPDATE_URL: ${{ vars.UPDATE_URL }}
+          # Where the programs look for updates: the address of latest.json. Written here, not
+          # in the repository's settings, so a change is part of the code's history, like the
+          # publisher in signing/Publisher.props.
+          UPDATE_URL: https://github.com/CadworkNA/SecReview/releases/latest/download/latest.json
         run: |
-          $more = @{}
+          $more = @{ UpdateUrl = $env:UPDATE_URL }
           if ($env:ERROR_REPORT_ADDRESS) { $more.ErrorReportAddress = $env:ERROR_REPORT_ADDRESS }
-          if ($env:UPDATE_URL) { $more.UpdateUrl = $env:UPDATE_URL }
           ./build.ps1 -Locked -Version $env:VERSION -MalwareIndex artifacts/list/known-malicious.idx -Installer -Sign:($env:SIGN -eq 'true') @more
 
       - name: Install, upgrade and uninstall on this machine
