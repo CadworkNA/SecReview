@@ -238,6 +238,31 @@ public sealed class ScanPresentationTests
     }
 
     [TestMethod]
+    public void ACheckThatReadsMostOfAListItself_KeepsTheAdministratorAnswer_WhileItFindsNoProblem()
+    {
+        ScannedCheck List(CheckOutcome outcome, bool elevated, DateTimeOffset checkedAt) => new(
+            new CheckDefinition(
+                "made-up.list", CheckCategory.SystemIntegrity, Severity.High, AdminNeed.ForFullDetail, KeepsAdministratorAnswer: true),
+            Texts[FirewallCheck.Id],
+            new CheckResult("made-up.list", outcome, checkedAt, elevated, TimeSpan.Zero));
+
+        ScannedCheck allRead = List(CheckOutcome.Pass("All 40 are protected."), elevated: true, When.AddDays(-3));
+        ScannedCheck someUnread = List(CheckOutcome.NeedsAdmin("No problem in 38; 2 more need administrator rights to read."), elevated: false, When);
+        ScannedCheck problem = List(CheckOutcome.Fail("1 is not protected."), elevated: false, When);
+        ScannedCheck unreadable = List(CheckOutcome.Error("Could not read the list."), elevated: false, When);
+        ScannedCheck ordinaryPass = List(CheckOutcome.Pass("All 38 are protected."), elevated: false, When);
+        ScannedCheck tooOld = List(CheckOutcome.Pass("x"), elevated: true, When - ScanPresentation.AdministratorAnswerLifetime - TimeSpan.FromMinutes(1));
+        ScannedCheck oldOrdinary = List(CheckOutcome.Pass("x"), elevated: false, When.AddDays(-1));
+
+        Assert.AreSame(allRead, ScanPresentation.Newer(allRead, someUnread, When), "the administrator's answer covers the whole list");
+        Assert.AreSame(problem, ScanPresentation.Newer(allRead, problem, When), "a problem found now is always shown");
+        Assert.AreSame(unreadable, ScanPresentation.Newer(allRead, unreadable, When));
+        Assert.AreSame(ordinaryPass, ScanPresentation.Newer(allRead, ordinaryPass, When));
+        Assert.AreSame(someUnread, ScanPresentation.Newer(tooOld, someUnread, When), "after a month it asks again");
+        Assert.AreSame(someUnread, ScanPresentation.Newer(oldOrdinary, someUnread, When), "only an administrator's answer is kept");
+    }
+
+    [TestMethod]
     public void AnAnswerDatedAfterNow_IsNotKept()
     {
         ScannedCheck asks = Answer(CheckOutcome.NeedsAdmin("x"), elevated: false, When);

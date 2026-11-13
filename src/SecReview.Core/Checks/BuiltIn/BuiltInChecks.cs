@@ -1,3 +1,4 @@
+using SecReview.Checks.BuiltIn.Programs;
 using SecReview.Checks.BuiltIn.Ssh;
 
 namespace SecReview.Checks.BuiltIn;
@@ -28,15 +29,26 @@ public static class BuiltInChecks
         new RemoteDesktopCheck(),
         new RemoteServicesCheck(),
         new SharedFoldersCheck(),
+        new FirewallProgramsCheck(),
 
         // System integrity
         new DriveEncryptionCheck(),
         new AntivirusCheck(),
         new DefenderCheck(),
+        new AllowedAppsCheck(),
         new UacCheck(),
         new SecureBootCheck(),
         new TpmCheck(),
         new MemoryIntegrityCheck(),
         new BootOptionsCheck(),
+        new StartupProgramsCheck(),
+        new ServiceProgramsCheck(),
+        new SearchPathCheck(),
+        new ProgramFoldersCheck(),
+        new RegisteredComponentsCheck(),
+        new ScheduledTasksCheck(),
+
+        // Hardening (the rest of this category is written as rules)
+        new SoftwareKeysCheck(),
     ];
 }

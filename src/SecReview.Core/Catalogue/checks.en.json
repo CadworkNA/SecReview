@@ -218,6 +218,21 @@
     "settingsLink": null,
     "references": []
   },
+  "firewall.programs": {
+    "name": "Firewall program rules",
+    "titlePass": "Firewall rules allow only protected programs",
+    "titleFail": "A firewall rule allows a program any user can replace",
+    "why": "An allow rule lets its program accept connections from the network. If any user can replace that program, the rule works for whatever they put there.",
+    "fix": [
+      "Press Windows+R, type wf.msc and press Enter, then select Inbound Rules.",
+      "Disable or delete the rule named in the details if the program is not needed.",
+      "Otherwise open the program's folder and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
   "disk.encryption": {
     "name": "Disk encryption",
     "titlePass": "Disk encryption is on",
@@ -257,6 +272,21 @@
       "Turn on Real-time protection, Cloud-delivered protection and Tamper Protection."
     ],
     "timeToFix": "1 min",
+    "settingsLink": "ms-settings:windowsdefender",
+    "references": []
+  },
+  "defender.allowedapps": {
+    "name": "Ransomware protection: allowed apps",
+    "titlePass": "Apps trusted by ransomware protection are protected",
+    "titleFail": "An app trusted by ransomware protection can be replaced",
+    "why": "Apps on this list may write to protected folders. If a standard user can replace one, the protection no longer covers what it does.",
+    "fix": [
+      "Open Windows Security, Virus & threat protection, Manage ransomware protection.",
+      "Select Allow an app through Controlled folder access and remove the app named in the details.",
+      "Or open the app's folder and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify."
+    ],
+    "timeToFix": "10 min",
     "settingsLink": "ms-settings:windowsdefender",
     "references": []
   },
@@ -327,6 +357,111 @@
       "Restart the PC."
     ],
     "timeToFix": "5 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.startup": {
+    "name": "Start-up programs",
+    "titlePass": "Standard users cannot change start-up programs",
+    "titleFail": "Standard users can change a start-up program",
+    "why": "These programs start for every user who signs in. Whoever can replace one runs code as each of them, with whatever rights that user has.",
+    "fix": [
+      "Open the folder named in the details, right-click it and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify.",
+      "Or uninstall the product and install it again in the folder its setup suggests.",
+      "Remove an entry whose program is gone or on a network: open Task Manager, Startup apps."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.services": {
+    "name": "Service programs",
+    "titlePass": "Standard users cannot change service programs",
+    "titleFail": "Standard users can change a service program",
+    "why": "Services run with full control of the PC. Whoever can replace a service's program, or plant one where Windows looks first, gets that control.",
+    "fix": [
+      "Open the folder named in the details, right-click it and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify.",
+      "Or uninstall the product and install it again in the folder its setup suggests.",
+      "For a path written without quotes, ask the product's maker for a fix, or tell IT."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.searchpath": {
+    "name": "Program search path",
+    "titlePass": "Search path folders are protected from standard users",
+    "titleFail": "Standard users can change a search path folder",
+    "why": "Windows and services look for programs in these folders. A program planted in one runs in place of the real one, with its rights.",
+    "fix": [
+      "Open Start, type environment and open Edit the system environment variables.",
+      "Select Environment Variables, then Path under System variables, then Edit.",
+      "Remove the folders named in the details, or fix their permissions: Properties, Security, Advanced.",
+      "Put tools that standard users install on their own Path, not on the system one."
+    ],
+    "timeToFix": "10 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.programfolders": {
+    "name": "Program folders",
+    "titlePass": "Program folders are protected from standard users",
+    "titleFail": "Standard users can change a program folder",
+    "why": "A program is only as protected as its folder. Where standard users can write, they can replace it, and whoever starts it next runs their copy.",
+    "fix": [
+      "Open the folder named in the details, right-click it and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify.",
+      "Or move the programs under Program Files and remove the folder.",
+      "Do not keep programs in a folder that every user has to be able to write to."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.registered": {
+    "name": "Registered components",
+    "titlePass": "Registered components are protected from standard users",
+    "titleFail": "Standard users can change a registered component",
+    "why": "Windows loads these components into other programs. A replaced component runs in every program that loads it, with that program's rights.",
+    "fix": [
+      "Open the folder named in the details, right-click it and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify.",
+      "Or uninstall the product and install it again in the folder its setup suggests.",
+      "Uninstall a product whose component is on a network location."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "system.tasks": {
+    "name": "Scheduled task programs",
+    "titlePass": "Standard users cannot change what system tasks run",
+    "titleFail": "Standard users can change what a system task runs",
+    "why": "These tasks run as the system or an administrator without asking. Whoever can replace their program runs code with those rights.",
+    "fix": [
+      "Press Windows+R, type taskschd.msc and press Enter, and find the task named in the details.",
+      "Open the folder of its program and select Properties, Security, Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone write or modify.",
+      "Delete a task that is not needed, or reinstall its product under Program Files."
+    ],
+    "timeToFix": "15 min",
+    "settingsLink": null,
+    "references": []
+  },
+  "harden.software-keys": {
+    "name": "Registry settings for the whole PC",
+    "titlePass": "Only administrators can change settings for the whole PC",
+    "titleFail": "Standard users can change settings for the whole PC",
+    "why": "Programs that run with high rights read settings from here. A key standard users can change lets them alter what those programs do.",
+    "fix": [
+      "Press Windows+R, type regedit and press Enter, and open the key named in the details.",
+      "Right-click the key, select Permissions, then Advanced.",
+      "Remove the entries that let Users, Authenticated Users or Everyone set values or have full control.",
+      "If you cannot remove them, tell IT."
+    ],
+    "timeToFix": "10 min",
     "settingsLink": null,
     "references": []
   },

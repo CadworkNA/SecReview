@@ -18,4 +18,5 @@ public sealed record SystemProbes(
     IUserRightsProbe UserRights,
     IFileProbe Files,
     IEnvironmentProbe Environment,
-    IPlatformProbe Platform);
+    IPlatformProbe Platform,
+    IAccessProbe Access);

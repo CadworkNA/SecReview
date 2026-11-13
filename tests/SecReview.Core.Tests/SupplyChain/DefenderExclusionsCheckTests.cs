@@ -11,8 +11,14 @@ public sealed class DefenderExclusionsCheckTests
 {
     private static readonly DefenderExclusionsCheck Check = new();
 
+    /// <summary>A PC whose drives only administrators can write to, apart from what Windows itself opens up.</summary>
+    private static FakeProbes Pc() => new FakeProbes()
+        .WithStandardWindows()
+        .WithDrive('D', DriveKind.Fixed)
+        .WithAccessBelow(@"D:\", FakeAccess.Protected);
+
     private static FakeProbes With(string kind, string name, FakeProbes? probes = null, string key = DefenderExclusionsCheck.LocalKey) =>
-        (probes ?? new FakeProbes()).WithRegistryNumber(RegistryRoot.LocalMachine, $@"{key}\{kind}", name, 0);
+        (probes ?? Pc()).WithRegistryNumber(RegistryRoot.LocalMachine, $@"{key}\{kind}", name, 0);
 
     [TestMethod]
     public void TheCheck_IsAnsweredOnlyByAnElevatedScan_OfThePc()
@@ -86,6 +92,46 @@ public sealed class DefenderExclusionsCheckTests
     }
 
     [TestMethod]
+    [DataRow("Paths", @"C:\Tools\cache", DisplayName = "a folder users can change")]
+    [DataRow("Paths", @"C:\ProgramData\Example\", DisplayName = "a folder users can add files to")]
+    [DataRow("Paths", @"C:\Gone\cache", DisplayName = "a missing folder users can create")]
+    [DataRow("Processes", @"C:\Tools\cache\tool.exe", DisplayName = "a program users can replace")]
+    public void ANarrowExclusion_StillFails_WhereStandardUsersCanPutFiles(string kind, string name)
+    {
+        FakeProbes probes = Pc()
+            .WithFile(@"C:\Tools\cache\tool.exe", "made up")
+            .WithAccessBelow(@"C:\Tools", FakeAccess.UsersModify)
+            .WithAccess(@"C:\ProgramData\Example", FakeAccess.UsersAdd);
+
+        CheckOutcome outcome = Check.Run(With(kind, name, probes), elevated: true);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status, outcome.Summary);
+        Assert.AreEqual("Standard users can put files here", outcome.Findings[0].Found);
+    }
+
+    [TestMethod]
+    public void WhoMayChangeAnExcludedPlace_NotBeingReadable_IsCouldNotCheck_NotAPass()
+    {
+        FakeProbes probes = Pc().WithAccessFailure(@"D:\Data", ProbeFailure.Failed("The disk reported an error."));
+
+        CheckOutcome outcome = Check.Run(With("Paths", @"D:\Data\db", probes), elevated: true);
+
+        Assert.AreEqual(CheckStatus.Error, outcome.Status);
+        Assert.AreEqual("Could not read who may change 1 excluded place.", outcome.Summary);
+    }
+
+    [TestMethod]
+    public void APatternOrAProgramNamedWithoutItsFolder_IsListedAsBefore()
+    {
+        FakeProbes probes = With("Paths", @"D:\Data\*.tmp", With("Processes", "tool.exe", With("Paths", @"%ProgramData%\Example")));
+
+        CheckOutcome outcome = Check.Run(probes, elevated: true);
+
+        Assert.AreEqual(CheckStatus.Pass, outcome.Status, outcome.Summary);
+        Assert.AreEqual(3, outcome.Findings.Count(f => f.Status == FindingStatus.Note));
+    }
+
+    [TestMethod]
     public void ExclusionsSetByPolicy_Count_AndAreMarkedAsManaged()
     {
         CheckOutcome wide = Check.Run(With("Paths", @"C:\", key: DefenderExclusionsCheck.PolicyKey), elevated: true);
@@ -102,7 +148,7 @@ public sealed class DefenderExclusionsCheckTests
         CheckOutcome two = Check.Run(With("Paths", @"C:\", With("Extensions", "exe")), elevated: true);
         Assert.AreEqual("Microsoft Defender skips 2 places or file types where downloaded code lands.", two.Summary);
 
-        var many = new FakeProbes();
+        FakeProbes many = Pc();
         for (int i = 0; i < 13; i++)
         {
             With("Paths", $@"D:\Data\set{i}", many);

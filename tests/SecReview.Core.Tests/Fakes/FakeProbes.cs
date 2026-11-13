@@ -140,6 +140,101 @@ internal sealed class FakeProbes
         return this;
     }
 
+    private readonly HashSet<string> _folders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _registryKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ProbeResult<FakeAccess>> _access = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<(string Folder, FakeAccess Access)> _accessBelow = [];
+    private readonly Dictionary<string, ProbeResult<FakeAccess>> _keyAccess = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<(string Key, FakeAccess Access)> _keyAccessBelow = [];
+    private readonly Dictionary<char, DriveKind> _drives = [];
+
+    /// <summary>When set, every permission and drive read ends this way.</summary>
+    public ProbeFailure? AccessFailure { get; set; }
+
+    /// <summary>A folder that exists though the test put no file in it.</summary>
+    public FakeProbes WithFolder(string directory)
+    {
+        _folders.Add(directory.TrimEnd('\\'));
+        return this;
+    }
+
+    /// <summary>
+    /// The permissions of one file or folder, which exists from then on (a folder, unless a
+    /// file was added at that path). A path that exists without permissions fails to read.
+    /// </summary>
+    public FakeProbes WithAccess(string path, FakeAccess access)
+    {
+        _access[path.TrimEnd('\\')] = ProbeResult<FakeAccess>.Ok(access);
+        return this;
+    }
+
+    /// <summary>A file or folder whose permissions cannot be read.</summary>
+    public FakeProbes WithAccessFailure(string path, ProbeFailure failure)
+    {
+        _access[path.TrimEnd('\\')] = failure;
+        return this;
+    }
+
+    /// <summary>The permissions of a folder and of everything in it that has none of its own.</summary>
+    public FakeProbes WithAccessBelow(string directory, FakeAccess access)
+    {
+        _folders.Add(directory.TrimEnd('\\'));
+        _accessBelow.Add((directory.TrimEnd('\\'), access));
+        return this;
+    }
+
+    /// <summary>A registry key that exists though the test put no value in it.</summary>
+    public FakeProbes WithRegistryKey(RegistryRoot root, string keyPath)
+    {
+        _registryKeys.Add($"{root}\\{keyPath.Trim('\\')}");
+        return this;
+    }
+
+    /// <summary>The permissions of one registry key, which exists from then on.</summary>
+    public FakeProbes WithKeyAccess(RegistryRoot root, string keyPath, FakeAccess access)
+    {
+        _registryKeys.Add($"{root}\\{keyPath.Trim('\\')}");
+        _keyAccess[$"{root}\\{keyPath.Trim('\\')}"] = ProbeResult<FakeAccess>.Ok(access);
+        return this;
+    }
+
+    /// <summary>A registry key whose permissions cannot be read.</summary>
+    public FakeProbes WithKeyAccessFailure(RegistryRoot root, string keyPath, ProbeFailure failure)
+    {
+        _registryKeys.Add($"{root}\\{keyPath.Trim('\\')}");
+        _keyAccess[$"{root}\\{keyPath.Trim('\\')}"] = failure;
+        return this;
+    }
+
+    /// <summary>The permissions of a key and of every key below it that has none of its own.</summary>
+    public FakeProbes WithKeyAccessBelow(RegistryRoot root, string keyPath, FakeAccess access)
+    {
+        _registryKeys.Add($"{root}\\{keyPath.Trim('\\')}");
+        _keyAccessBelow.Add(($"{root}\\{keyPath.Trim('\\')}", access));
+        return this;
+    }
+
+    public FakeProbes WithDrive(char letter, DriveKind kind)
+    {
+        _drives[char.ToUpperInvariant(letter)] = kind;
+        return this;
+    }
+
+    /// <summary>
+    /// Drive C as Windows sets it up: users may create folders at the top and files in the
+    /// shared data folder, and can only read the Windows and program folders.
+    /// </summary>
+    public FakeProbes WithStandardWindows() => this
+        .WithDrive('C', DriveKind.Fixed)
+        .WithAccess(@"C:\", FakeAccess.Protected.Allow(FakeAccess.AuthenticatedUsers, FakeAccess.Level.AddFolders))
+        .WithAccessBelow(FolderPath(KnownFolder.Windows), FakeAccess.Protected.OwnedBy(FakeAccess.TrustedInstaller))
+        .WithAccessBelow(FolderPath(KnownFolder.ProgramFiles), FakeAccess.Protected.OwnedBy(FakeAccess.TrustedInstaller))
+        .WithAccessBelow(FolderPath(KnownFolder.ProgramFilesX86), FakeAccess.Protected.OwnedBy(FakeAccess.TrustedInstaller))
+        .WithAccess(
+            FolderPath(KnownFolder.ProgramData),
+            FakeAccess.Protected.Allow(FakeAccess.Users, FakeAccess.Level.Add).Allow(FakeAccess.Users, FakeAccess.Level.AddFolders))
+        .WithAccess(@"C:\Users", FakeAccess.Protected);
+
     /// <summary>Where a known folder is on the fake PC.</summary>
     public static string FolderPath(KnownFolder folder) => folder switch
     {
@@ -210,7 +305,8 @@ internal sealed class FakeProbes
         UserRights: new UserRightsProbe(this),
         Files: new FileProbe(this, tamper),
         Environment: new EnvironmentProbe(this, tamper),
-        Platform: new PlatformProbe(this));
+        Platform: new PlatformProbe(this),
+        Access: new AccessProbe(this));
 
     /// <summary>A firewall state with all three profiles set the same way.</summary>
     public static FirewallState FirewallAll(bool enabled, bool blocksInbound = true) => new(
@@ -309,7 +405,28 @@ internal sealed class FakeProbes
                 }
             }
 
-            return names.Count == 0 && !owner._registryValues.Keys.Any(
+            // Keys added without a value: stored as "Root\key\path".
+            string self = prefix.TrimEnd('\\');
+            bool keyExists = false;
+            foreach (string key in owner._registryKeys)
+            {
+                if (key.Equals(self, StringComparison.OrdinalIgnoreCase))
+                {
+                    keyExists = true;
+                }
+                else if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    keyExists = true;
+                    if (subKeys)
+                    {
+                        string rest = key[prefix.Length..];
+                        int separator = rest.IndexOf('\\', StringComparison.Ordinal);
+                        names.Add(separator < 0 ? rest : rest[..separator]);
+                    }
+                }
+            }
+
+            return names.Count == 0 && !keyExists && !owner._registryValues.Keys.Any(
                     path => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 ? ProbeFailure.NotFound()
                 : ProbeResult<IReadOnlyList<string>>.Ok([.. names]);
@@ -451,10 +568,111 @@ internal sealed class FakeProbes
                     LastWrite: owner.FileTime);
             }
 
-            return entries.Count == 0
+            // Folders added without a file in them.
+            foreach (string known in owner._folders.Concat(owner._access.Keys))
+            {
+                if (known.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    string rest = known[prefix.Length..];
+                    int separator = rest.IndexOf('\\', StringComparison.Ordinal);
+                    string name = separator < 0 ? rest : rest[..separator];
+                    bool isFile = separator < 0 && owner._files.ContainsKey(known);
+                    if (!isFile)
+                    {
+                        entries.TryAdd(name, new FileEntry(name, IsDirectory: true, owner._links.Contains(prefix + name), 0, owner.FileTime));
+                    }
+                }
+            }
+
+            return entries.Count == 0 && !owner.FolderExists(folder)
                 ? ProbeFailure.NotFound()
                 : ProbeResult<IReadOnlyList<FileEntry>>.Ok([.. entries.Values]);
         }
+    }
+
+    /// <summary>Whether a folder is there: it was added, or something was added below it.</summary>
+    private bool FolderExists(string folder)
+    {
+        string prefix = folder + "\\";
+        return _folders.Contains(folder) ||
+            (_access.ContainsKey(folder) && !_files.ContainsKey(folder)) ||
+            _files.Keys.Concat(_folders).Concat(_access.Keys).Any(p => p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Permissions held in memory. What exists is what the test added as files, folders,
+    /// permissions, registry keys or values; anything else is "not found".
+    /// </summary>
+    private sealed class AccessProbe(FakeProbes owner) : IAccessProbe
+    {
+        public ProbeResult<SecurityReading> ReadPath(string path)
+        {
+            if ((owner.AccessFailure ?? owner.FilesFailure) is { } everything)
+            {
+                return everything;
+            }
+
+            string place = path.TrimEnd('\\');
+            bool isFile = owner._files.ContainsKey(place);
+            if (!isFile && !owner.FolderExists(place))
+            {
+                return ProbeFailure.NotFound();
+            }
+
+            if (owner._links.Contains(place))
+            {
+                return ProbeFailure.Failed(IAccessProbe.LinkDetail);
+            }
+
+            SecuredKind kind = isFile ? SecuredKind.File : SecuredKind.Folder;
+            if (owner._access.TryGetValue(place, out ProbeResult<FakeAccess> own))
+            {
+                return own.IsOk ? ProbeResult<SecurityReading>.Ok(own.Value!.For(kind)) : own.ToFailure();
+            }
+
+            return Below(owner._accessBelow, place) is { } inherited
+                ? ProbeResult<SecurityReading>.Ok(inherited.For(kind))
+                : NotSetUp;
+        }
+
+        public ProbeResult<SecurityReading> ReadKey(RegistryRoot root, string keyPath)
+        {
+            if ((owner.AccessFailure ?? owner.RegistryFailure) is { } everything)
+            {
+                return everything;
+            }
+
+            string key = $"{root}\\{keyPath.Trim('\\')}";
+            string prefix = key + "\\";
+            bool exists = owner._registryKeys.Contains(key) ||
+                owner._registryKeys.Concat(owner._registryValues.Keys).Any(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            if (!exists)
+            {
+                return ProbeFailure.NotFound();
+            }
+
+            if (owner._keyAccess.TryGetValue(key, out ProbeResult<FakeAccess> own))
+            {
+                return own.IsOk ? ProbeResult<SecurityReading>.Ok(own.Value!.For(SecuredKind.RegistryKey)) : own.ToFailure();
+            }
+
+            return Below(owner._keyAccessBelow, key) is { } inherited
+                ? ProbeResult<SecurityReading>.Ok(inherited.For(SecuredKind.RegistryKey))
+                : NotSetUp;
+        }
+
+        public ProbeResult<DriveKind> Drive(char letter) =>
+            owner.AccessFailure is { } everything ? everything
+            : owner._drives.TryGetValue(char.ToUpperInvariant(letter), out DriveKind kind) ? ProbeResult<DriveKind>.Ok(kind)
+            : NotSetUp;
+
+        /// <summary>The nearest place at or above this one that hands its permissions down.</summary>
+        private static FakeAccess? Below(List<(string Place, FakeAccess Access)> rules, string place) => rules
+            .Where(r => place.Equals(r.Place, StringComparison.OrdinalIgnoreCase) ||
+                place.StartsWith(r.Place + "\\", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Place.Length)
+            .Select(r => r.Access)
+            .FirstOrDefault();
     }
 
     private sealed class PlatformProbe(FakeProbes owner) : IPlatformProbe

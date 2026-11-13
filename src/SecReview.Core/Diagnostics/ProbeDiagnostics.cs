@@ -75,6 +75,18 @@ public static class ProbeDiagnostics
                 ? probes.Files.List(windows.Value!)
                 : ProbeFailure.Failed("Windows did not say where its folder is."),
             entries => $"Windows folder: {entries.Count} entries");
+        allFine &= Report(
+            output,
+            "permissions",
+            probes.Environment.Folder(KnownFolder.Windows) is { IsOk: true } folder
+                ? probes.Access.ReadPath(folder.Value!)
+                : ProbeFailure.Failed("Windows did not say where its folder is."),
+            reading => $"Windows folder: {Describe(reading)}");
+        allFine &= Report(
+            output,
+            "key permissions",
+            probes.Access.ReadKey(RegistryRoot.LocalMachine, WindowsVersionKey),
+            reading => $"Windows version key: {Describe(reading)}");
 
         // These two need administrator rights: "needs administrator" is the expected answer
         // for a normal user.
@@ -111,6 +123,10 @@ public static class ProbeDiagnostics
 
         return result.Status != ProbeStatus.Failed;
     }
+
+    private static string Describe(SecurityReading reading) => reading.HasList
+        ? string.Create(CultureInfo.InvariantCulture, $"{reading.Entries.Count} entries, owner {reading.Owner}")
+        : "no permission list";
 
     private static string Describe(IReadOnlyList<DriveEncryption> drives) => drives.Count == 0
         ? "no fixed drives"

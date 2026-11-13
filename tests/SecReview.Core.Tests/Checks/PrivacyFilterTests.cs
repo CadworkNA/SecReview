@@ -20,6 +20,27 @@ public sealed class PrivacyFilterTests
     }
 
     [TestMethod]
+    [DataRow(
+        @"C:\Windows\System32\Tasks\Example Task-S-1-5-21-1111111111-2222222222-3333333333-1001",
+        @"C:\Windows\System32\Tasks\Example Task-<account>")]
+    [DataRow("Owner S-1-12-1-1111111111-2222222222-3333333333-4444444444.", "Owner <account>.")]
+    [DataRow("s-1-5-21-1-2-3-500 and S-1-5-21-1-2-3-513", "<account> and <account>")]
+    public void AccountIdentifiers_AreReplaced(string text, string expected)
+    {
+        Assert.AreEqual(expected, Filter.Scrub(text));
+        Assert.AreEqual(text, PrivacyFilter.None.Scrub(text));
+    }
+
+    [TestMethod]
+    [DataRow("Owner S-1-5-32-544, entries for S-1-1-0 and S-1-5-18.")]
+    [DataRow("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")]
+    [DataRow("CLASS-1-5-21-1-2-3-4")]
+    public void IdentifiersThatAreTheSameOnEveryPc_AreLeftAlone(string text)
+    {
+        Assert.AreEqual(text, Filter.Scrub(text));
+    }
+
+    [TestMethod]
     [DataRow("Windows Firewall is off for the Public network.")]
     [DataRow(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\AutoAdminLogon")]
     [DataRow("malice and palaces")]

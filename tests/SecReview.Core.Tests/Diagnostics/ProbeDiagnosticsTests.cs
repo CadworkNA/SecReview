@@ -48,6 +48,8 @@ public sealed class ProbeDiagnosticsTests
         Uptime = ProbeResult<TimeSpan>.Ok(TimeSpan.FromHours(36)),
     }
     .WithFile(@"C:\Windows\win.ini", "; made up")
+    .WithAccess(@"C:\Windows", FakeAccess.Protected)
+    .WithKeyAccess(RegistryRoot.LocalMachine, VersionKey, FakeAccess.Protected)
     .WithRegistryValue(RegistryRoot.LocalMachine, VersionKey, "CurrentBuild", RegistryValue.FromText("19045"))
     .WithService("EventLog", ServiceStartType.Automatic, isRunning: true)
     .WithWmiObjects(
@@ -62,12 +64,14 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(AllWorking());
 
         Assert.IsTrue(allFine);
-        Assert.AreEqual(17, lines.Count);
+        Assert.AreEqual(19, lines.Count);
         Assert.IsTrue(lines.Values.All(line => line.Contains(" ok ", StringComparison.Ordinal)));
         StringAssert.Contains(lines["tpm"], "TPM 2.0");
         StringAssert.Contains(lines["code integrity"], "test signing: off, kernel debugging: off, memory integrity: on");
         StringAssert.Contains(lines["uptime"], "1.5 days");
         StringAssert.Contains(lines["files"], "1 entries");
+        StringAssert.Contains(lines["permissions"], "Windows folder: 3 entries, owner S-1-5-32-544");
+        StringAssert.Contains(lines["key permissions"], "Windows version key: 3 entries");
         StringAssert.Contains(lines["drive encryption"], "C: (system) On [1]; D: Off [2]");
         StringAssert.Contains(
             lines["windows update"],
@@ -133,7 +137,7 @@ public sealed class ProbeDiagnosticsTests
         (bool allFine, var lines) = Run(probes);
 
         Assert.IsFalse(allFine);
-        Assert.AreEqual(17, lines.Count);
+        Assert.AreEqual(19, lines.Count);
         StringAssert.Contains(lines["firewall"], "FAILED");
         StringAssert.Contains(lines["firewall"], "0x80004005");
         StringAssert.Contains(lines["account policy"], " ok ");
