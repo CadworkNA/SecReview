@@ -19,7 +19,29 @@ public static class ScanCache
             Platform = new CachedPlatformProbe(probes.Platform),
             AccountPolicy = new CachedAccountPolicyProbe(probes.AccountPolicy),
             Wmi = new CachedWmiProbe(probes.Wmi),
+            Access = new CachedAccessProbe(probes.Access),
         };
+    }
+
+    /// <summary>
+    /// The permissions of one folder or key are read once: many programs sit in the same few
+    /// folders, and several checks judge the same ones.
+    /// </summary>
+    private sealed class CachedAccessProbe(IAccessProbe inner) : IAccessProbe
+    {
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<ProbeResult<SecurityReading>>> _readings =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<char, Lazy<ProbeResult<DriveKind>>> _drives = new();
+
+        public ProbeResult<SecurityReading> ReadPath(string path) =>
+            _readings.GetOrAdd($"path|{path}", _ => new(() => inner.ReadPath(path))).Value;
+
+        public ProbeResult<SecurityReading> ReadKey(RegistryRoot root, string keyPath) =>
+            _readings.GetOrAdd($"{root}|{keyPath}", _ => new(() => inner.ReadKey(root, keyPath))).Value;
+
+        public ProbeResult<DriveKind> Drive(char letter) =>
+            _drives.GetOrAdd(char.ToUpperInvariant(letter), _ => new(() => inner.Drive(letter))).Value;
     }
 
     private sealed class CachedAccountPolicyProbe(IAccountPolicyProbe inner) : IAccountPolicyProbe

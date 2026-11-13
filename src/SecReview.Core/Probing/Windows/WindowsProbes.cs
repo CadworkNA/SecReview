@@ -64,6 +64,7 @@ public static class WindowsProbes
             UserRights: new WindowsUserRightsProbe(),
             Files: new DiskFileProbe(),
             Environment: new ProcessEnvironmentProbe(),
-            Platform: new WindowsPlatformProbe());
+            Platform: new WindowsPlatformProbe(),
+            Access: new WindowsAccessProbe());
     }
 }

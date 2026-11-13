@@ -281,7 +281,11 @@ public static class ScanPresentation
     /// Not for a check that an ordinary scan answers in part
     /// (<see cref="AdminNeed.ForFullDetail"/>): there "needs administrator rights" is itself a
     /// reading ("Windows does not confirm that the drive is protected"), and an older pass
-    /// must not hide it. Nor for an earlier answer dated after now: its age cannot be trusted.
+    /// must not hide it. The exception is a check that says of itself that its "needs
+    /// administrator rights" means "no problem in what I could read, and more to read"
+    /// (<see cref="CheckDefinition.KeepsAdministratorAnswer"/>): the administrator's answer
+    /// covers all of it and is kept the same way. Nor for an earlier answer dated after now:
+    /// its age cannot be trusted.
     /// </remarks>
     /// <param name="shown">The answer on screen; null when there is none.</param>
     /// <param name="arrived">The answer that just came in.</param>
@@ -290,8 +294,10 @@ public static class ScanPresentation
     {
         ArgumentNullException.ThrowIfNull(arrived);
 
-        bool nothingWasRead = arrived.Definition.NeedsAdmin == AdminNeed.Yes && arrived.Result.Outcome.Status == CheckStatus.NeedsAdmin;
-        if (!nothingWasRead || shown is not { Result.Elevated: true } || shown.Result.Outcome.Status == CheckStatus.NeedsAdmin)
+        bool nothingMoreWasRead =
+            (arrived.Definition.NeedsAdmin == AdminNeed.Yes || arrived.Definition.KeepsAdministratorAnswer) &&
+            arrived.Result.Outcome.Status == CheckStatus.NeedsAdmin;
+        if (!nothingMoreWasRead || shown is not { Result.Elevated: true } || shown.Result.Outcome.Status == CheckStatus.NeedsAdmin)
         {
             return arrived;
         }

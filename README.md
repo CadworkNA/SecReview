@@ -7,6 +7,8 @@ It covers:
 
 - **The basics:** screen lock, sign-in, updates, firewall, disk encryption, antivirus.
 - **Hardening:** a curated set of rules, each resting on a page of Microsoft's documentation.
+- **Who can change what runs:** programs, services, scheduled tasks and settings that Windows
+  runs or trusts for everyone, where a standard user could replace or redirect them.
 - **Developer supply chain:** release cooldowns of package managers (uv, pnpm, npm, Yarn, Bun,
   pip, Poetry, PDM, NuGet), unsafe package sources, switched-off protections, tokens stored as
   plain text, editor extensions, AI agents and MCP servers, and packages known to be malicious.

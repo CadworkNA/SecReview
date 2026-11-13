@@ -1,4 +1,5 @@
 using SecReview.Checks;
+using SecReview.Checks.BuiltIn.Programs;
 using SecReview.Probing;
 
 namespace SecReview.SupplyChain.Trust;
@@ -6,7 +7,8 @@ namespace SecReview.SupplyChain.Trust;
 /// <summary>
 /// What Microsoft Defender is told to skip, it does not scan. An exclusion that covers a
 /// whole drive, a user's folders (downloads, source code, package caches all live there) or
-/// a kind of file that can run is where a bad package goes unseen; these fail. Other
+/// a kind of file that can run is where a bad package goes unseen; these fail. So does an
+/// excluded folder or program that standard users can write to, however narrow. Other
 /// exclusions are listed. Windows shows the list to administrators only, so without an
 /// elevated scan the answer is "needs administrator", never "none".
 /// </summary>
@@ -38,7 +40,9 @@ public sealed class DefenderExclusionsCheck : ICheck
 
         var problems = new List<Finding>();
         var notes = new List<Finding>();
+        var judge = new ProgramJudge(context.Probes.Access);
         bool byPolicy = false;
+        int unread = 0;
 
         foreach ((string key, bool policy) in new[] { (LocalKey, false), (PolicyKey, true) })
         {
@@ -65,6 +69,17 @@ public sealed class DefenderExclusionsCheck : ICheck
                         _ => ($"Excluded program: {name}", null),
                     };
 
+                    // A narrow exclusion is still a hiding place when any user can put files into it.
+                    if (judged.Why is null && kind != "Extensions" && Place(name) is { } place)
+                    {
+                        Verdict who = kind == "Paths" ? judge.Folder(place) : judge.File(place);
+                        unread += who.Kind == VerdictKind.Unknown ? 1 : 0;
+                        if (who.Kind is VerdictKind.Changeable or VerdictKind.AddBeside or VerdictKind.MissingCreatable)
+                        {
+                            judged.Why = "Standard users can put files here";
+                        }
+                    }
+
                     if (judged.Why is { } why)
                     {
                         byPolicy |= policy;
@@ -87,6 +102,16 @@ public sealed class DefenderExclusionsCheck : ICheck
                 [.. problems, .. notes.Take(Most)]) with { ManagedByPolicy = byPolicy };
         }
 
+        if (unread > 0)
+        {
+            // Who may write to an excluded place is part of the answer; without it there is none.
+            return CheckOutcome.Error(
+                unread == 1
+                    ? "Could not read who may change 1 excluded place."
+                    : $"Could not read who may change {unread} excluded places.",
+                [.. notes.Take(Most)]);
+        }
+
         if (notes.Count == 0)
         {
             return CheckOutcome.Pass("Microsoft Defender has no exclusions.", Finding.Ok("Exclusions", "None", "None, or narrow ones"));
@@ -103,6 +128,13 @@ public sealed class DefenderExclusionsCheck : ICheck
                 ? "Microsoft Defender has 1 exclusion; it does not cover a drive, user folders or files that run."
                 : $"Microsoft Defender has {notes.Count} exclusions; none covers a drive, user folders or files that run.",
             shown);
+    }
+
+    /// <summary>The excluded place as a path whose permissions can be read; null for a pattern, a variable or a bare name.</summary>
+    private static string? Place(string excluded)
+    {
+        string path = excluded.Trim().Replace('/', '\\').TrimEnd('\\');
+        return MachineContext.IsLocalPath(path + "\\") && path.IndexOfAny(['*', '?', '%']) < 0 ? path : null;
     }
 
     /// <summary>Why an excluded path is too wide; null when it is not.</summary>

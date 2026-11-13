@@ -8,12 +8,19 @@ namespace SecReview.Checks;
 /// <param name="Severity">How much a failure matters.</param>
 /// <param name="NeedsAdmin">Whether administrator rights are needed.</param>
 /// <param name="Scope">Whether it reads the machine or the signed-in user.</param>
+/// <param name="KeepsAdministratorAnswer">
+/// For a check that goes through a list and reads most of it as a normal user: when an ordinary
+/// scan finds no problem and can only say that the rest needs administrator rights, the answer
+/// of an earlier administrator scan says more and stays on screen, as it does for a check that
+/// only an elevated scan answers. An ordinary scan that finds a problem always shows it.
+/// </param>
 public sealed record CheckDefinition(
     string Id,
     CheckCategory Category,
     Severity Severity,
     AdminNeed NeedsAdmin = AdminNeed.No,
-    CheckScope Scope = CheckScope.Machine);
+    CheckScope Scope = CheckScope.Machine,
+    bool KeepsAdministratorAnswer = false);
 
 /// <summary>What a check gets to work with.</summary>
 /// <param name="Probes">How to read the machine.</param>

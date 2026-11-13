@@ -12,6 +12,7 @@ public sealed partial class PrivacyFilter
     private const string ProfilePlaceholder = "%USERPROFILE%";
     private const string UserPlaceholder = "<user>";
     private const string ComputerPlaceholder = "<computer>";
+    private const string AccountPlaceholder = "<account>";
 
     /// <summary>Names shorter than this are too likely to be ordinary words to replace on sight.</summary>
     private const int MinimumNameLength = 3;
@@ -80,6 +81,10 @@ public sealed partial class PrivacyFilter
         // Any other "C:\Users\name" (another profile, or a differently spelled path).
         result = UsersFolder().Replace(result, match => $"{match.Groups[1].Value}{UserPlaceholder}");
 
+        // An account's identifier names the PC or domain it belongs to and the account in it.
+        // Windows puts them into the names of tasks and services made for one user.
+        result = AccountIdentifier().Replace(result, AccountPlaceholder);
+
         if (_userName is not null)
         {
             result = _userName.Replace(result, UserPlaceholder);
@@ -141,4 +146,11 @@ public sealed partial class PrivacyFilter
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex UsersFolder();
+
+    // "S-1-5-21-a-b-c-rid" (a PC's or domain's account) and "S-1-12-1-a-b-c-d" (a directory account).
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])S-1-(?:5-21|12-1)(?:-\d{1,10}){3,5}",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex AccountIdentifier();
 }

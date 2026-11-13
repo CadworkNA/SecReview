@@ -65,6 +65,50 @@ public sealed class ScanCacheTests
             counting.Questions);
     }
 
+    private sealed class CountingAccessProbe : IAccessProbe
+    {
+        public List<string> Questions { get; } = [];
+
+        public ProbeResult<SecurityReading> ReadPath(string path)
+        {
+            Questions.Add(path);
+            return ProbeFailure.AccessDenied();
+        }
+
+        public ProbeResult<SecurityReading> ReadKey(RegistryRoot root, string keyPath)
+        {
+            Questions.Add($"{root}:{keyPath}");
+            return ProbeFailure.NotFound();
+        }
+
+        public ProbeResult<DriveKind> Drive(char letter)
+        {
+            Questions.Add($"drive {letter}");
+            return ProbeResult<DriveKind>.Ok(DriveKind.Fixed);
+        }
+    }
+
+    [TestMethod]
+    public void ThePermissionsOfOnePlace_AreReadOnce_WhateverTheSpellingOfItsCase()
+    {
+        var counting = new CountingAccessProbe();
+        SystemProbes scan = ScanCache.ForOneScan(new FakeProbes().Build() with { Access = counting });
+
+        _ = scan.Access.ReadPath(@"C:\Tools\Example");
+        ProbeResult<SecurityReading> again = scan.Access.ReadPath(@"c:\tools\example");
+        _ = scan.Access.ReadPath(@"C:\Tools");
+        _ = scan.Access.ReadKey(RegistryRoot.LocalMachine, @"SOFTWARE\Example");
+        _ = scan.Access.ReadKey(RegistryRoot.LocalMachine, @"SOFTWARE\Example");
+        _ = scan.Access.ReadKey(RegistryRoot.CurrentUser, @"SOFTWARE\Example");
+        _ = scan.Access.Drive('c');
+        _ = scan.Access.Drive('C');
+
+        Assert.AreEqual(ProbeStatus.AccessDenied, again.Status, "a failed reading is kept too");
+        CollectionAssert.AreEqual(
+            new[] { @"C:\Tools\Example", @"C:\Tools", @"LocalMachine:SOFTWARE\Example", @"CurrentUser:SOFTWARE\Example", "drive c" },
+            counting.Questions);
+    }
+
     [TestMethod]
     public void TheOtherReadings_PassStraightThrough()
     {
