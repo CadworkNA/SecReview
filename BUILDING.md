@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Windows 10 22H2 or Windows 11, x64
+- Windows 11, x64
 - .NET SDK **11.0.100** exactly (`global.json` pins it; the apps target .NET 10)
 - Visual Studio 2022 or 2026 with **Desktop development with C++** (Native AOT uses its linker)
 - Network access to nuget.org on the first build

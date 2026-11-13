@@ -23,7 +23,7 @@ download; SecReview can be [built from source](BUILDING.md).
 
 Run `SecReview-<version>-setup.exe` from the [releases](https://github.com/CadworkNA/SecReview/releases).
 It needs administrator rights once, to install for everyone who uses the PC; SecReview itself
-runs without them. Windows 10 22H2 or Windows 11, 64-bit.
+runs without them. Windows 11, 64-bit.
 
 - SecReview opens from the Start menu. Its icon in the notification area shows how the PC is
   doing and tells you when a check starts failing; the notification stays in the
