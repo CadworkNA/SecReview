@@ -48,8 +48,13 @@ function Set-GoodState {
     Set-Number $explorerPolicy 'NoDriveTypeAutoRun' 255
     # Windows keeps this number as text.
     Set-ItemProperty -LiteralPath $winlogon -Name 'CachedLogonsCount' -Value '10' -Type String
-    Get-ChildItem Cert:\LocalMachine\My | Where-Object Subject -eq $authorityName | Remove-Item -DeleteKey
-    Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -eq $authorityName | Remove-Item
+    # -DeleteKey exists only for a path in the certificate drive, not for piped certificates.
+    foreach ($store in 'My', 'Root') {
+        foreach ($made in @(Get-ChildItem "Cert:\LocalMachine\$store" | Where-Object Subject -eq $authorityName)) {
+            if ($made.HasPrivateKey) { Remove-Item -LiteralPath "Cert:\LocalMachine\$store\$($made.Thumbprint)" -DeleteKey }
+            else { Remove-Item -LiteralPath "Cert:\LocalMachine\$store\$($made.Thumbprint)" }
+        }
+    }
 }
 
 function ConvertTo-Scan([string] $file) {
