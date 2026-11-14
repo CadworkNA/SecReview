@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using SecReview.Probing;
 
 namespace SecReview.Checks.BuiltIn;
@@ -94,7 +95,9 @@ public sealed class RevocationCheck : ICheck
 /// <summary>
 /// A proxy configuration script decides where a user's web traffic goes. Fetched over plain
 /// HTTP, it can be swapped on the network by anyone between the PC and the server. A fixed
-/// proxy is listed by host for the user to recognise; it is not judged.
+/// proxy is listed by host for the user to recognise, and automatic proxy detection as on or
+/// off; neither is judged. Detection is on by default, and whether someone on the network
+/// can answer it cannot be told from the PC.
 /// </summary>
 public sealed class ProxyCheck : ICheck
 {
@@ -105,6 +108,13 @@ public sealed class ProxyCheck : ICheck
     internal const string ScriptValue = "AutoConfigURL";
     internal const string EnabledValue = "ProxyEnable";
     internal const string ServerValue = "ProxyServer";
+    internal const string ConnectionsKey = UserKey + @"\Connections";
+    internal const string ConnectionsValue = "DefaultConnectionSettings";
+
+    /// <summary>The bit of the flags in <see cref="ConnectionsValue"/> that says "detect settings automatically".</summary>
+    internal const uint AutoDetect = 0x08;
+
+    private const int FlagsOffset = 8;
 
     private const string ScriptItem = "Proxy configuration script";
     private const string Expected = "None, or fetched over HTTPS";
@@ -162,14 +172,27 @@ public sealed class ProxyCheck : ICheck
             }
         }
 
+        // Read as stored; a value that is not the expected shape is left out, as it is not judged.
+        ProbeResult<RegistryValue> connections = registry.GetValue(RegistryRoot.CurrentUser, ConnectionsKey, ConnectionsValue);
+        if (!connections.IsOk && connections.Status != ProbeStatus.NotFound)
+        {
+            return ProbeOutcomes.FromFailure(connections, "the proxy settings");
+        }
+
+        if (connections.IsOk && connections.Value!.Type == RegistryValueType.Binary && connections.Value.Binary.Length >= FlagsOffset + 4)
+        {
+            uint flags = BinaryPrimitives.ReadUInt32LittleEndian(connections.Value.Binary.Span[FlagsOffset..]);
+            findings.Add(Finding.Note("Automatic proxy detection", (flags & AutoDetect) != 0 ? "On" : "Off", $@"HKCU\{ConnectionsKey}\{ConnectionsValue}"));
+        }
+
         if (findings.Any(finding => finding.Status == FindingStatus.Problem))
         {
             return CheckOutcome.Fail("The proxy configuration script is fetched over plain HTTP.", findings) with { ManagedByPolicy = managed };
         }
 
-        if (findings.Count == 0)
+        if (!findings.Any(finding => finding.Item == ScriptItem))
         {
-            findings.Add(Finding.Ok(ScriptItem, "None", Expected, $@"HKCU\{UserKey}\{ScriptValue}"));
+            findings.Insert(0, Finding.Ok(ScriptItem, "None", Expected, $@"HKCU\{UserKey}\{ScriptValue}"));
         }
 
         return CheckOutcome.Pass(

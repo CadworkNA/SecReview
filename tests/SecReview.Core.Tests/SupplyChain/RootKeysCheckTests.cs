@@ -77,9 +77,24 @@ public sealed class RootKeysCheckTests
 
     private static FakeProbes UserPersonal(FakeProbes probes, Made made) => probes.WithFile($@"{PersonalFolder}\{made.Thumbprint}", "not text on a real PC");
 
-    private static FakeProbes LocalAuthority(FakeProbes probes, Made made, string? folder = null) => probes
-        .WithFile($@"{folder ?? LocalAuthorityFolder}\{RootKeysCheck.AuthorityFile}", made.Pem)
-        .WithFile($@"{folder ?? LocalAuthorityFolder}\{RootKeysCheck.KeyFile}", "made-up key text");
+    private static FakeProbes LocalAuthority(FakeProbes probes, Made made, string? folder = null, LocalAuthorityTool? tool = null) => probes
+        .WithFile($@"{folder ?? LocalAuthorityFolder}\{(tool ?? RootKeysCheck.Mkcert).Certificate}", made.Pem)
+        .WithFile($@"{folder ?? LocalAuthorityFolder}\{(tool ?? RootKeysCheck.Mkcert).Key}", "made-up key text");
+
+    /// <summary>Each tool's authority where the tool keeps it when nothing moves it.</summary>
+    private static IEnumerable<object[]> LocalTools =>
+    [
+        ["mitmproxy", FakeProbes.FolderPath(KnownFolder.UserProfile) + @"\.mitmproxy"],
+        ["HTTP Toolkit", FakeProbes.FolderPath(KnownFolder.RoamingAppData) + @"\httptoolkit\Config"],
+        ["Caddy", FakeProbes.FolderPath(KnownFolder.RoamingAppData) + @"\Caddy\pki\authorities\local"],
+        ["Smallstep", FakeProbes.FolderPath(KnownFolder.UserProfile) + @"\.step"],
+    ];
+
+    private static LocalAuthorityTool Tool(string name) =>
+        new[] { RootKeysCheck.Mitmproxy, RootKeysCheck.HttpToolkit, RootKeysCheck.Caddy, RootKeysCheck.Smallstep }.Single(tool => tool.Name == name);
+
+    private static FakeProbes Variable(FakeProbes probes, string name, string value) =>
+        probes.WithRegistryValue(RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, name, RegistryValue.FromText(value));
 
     private static string Everything(CheckOutcome outcome) =>
         outcome.Summary + string.Join('|', outcome.Findings.Select(f => f.Item + f.Found + f.Expected + f.Source));
@@ -164,11 +179,11 @@ public sealed class RootKeysCheckTests
         CheckOutcome trusted = Check.Run(LocalAuthority(Trust(new FakeProbes(), Authority), Authority));
         CheckOutcome notTrusted = Check.Run(LocalAuthority(new FakeProbes(), Authority));
         CheckOutcome withoutKey = Check.Run(
-            Trust(new FakeProbes(), Authority).WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.AuthorityFile}", Authority.Pem));
+            Trust(new FakeProbes(), Authority).WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.Mkcert.Certificate}", Authority.Pem));
 
         Assert.AreEqual(CheckStatus.Fail, trusted.Status);
-        Assert.AreEqual($"Thumbprint {Authority.Thumbprint}, with its private key in a file", trusted.Findings[0].Found);
-        Assert.AreEqual($@"{LocalAuthorityFolder}\{RootKeysCheck.KeyFile}", trusted.Findings[0].Source);
+        Assert.AreEqual($"Thumbprint {Authority.Thumbprint}, with its private key in a file of mkcert", trusted.Findings[0].Found);
+        Assert.AreEqual($@"{LocalAuthorityFolder}\{RootKeysCheck.Mkcert.Key}", trusted.Findings[0].Source);
         Assert.IsFalse(Everything(trusted).Contains("made-up key text", StringComparison.Ordinal));
         Assert.AreEqual(CheckStatus.Pass, notTrusted.Status);
         Assert.AreEqual(CheckStatus.Pass, withoutKey.Status);
@@ -181,11 +196,67 @@ public sealed class RootKeysCheckTests
         FakeProbes moved = LocalAuthority(Trust(new FakeProbes(), Authority), Authority, Moved)
             .WithRegistryValue(RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, "CAROOT", RegistryValue.FromText(Moved));
         FakeProbes broken = Trust(new FakeProbes(), Authority)
-            .WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.AuthorityFile}", "-----BEGIN CERTIFICATE-----\nnot one\n-----END CERTIFICATE-----")
-            .WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.KeyFile}", "made-up key text");
+            .WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.Mkcert.Certificate}", "-----BEGIN CERTIFICATE-----\nnot one\n-----END CERTIFICATE-----")
+            .WithFile($@"{LocalAuthorityFolder}\{RootKeysCheck.Mkcert.Key}", "made-up key text");
 
         Assert.AreEqual(CheckStatus.Fail, Check.Run(moved).Status);
         Assert.AreEqual(CheckStatus.Error, Check.Run(broken).Status);
+    }
+
+    [TestMethod]
+    [DynamicData(nameof(LocalTools))]
+    public void OtherLocalTools_ATrustedAuthorityWithItsKeyFile_Fails_NamingTheTool(string name, string folder)
+    {
+        LocalAuthorityTool tool = Tool(name);
+        CheckOutcome trusted = Check.Run(LocalAuthority(Trust(new FakeProbes(), Authority), Authority, folder, tool));
+        CheckOutcome notTrusted = Check.Run(LocalAuthority(new FakeProbes(), Authority, folder, tool));
+        CheckOutcome withoutKey = Check.Run(Trust(new FakeProbes(), Authority).WithFile($@"{folder}\{tool.Certificate}", Authority.Pem));
+
+        Assert.AreEqual(CheckStatus.Fail, trusted.Status);
+        Assert.AreEqual($"Thumbprint {Authority.Thumbprint}, with its private key in a file of {name}", trusted.Findings[0].Found);
+        Assert.AreEqual($@"{folder}\{tool.Key}", trusted.Findings[0].Source);
+        Assert.IsFalse(Everything(trusted).Contains("made-up key text", StringComparison.Ordinal));
+        Assert.AreEqual(CheckStatus.Pass, notTrusted.Status);
+        Assert.AreEqual(CheckStatus.Pass, withoutKey.Status);
+    }
+
+    [TestMethod]
+    public void Caddy_EachAuthorityIsLookedAt_AndItsDataFolderCanBeMoved()
+    {
+        string authorities = FakeProbes.FolderPath(KnownFolder.RoamingAppData) + @"\Caddy\pki\authorities";
+        FakeProbes two = LocalAuthority(
+            LocalAuthority(Trust(Trust(new FakeProbes(), Authority), Unmarked), Authority, $@"{authorities}\local", RootKeysCheck.Caddy),
+            Unmarked, $@"{authorities}\internal", RootKeysCheck.Caddy);
+        FakeProbes moved = Variable(
+            LocalAuthority(Trust(new FakeProbes(), Authority), Authority, @"D:\Data\caddy\pki\authorities\local", RootKeysCheck.Caddy),
+            "XDG_DATA_HOME", @"D:\Data");
+
+        Assert.AreEqual("2 trusted certificate authorities have their private key on this PC.", Check.Run(two).Summary);
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(moved).Status);
+    }
+
+    [TestMethod]
+    public void Smallstep_ItsFolderCanBeMoved()
+    {
+        FakeProbes moved = Variable(
+            LocalAuthority(Trust(new FakeProbes(), Authority), Authority, @"D:\Pki\step", RootKeysCheck.Smallstep), "STEPPATH", @"D:\Pki\step");
+
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(moved).Status);
+        Assert.AreEqual(@"D:\Pki\step\secrets\root_ca_key", Check.Run(moved).Findings[0].Source);
+    }
+
+    [TestMethod]
+    public void ALocalToolsFolderThatCannotBeRead_IsCouldNotCheck_UnlessAKeyWasFoundElsewhere()
+    {
+        string mitmproxy = FakeProbes.FolderPath(KnownFolder.UserProfile) + @"\.mitmproxy";
+        string caddy = FakeProbes.FolderPath(KnownFolder.RoamingAppData) + @"\Caddy\pki\authorities";
+        FakeProbes denied = Trust(new FakeProbes(), Authority).WithFolderFailure(mitmproxy, ProbeFailure.AccessDenied());
+        FakeProbes caddyDenied = new FakeProbes().WithFolderFailure(caddy, ProbeFailure.AccessDenied());
+        FakeProbes found = LocalAuthority(Trust(new FakeProbes(), Authority).WithFolderFailure(mitmproxy, ProbeFailure.AccessDenied()), Authority);
+
+        Assert.AreEqual(CheckStatus.Error, Check.Run(denied).Status);
+        Assert.AreEqual(CheckStatus.Error, Check.Run(caddyDenied).Status);
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(found).Status);
     }
 
     [TestMethod]

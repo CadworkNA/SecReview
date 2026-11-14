@@ -163,6 +163,36 @@ public sealed class TrustSettingsChecksTests
         Assert.AreEqual(1, Proxy.Run(off).Findings.Count);
     }
 
+    /// <summary>DefaultConnectionSettings as Windows writes it: a size, a counter, the flags, then more that is not read here.</summary>
+    private static FakeProbes Connections(params byte[] bytes) => new FakeProbes().WithRegistryValue(
+        RegistryRoot.CurrentUser, ProxyCheck.ConnectionsKey, ProxyCheck.ConnectionsValue, RegistryValue.FromBinary(bytes));
+
+    [TestMethod]
+    public void Proxy_AutomaticDetection_IsListedAsOnOrOff_NotJudged()
+    {
+        CheckOutcome on = Proxy.Run(Connections(0x46, 0, 0, 0, 7, 0, 0, 0, 0x09, 0, 0, 0, 0, 0, 0, 0));
+        CheckOutcome off = Proxy.Run(Connections(0x46, 0, 0, 0, 7, 0, 0, 0, 0x01, 0, 0, 0));
+        CheckOutcome withScript = Proxy.Run(
+            Text(Connections(0x46, 0, 0, 0, 7, 0, 0, 0, 0x0D, 0, 0, 0), RegistryRoot.CurrentUser, ProxyCheck.UserKey, ProxyCheck.ScriptValue, "http://wpad.example.test/proxy.pac"));
+
+        Assert.AreEqual(CheckStatus.Pass, on.Status);
+        Assert.AreEqual("No proxy configuration script is set.", on.Summary);
+        CollectionAssert.AreEqual(new[] { "Proxy configuration script: None (expected None, or fetched over HTTPS) [ok]", "Automatic proxy detection: On [note]" }, on.Rows().ToArray());
+        Assert.AreEqual($@"HKCU\{ProxyCheck.ConnectionsKey}\{ProxyCheck.ConnectionsValue}", on.Findings[1].Source);
+        CollectionAssert.Contains(off.Rows(), "Automatic proxy detection: Off [note]");
+        Assert.AreEqual(CheckStatus.Fail, withScript.Status, "detection being on does not change how the script is judged");
+    }
+
+    [TestMethod]
+    public void Proxy_AutomaticDetection_ThatIsNotThereOrNotTheExpectedShape_IsLeftOut()
+    {
+        Assert.AreEqual(1, Proxy.Run(new FakeProbes()).Findings.Count);
+        Assert.AreEqual(1, Proxy.Run(Connections(0x46, 0, 0, 0, 7)).Findings.Count, "too short to hold the flags");
+        Assert.AreEqual(
+            CheckStatus.Pass,
+            Proxy.Run(new FakeProbes().WithRegistryNumber(RegistryRoot.CurrentUser, ProxyCheck.ConnectionsKey, ProxyCheck.ConnectionsValue, 9)).Status);
+    }
+
     [TestMethod]
     [DataRow("proxy.example.test:3128", "proxy.example.test")]
     [DataRow("https=proxy.example.test:3128;http=other.example.test", "proxy.example.test")]
