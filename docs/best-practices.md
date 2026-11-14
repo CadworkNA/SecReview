@@ -1,7 +1,7 @@
 # Answers for the OpenSSF Best Practices badge
 
 Prepared answers for the passing level at <https://www.bestpractices.dev>. The maintainer
-creates the project there once the repository is public and pastes these in; the badge then
+creates the project there and pastes these in; the badge then
 goes at the top of the README. Keep this file true: when a practice changes, change the
 answer here in the same pull request.
 
