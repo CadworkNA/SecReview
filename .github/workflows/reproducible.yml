@@ -69,6 +69,24 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # TEMPORARY: what the window program is made of, to find why two machines differ.
+      - name: Upload the window program's parts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parts-${{ matrix.copy }}
+          path: |
+            artifacts/stage/SecReview.exe
+            src/SecReview.App/obj/Release/*/win-x64/*.dll
+            src/SecReview.App/obj/Release/*/win-x64/*.pdb
+            src/SecReview.App/obj/Release/*/win-x64/*.cs
+            src/SecReview.App/obj/Release/*/win-x64/*.json
+            src/SecReview.App/obj/Release/*/win-x64/*.xbf
+            src/SecReview.App/obj/Release/*/win-x64/*.editorconfig
+            src/SecReview.App/obj/Release/*/win-x64/native/*.rsp
+            src/SecReview.App/obj/Release/*/win-x64/native/*.obj
+          retention-days: 1
+          if-no-files-found: error
+
   compare:
     needs: build
     runs-on: ubuntu-24.04
