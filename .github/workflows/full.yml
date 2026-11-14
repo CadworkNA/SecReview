@@ -212,8 +212,8 @@ jobs:
         shell: pwsh
         run: ./scripts/test-posture.ps1 -Cli "$env:ProgramFiles\SecReview\SecReviewCli.exe"
 
-  # A draft release with the setup program, the SBOM and, once the repository is public, the
-  # Sigstore bundle that proves where they were built. Never published from here.
+  # A draft release with the setup program, the SBOM and the Sigstore bundle that proves where
+  # they were built. Never published from here.
   release:
     needs: [package, posture]
     if: github.ref_type == 'tag' || inputs.draft_release

@@ -60,7 +60,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 | `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
 | `.github/workflows/reproducible.yml` | Two machines build one commit, setup program included; every file but the window program and the setup program must have the same SHA-256, and packing one folder twice must give one setup program. Runs when the build's inputs change, weekly, and by hand |
-| `.github/workflows/codeql.yml`, `scorecard.yml` | CodeQL's security queries over the C# code and the workflows, and the OpenSSF Scorecard. Both do nothing while the repository is private and start by themselves once it is public |
+| `.github/workflows/codeql.yml`, `scorecard.yml` | CodeQL's security queries over the C# code and the workflows (pull requests, `main`, weekly), and the OpenSSF Scorecard (`main`, weekly). Both skip themselves should the repository ever be private |
 
 ## Damaged input
 
@@ -223,8 +223,8 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
    the staged folder and, for a signed build, its signatures.
 4. An SBOM of the install folder and the packages behind it (SPDX 2.2, Microsoft's SBOM tool,
    pinned in `.config\dotnet-tools.json`).
-5. A **draft** release with the setup program and the SBOM, and, once the repository is
-   public, a Sigstore bundle proving where they were built.
+5. A **draft** release with the setup program, the SBOM and a Sigstore bundle proving where
+   they were built.
 6. On a second machine, `scripts/test-posture.ps1` installs the setup program and weakens
    what ten checks look at. For the PC: firewall off for one network, Remote Desktop on
    without Network Level Authentication, WDigest, AutoPlay, more cached sign-ins. For an
@@ -247,7 +247,17 @@ linker writes a hash instead of the time (`/Brepro`), and packed files carry the
   builds in the same folder.
 - The C++ linker and Inno Setup come from the machine image, so a later image can give
   other bytes.
-- The official error-report address is a secret, so nobody else can rebuild an official build.
+
+**Checking a release's `SecReviewCli.exe`**, the one program that runs with administrator
+rights. A rebuild matches it once its signature is removed (`signtool remove /s`), given:
+
+- the release's tag, built on the machine image its "Package and release" run names;
+- the list of known-malicious packages and the update address the release was built with: the
+  list is in the installed folder, the address in `full.yml`;
+- the publisher from `signing\Publisher.props` compiled in, which `build.ps1` does only when
+  it also signs (#65).
+
+Not yet done against a release: v0.1.1 predates `/Brepro`.
 
 Start it by hand (Actions, "Package and release") to try all of this without a release. A
 release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.
