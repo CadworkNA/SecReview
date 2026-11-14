@@ -192,8 +192,14 @@ try {
 
     # The account weakens its own settings: the ones every user can change for themselves.
     # The key file beside mkcert's authority holds no key; the check only sees that it is there.
+    # The account's own folders come from Windows: a process started as another user may carry
+    # the starting account's environment, and with it that account's APPDATA. An error goes to
+    # a file beside the script, for the build's log.
     $weaken = @'
 $ErrorActionPreference = 'Stop'
+trap { Set-Content -LiteralPath (Join-Path $PSScriptRoot 'weaken.error.txt') -Value "$_ (line $($_.InvocationInfo.ScriptLineNumber))"; exit 1 }
+$roaming = [Environment]::GetFolderPath('ApplicationData')
+$local = [Environment]::GetFolderPath('LocalApplicationData')
 $internet = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $publishing = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\WinTrust\Trust Providers\Software Publishing'
 foreach ($key in $internet, $publishing) { if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null } }
@@ -203,10 +209,10 @@ $state = (Get-ItemProperty -LiteralPath $publishing).State
 if ($null -eq $state) { $state = 0x23c00 }
 Set-ItemProperty -LiteralPath $publishing -Name 'State' -Value ($state -bor 0x200) -Type DWord
 
-$fileZilla = New-Item -ItemType Directory -Path (Join-Path $env:APPDATA 'FileZilla') -Force
+$fileZilla = New-Item -ItemType Directory -Path (Join-Path $roaming 'FileZilla') -Force
 Set-Content -LiteralPath (Join-Path $fileZilla 'sitemanager.xml') -Value '<?xml version="1.0" encoding="UTF-8"?><FileZilla3><Servers><Server><Host>files.example.invalid</Host><Port>21</Port><User>{USER}</User><Pass encoding="base64">{PASS}</Pass></Server></Servers></FileZilla3>'
 
-$mkcert = New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'mkcert') -Force
+$mkcert = New-Item -ItemType Directory -Path (Join-Path $local 'mkcert') -Force
 Set-Content -LiteralPath (Join-Path $mkcert 'rootCA.pem') -Value @"
 {PEM}
 "@
@@ -220,7 +226,11 @@ Set-Content -LiteralPath (Join-Path $mkcert 'rootCA-key.pem') -Value 'Not a key:
     $shell = (Get-Process -Id $PID).Path
     $process = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$weakenFile`"" `
         -Credential $credential -LoadUserProfile -WorkingDirectory $shared -Wait -PassThru
-    if ($process.ExitCode -ne 0) { throw "Posture test: weakening the test account's settings ended with $($process.ExitCode)." }
+    if ($process.ExitCode -ne 0) {
+        $why = Join-Path $shared 'weaken.error.txt'
+        $reason = if (Test-Path -LiteralPath $why) { Get-Content -LiteralPath $why -Raw } else { 'no reason written' }
+        throw "Posture test: weakening the test account's settings ended with $($process.ExitCode): $reason"
+    }
 
     # The first run made the account's profile; the token goes where npm keeps it.
     $profileFolder = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$user" } | Select-Object -First 1).LocalPath
