@@ -13,6 +13,12 @@ public sealed class AppLog
     /// <summary>When the log reaches this size the previous one is replaced and a new one starts.</summary>
     public const long MaximumBytes = 512 * 1024;
 
+    /// <summary>
+    /// Tries at writing a line while the file is busy. The window, the icon and a notification
+    /// click can write at the same moment, and each holds the file while it writes.
+    /// </summary>
+    private const int Attempts = 5;
+
     private readonly Lock _gate = new();
     private readonly string _path;
     private readonly PrivacyFilter _privacy;
@@ -55,14 +61,25 @@ public sealed class AppLog
             lock (_gate)
             {
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path)!);
-
-                var file = new FileInfo(_path);
-                if (file.Exists && file.Length > MaximumBytes)
+                for (int attempt = 1; ; attempt++)
                 {
-                    File.Move(_path, _path + ".old", overwrite: true);
-                }
+                    try
+                    {
+                        var file = new FileInfo(_path);
+                        if (file.Exists && file.Length > MaximumBytes)
+                        {
+                            File.Move(_path, _path + ".old", overwrite: true);
+                        }
 
-                File.AppendAllText(_path, line);
+                        File.AppendAllText(_path, line);
+                        return;
+                    }
+                    catch (IOException) when (attempt < Attempts)
+                    {
+                        // Another process is writing or reading it; a line must not be lost for that (#53).
+                        Thread.Sleep(20 * attempt);
+                    }
+                }
             }
         }
 #pragma warning disable CA1031 // Logging must never be the reason the app fails.

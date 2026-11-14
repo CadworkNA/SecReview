@@ -206,12 +206,23 @@ function Get-ClickProcess {
 
 function Get-LogLength { if (Test-Path $log) { (Get-Item $log).Length } else { 0 } }
 
-# What the log gained since a length in bytes (the log is UTF-8).
+# What the log gained since a length in bytes (the log is UTF-8). Read without stopping
+# SecReview from writing to it meanwhile: File.ReadAllBytes would, and a line written during
+# the read was lost (#53).
 function Get-LogSince([long] $start) {
     if (-not (Test-Path $log)) { return '' }
-    $bytes = [System.IO.File]::ReadAllBytes($log)
-    if ($bytes.Length -le $start) { return '' }
-    [System.Text.Encoding]::UTF8.GetString($bytes, $start, $bytes.Length - $start)
+    $stream = [System.IO.FileStream]::new($log, 'Open', 'Read', 'ReadWrite, Delete')
+    try {
+        $bytes = [byte[]]::new($stream.Length)
+        $read = 0
+        while ($read -lt $bytes.Length) {
+            $got = $stream.Read($bytes, $read, $bytes.Length - $read)
+            if ($got -eq 0) { break }
+            $read += $got
+        }
+    } finally { $stream.Dispose() }
+    if ($read -le $start) { return '' }
+    [System.Text.Encoding]::UTF8.GetString($bytes, $start, $read - $start)
 }
 
 $logStart = Get-LogLength
