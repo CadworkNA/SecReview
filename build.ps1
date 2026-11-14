@@ -522,9 +522,15 @@ if ($Installer) {
     $numbers = ($Version -split '-', 2)[0]
     $publisher = ([xml] (Get-Content (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup.Company |
         Where-Object { $_ } | Select-Object -First 1
+    # Every packed file carries the commit's time, in UTC, not the time it was built.
+    $committed = git -C $root show -s --format=%cI HEAD
+    if ($LASTEXITCODE -or -not $committed) { throw 'The setup program needs the commit time, and git could not read it.' }
+    $committed = ([datetimeoffset]::Parse($committed, [cultureinfo]::InvariantCulture)).UtcDateTime
     $isccArgs = @(
         '/Q'
         "/DAppVersion=$Version"
+        "/DFileDate=$($committed.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture))"
+        "/DFileTime=$($committed.ToString('HH:mm:ss', [cultureinfo]::InvariantCulture))"
         "/DFileVersion=$numbers.0"
         "/DStage=$stage"
         "/DOutputFolder=$installerOut"

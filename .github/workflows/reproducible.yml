@@ -1,0 +1,92 @@
+name: Reproducible build
+
+# Two machines build the same commit, setup program included, and every file must come out
+# with the same SHA-256. Unsigned: a signature always differs, it carries the time it was made.
+# Runs when something that shapes the output changes, and by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/reproducible.yml'
+      - 'build.ps1'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+      - 'installer/**'
+      - 'scripts/**'
+      - 'src/**/*.csproj'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: reproducible-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        copy: [first, second]
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Build, publish and pack
+        shell: pwsh
+        run: ./build.ps1 -Locked -NoTests -Installer -Version 0.0.0-repro
+
+      - name: Hash the output
+        shell: pwsh
+        run: |
+          $lines = foreach ($folder in 'artifacts/stage', 'artifacts/installer') {
+              $base = (Resolve-Path $folder).Path
+              Get-ChildItem $base -Recurse -File | ForEach-Object {
+                  $name = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
+                  "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)  $folder/$name"
+              }
+          }
+          $lines | Sort-Object { $_.Substring(66) } | Set-Content -Path hashes.txt
+          "$($lines.Count) files hashed."
+
+      - name: Upload the hashes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hashes-${{ matrix.copy }}
+          path: hashes.txt
+          retention-days: 7
+          if-no-files-found: error
+
+  compare:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    permissions: {}
+
+    steps:
+      - name: Download the hashes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: hashes-*
+
+      - name: Compare
+        run: |
+          if diff hashes-first/hashes.txt hashes-second/hashes.txt; then
+            echo "Identical: $(wc -l < hashes-first/hashes.txt) files." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The two builds differ in the files above." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

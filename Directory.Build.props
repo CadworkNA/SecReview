@@ -27,6 +27,12 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
+  <ItemGroup Label="Reproducible build">
+    <!-- Native AOT: the linker writes a hash of the program instead of the time it ran, and
+         derives the symbol file's identity from it, so one commit links to the same bytes. -->
+    <LinkerArg Include="/Brepro" />
+  </ItemGroup>
+
   <PropertyGroup Label="Supply chain">
     <!-- Every project commits a packages.lock.json. CI restores in locked mode
          (build.ps1 -Locked), so a restore that would resolve anything else fails.
