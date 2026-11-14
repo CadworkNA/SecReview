@@ -1,11 +1,13 @@
 # Answers for the OpenSSF Best Practices badge
 
-Prepared answers for the passing level at <https://www.bestpractices.dev>. The maintainer
-creates the project there and pastes these in; the badge then
-goes at the top of the README. Keep this file true: when a practice changes, change the
-answer here in the same pull request.
+Answers for the passing level of SecReview's project,
+<https://www.bestpractices.dev/en/projects/16659>. The maintainer pastes them in; once it
+passes, the badge goes at the top of the README. Keep this file true: when a practice changes,
+change the answer here in the same pull request.
 
-"Met" unless it says otherwise. Paths are files in this repository.
+"Met" unless it says otherwise. Paths are files in this repository. Where the site requires a
+URL for "Met", the answer gives one; the site's rules are `met_url_required` in its
+[criteria.yml](https://github.com/coreinfrastructure/best-practices-badge/blob/main/criteria/criteria.yml).
 
 ## Basics
 
@@ -13,11 +15,11 @@ answer here in the same pull request.
 |-----------|--------|
 | description_good | `README.md`, first paragraph: what SecReview checks and that it never changes a setting. |
 | interact | `README.md` (install, "Contributing and security"), `CONTRIBUTING.md`. |
-| contribution | `CONTRIBUTING.md`: issues, then pull requests against `main`. |
-| contribution_requirements | `CONTRIBUTING.md`, "Requirements for a pull request" and "Test policy". |
+| contribution | Issues, then pull requests against `main`: https://github.com/CadworkNA/SecReview/blob/main/CONTRIBUTING.md |
+| contribution_requirements | "Requirements for a pull request" and "Test policy": https://github.com/CadworkNA/SecReview/blob/main/CONTRIBUTING.md |
 | floss_license | MIT. |
 | floss_license_osi | MIT is approved by the OSI. |
-| license_location | `LICENSE`; what the programs contain from others: `THIRD-PARTY-NOTICES.md`. |
+| license_location | https://github.com/CadworkNA/SecReview/blob/main/LICENSE; what the programs contain from others: https://github.com/CadworkNA/SecReview/blob/main/THIRD-PARTY-NOTICES.md |
 | documentation_basics | `README.md` (install, use, what leaves the PC); `BUILDING.md`. |
 | documentation_interface | `README.md`, "For IT": silent install, policies, `SecReviewCli --report`; `SecReviewCli --help`. |
 | sites_https | Everything is on github.com, over HTTPS. |
@@ -36,20 +38,20 @@ answer here in the same pull request.
 | version_unique | Each release has its own semantic version, compiled into the programs. |
 | version_semver | Semantic Versioning; `build.ps1` refuses anything else. |
 | version_tags | Tag `vX.Y.Z` per release; a ruleset lets only administrators create or move these tags. |
-| release_notes | Each GitHub release lists the merged pull requests by title (`.github/release.yml`); the app shows the features and fixes under "What's new". |
+| release_notes | Each release lists the merged pull requests by title (https://github.com/CadworkNA/SecReview/blob/main/.github/release.yml); the app shows the features and fixes under "What's new". The releases: https://github.com/CadworkNA/SecReview/releases |
 | release_notes_vulns | N/A so far: no release has fixed a publicly known vulnerability. `SECURITY.md`: a fix ships with a GitHub security advisory, named in the notes. |
 
 ## Reporting
 
 | Criterion | Answer |
 |-----------|--------|
-| report_process | `CONTRIBUTING.md` and the issue forms (`.github/ISSUE_TEMPLATE`). |
+| report_process | https://github.com/CadworkNA/SecReview/blob/main/CONTRIBUTING.md and the issue forms: https://github.com/CadworkNA/SecReview/issues/new/choose |
 | report_tracker | GitHub issues. |
 | report_responses | Reports are answered by the maintainer; `.github/CODEOWNERS` routes every pull request to them. |
 | enhancement_responses | Check requests have their own issue form and are answered the same way. |
-| report_archive | GitHub issues keep reports and answers, public and searchable. |
-| vulnerability_report_process | `SECURITY.md`. |
-| vulnerability_report_private | GitHub private vulnerability reporting, linked from `SECURITY.md` and the issue chooser. |
+| report_archive | GitHub issues keep reports and answers, public and searchable: https://github.com/CadworkNA/SecReview/issues?q=is%3Aissue |
+| vulnerability_report_process | https://github.com/CadworkNA/SecReview/blob/main/SECURITY.md |
+| vulnerability_report_private | GitHub private vulnerability reporting: https://github.com/CadworkNA/SecReview/security/advisories/new, linked from SECURITY.md and the issue chooser. |
 | vulnerability_report_response | `SECURITY.md`: acknowledgement within 5 business days. No report has been received so far. |
 
 ## Quality
