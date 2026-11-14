@@ -131,6 +131,165 @@
           { "id": "e6db77e5-3df2-4cf1-b95a-636979351e5b", "name": "Block persistence through WMI event subscription" }
         ]
       }
+    },
+    {
+      "id": "harden.defender.first-sight",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Defender block at first sight",
+        "titlePass": "Defender holds unknown files until the cloud answers",
+        "titleFail": "Defender lets unknown files run before the cloud answers",
+        "why": "Brand-new malware is in no update yet. Holding it for a few seconds lets Microsoft's cloud judge it before it runs.",
+        "fix": [
+          "Open Windows Security > Virus & threat protection > Manage settings.",
+          "Turn on Cloud-delivered protection: this feature follows it.",
+          "If it is on and this still fails, a policy switched the feature off: tell IT."
+        ],
+        "timeToFix": "2 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/powershell/module/defender/set-mppreference",
+      "verified": "2026-11-13",
+      "defender": { "item": "Block at first sight", "property": "DisableBlockAtFirstSeen", "expect": { "is": 0 }, "expected": "On", "labels": { "0": "On", "1": "Off" } }
+    },
+    {
+      "id": "harden.defender.samples",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Defender sample submission",
+        "titlePass": "Suspicious files are sent to Microsoft for analysis",
+        "titleFail": "Suspicious files are not sent for analysis",
+        "why": "When the cloud needs a closer look, a sample lets Microsoft confirm and block new malware. Held back, the verdict comes late or never.",
+        "fix": [
+          "Open Windows Security > Virus & threat protection > Manage settings.",
+          "Turn on Automatic sample submission.",
+          "If the switch is greyed out, tell IT: it is set by policy."
+        ],
+        "timeToFix": "2 min",
+        "settingsLink": "ms-settings:windowsdefender",
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/powershell/module/defender/set-mppreference",
+      "verified": "2026-11-13",
+      "defender": {
+        "item": "Sample submission",
+        "property": "SubmitSamplesConsent",
+        "expect": { "anyOf": [ 1, 3 ] },
+        "expected": "Sent automatically",
+        "labels": { "0": "Ask every time", "1": "Safe samples sent automatically", "2": "Never sent", "3": "All samples sent automatically" }
+      }
+    },
+    {
+      "id": "harden.defender.cloud-level",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Defender cloud blocking level",
+        "titlePass": "Defender's cloud blocking level is high",
+        "titleFail": "Defender's cloud blocking level is below high",
+        "why": "At the high level the cloud also blocks unknown files that look suspicious, not only known malware. Rarely, a new genuine program is held back.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Windows Components > Microsoft Defender Antivirus > MpEngine.",
+          "Set \"Select cloud protection level\" to Enabled, with High blocking level."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-defender",
+      "verified": "2026-11-13",
+      "defender": {
+        "item": "Cloud blocking level",
+        "property": "CloudBlockLevel",
+        "expect": { "atLeast": 2 },
+        "expected": "High or stricter",
+        "labels": { "0": "Default", "1": "Moderate", "2": "High", "4": "High plus", "6": "Zero tolerance" }
+      }
+    },
+    {
+      "id": "harden.defender.removable-drives",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Defender scan of USB drives",
+        "titlePass": "Full scans include USB drives",
+        "titleFail": "Full scans skip USB drives",
+        "why": "A USB drive plugged in during a full scan is skipped. Its files are still checked when they are opened.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Windows Components > Microsoft Defender Antivirus > Scan.",
+          "Enable \"Scan removable drives\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/powershell/module/defender/set-mppreference",
+      "verified": "2026-11-13",
+      "defender": { "item": "Scanning of USB drives", "property": "DisableRemovableDriveScanning", "expect": { "is": 0 }, "expected": "On", "labels": { "0": "On", "1": "Off" } }
+    },
+    {
+      "id": "harden.defender.asr-office",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Attack surface reduction for Office",
+        "titlePass": "Office and mail apps cannot launch or plant programs",
+        "titleFail": "Office and mail apps can launch or plant programs",
+        "why": "Most attacks by email start with a document or attachment that starts a program. These rules block that; try in-house Office add-ins first.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Configure Attack Surface Reduction rules\"; each rule shown in the details is set to Block."
+        ],
+        "timeToFix": "10 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference",
+      "verified": "2026-11-13",
+      "defenderRules": {
+        "rules": [
+          { "id": "d4f940ab-401b-4efc-aadc-ad5f3c50688a", "name": "Block all Office applications from creating child processes" },
+          { "id": "3b576869-a4ec-4529-8536-b80a7769e899", "name": "Block Office applications from creating executable content" },
+          { "id": "75668c1f-73b5-4cf0-bb93-3ecf5cb7cc84", "name": "Block Office applications from injecting code into other processes" },
+          { "id": "26190899-1602-49e8-8b27-eb1d0a1ce869", "name": "Block Office communication application from creating child processes" },
+          { "id": "92e97fa1-2edf-4476-bdd6-9dd0b4dddc7b", "name": "Block Win32 API calls from Office macros" },
+          { "id": "be9ba2d9-53ea-4cdc-84e5-9b1eeee46550", "name": "Block executable content from email client and webmail" },
+          { "id": "7674ba52-37eb-4a4f-a9a1-f0f9a1619a2c", "name": "Block Adobe Reader from creating child processes" }
+        ]
+      }
+    },
+    {
+      "id": "harden.defender.asr-scripts",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Attack surface reduction for scripts",
+        "titlePass": "Risky scripts and USB programs are blocked",
+        "titleFail": "Risky scripts and USB programs are not blocked",
+        "why": "These rules stop disguised scripts, scripts that start downloads, unsigned programs on USB drives and files that behave like ransomware.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The policy is \"Configure Attack Surface Reduction rules\"; each rule shown in the details is set to Block."
+        ],
+        "timeToFix": "10 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference",
+      "verified": "2026-11-13",
+      "defenderRules": {
+        "rules": [
+          { "id": "5beb7efe-fd9a-4556-801d-275e5ffc04cc", "name": "Block execution of potentially obfuscated scripts" },
+          { "id": "d3e037e1-3eb8-44c8-a917-57927947596d", "name": "Block JavaScript or VBScript from launching downloaded executable content" },
+          { "id": "b2b3f03d-6a65-4f7b-a9c7-1c7ef74a9ba4", "name": "Block untrusted and unsigned processes that run from USB" },
+          { "id": "c1db55ab-c21a-4637-bb3f-a12568109d35", "name": "Use advanced protection against ransomware" }
+        ]
+      }
     }
   ]
 }

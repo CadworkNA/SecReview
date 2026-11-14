@@ -221,6 +221,140 @@
         "labels": { "0": "Off", "1": "On" },
         "absent": { "found": "Not configured (Windows default: off)", "passes": false }
       }
+    },
+    {
+      "id": "harden.uac.secure-ui-paths",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Accessibility apps and admin windows",
+        "titlePass": "Only apps in protected folders can type into admin windows",
+        "titleFail": "Apps anywhere on disk can type into admin windows",
+        "why": "Accessibility apps may control windows run as administrator. Outside protected folders, any program could claim to be one.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options.",
+          "Enable \"User Account Control: Only elevate UIAccess applications that are installed in secure locations\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/settings-and-configuration",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "UIAccess apps only from protected folders",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "EnableSecureUIAPaths" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true },
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so nothing is elevated at all; see the User Account Control check."
+        }
+      }
+    },
+    {
+      "id": "harden.uac.admin-protection",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Administrator protection",
+        "titlePass": "Administrator protection guards each elevation",
+        "titleFail": "Administrator protection is off",
+        "why": "With it on, admin rights come from a separate hidden account for one approved task only. Microsoft advises against it where Hyper-V or WSL is needed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > Security Options.",
+          "Set \"User Account Control: Configure type of Admin Approval Mode\" to Administrator protection, then restart."
+        ],
+        "timeToFix": "10 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/administrator-protection/",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Type of Admin Approval Mode",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "TypeOfAdminApprovalMode" } ],
+        "expect": { "is": 2 },
+        "expected": "Administrator protection",
+        "labels": { "1": "Legacy", "2": "Administrator protection" },
+        "absent": { "found": "Not configured (Windows default: legacy)", "passes": false },
+        "onlyWhen": {
+          "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "value": "EnableLUA",
+          "expect": { "not": 0 },
+          "holdsWhenAbsent": true,
+          "otherwise": "User Account Control is off, so nothing is elevated at all; see the User Account Control check."
+        }
+      }
+    },
+    {
+      "id": "harden.signin.enumerate-admins",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Administrator list at elevation",
+        "titlePass": "The elevation prompt does not list administrator accounts",
+        "titleFail": "The elevation prompt lists every administrator account",
+        "why": "Listing the administrators hands anyone at the prompt the account names to guess passwords for.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > Windows Components > Credential User Interface.",
+          "Set \"Enumerate administrator accounts on elevation\" to Disabled."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-credentialsui",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Administrator accounts listed at elevation",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI", "value": "EnumerateAdministrators" } ],
+        "expect": { "is": 0 },
+        "expected": "Off",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.signin.restart-sign-on",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Sign-in after a restart",
+        "titlePass": "Windows never signs in by itself after a restart",
+        "titleFail": "Users may let Windows sign in by itself after restarts",
+        "why": "When allowed, Windows can sign a user in after an update restart from a stored sign-in. Switching it off for the PC means that is never kept.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > Windows Components > Windows Logon Options.",
+          "Set \"Sign-in and lock last interactive user automatically after a restart\" to Disabled."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/winlogon-automatic-restart-sign-on--arso-",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Automatic sign-in after restart blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "value": "DisableAutomaticRestartSignOn" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (each user decides; on by default)", "passes": false }
+      }
     }
   ]
 }

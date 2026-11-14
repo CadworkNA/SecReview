@@ -144,6 +144,156 @@
         "labels": { "0": "Off", "1": "On" },
         "absent": { "found": "Not configured (Windows default: on)", "passes": true }
       }
+    },
+    {
+      "id": "harden.printers.rpc-privacy",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Print spooler connection encryption",
+        "titlePass": "Connections to the print spooler must be encrypted",
+        "titleFail": "The print spooler accepts unencrypted connections",
+        "why": "The print spooler is a favourite target for attacks over the network. Requiring encrypted, signed-in connections shuts out the weakest of them.",
+        "fix": [
+          "Tell IT: nothing on a current PC needs this switched off.",
+          "It is the value RpcAuthnLevelPrivacyEnabled of the Print key shown in the details; it must be 1 or absent."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-printers",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Spooler requires encrypted connections",
+        "root": "localMachine",
+        "locations": [ { "key": "SYSTEM\\CurrentControlSet\\Control\\Print", "value": "RpcAuthnLevelPrivacyEnabled" } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.printers.redirection-guard",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Print spooler Redirection Guard",
+        "titlePass": "The print spooler does not follow file redirections",
+        "titleFail": "The print spooler follows file redirections",
+        "why": "The spooler runs with full rights. Redirection Guard stops links from tricking it into writing files where it should not.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > Printers.",
+          "Set \"Configure Redirection Guard\" to Not configured, or to Enabled with Redirection Guard Enabled."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-printers",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Spooler Redirection Guard",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers", "value": "RedirectionGuardPolicy", "policy": true } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On", "2": "Audit only" },
+        "absent": { "found": "Not configured (Windows default: on)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.printers.queue-files",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Files installed with printers",
+        "titlePass": "Printers can bring only colour profiles with them",
+        "titleFail": "Printers can install any files they bring with them",
+        "why": "A shared printer can make every PC that connects to it copy files. Limiting these to colour profiles keeps it from planting programs.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > Printers.",
+          "Set \"Manage processing of Queue-specific files\" to Not configured, or limit it to color profiles."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-printers",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Files a printer may install",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers", "value": "CopyFilesPolicy", "policy": true } ],
+        "expect": { "atMost": 1 },
+        "expected": "Colour profiles only",
+        "labels": { "0": "None", "1": "Colour profiles only", "2": "Any file" },
+        "absent": { "found": "Not configured (Windows default: colour profiles only)", "passes": true }
+      }
+    },
+    {
+      "id": "harden.printers.http-drivers",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Printer drivers over HTTP",
+        "titlePass": "Printer drivers are never downloaded over plain HTTP",
+        "titleFail": "Printer drivers can be downloaded over plain HTTP",
+        "why": "A driver fetched over plain HTTP can be swapped on the way, and printer drivers run with full rights.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > System > Internet Communication Management.",
+          "Under Internet Communication settings, enable \"Turn off downloading of print drivers over HTTP\"."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-connectivity",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Driver downloads over HTTP blocked",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers", "value": "DisableWebPnPDownload", "policy": true } ],
+        "expect": { "is": 1 },
+        "expected": "On",
+        "labels": { "0": "Off", "1": "On" },
+        "absent": { "found": "Not configured (Windows default: off)", "passes": false }
+      }
+    },
+    {
+      "id": "harden.dma.external-devices",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Plug-in devices and memory access",
+        "titlePass": "Plug-in devices without memory protection are blocked",
+        "titleFail": "Plug-in devices without memory protection are allowed",
+        "why": "Thunderbolt and similar devices can read memory directly. This blocks the ones Windows cannot fence off, on PCs that support Kernel DMA Protection.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open gpedit.msc > Administrative Templates > System > Kernel DMA Protection.",
+          "Set the enumeration policy to Enabled, with Block all.",
+          "Older docks and adapters may stop working: try them afterwards."
+        ],
+        "timeToFix": "10 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-dmaguard",
+      "verified": "2026-11-13",
+      "registry": {
+        "item": "Devices incompatible with DMA protection",
+        "root": "localMachine",
+        "locations": [ { "key": "SOFTWARE\\Policies\\Microsoft\\Windows\\Kernel DMA Protection", "value": "DeviceEnumerationPolicy", "policy": true } ],
+        "expect": { "is": 0 },
+        "expected": "Blocked",
+        "labels": { "0": "Blocked", "1": "Allowed after sign-in", "2": "Allowed" },
+        "absent": { "found": "Not configured (Windows default: allowed after sign-in)", "passes": false }
+      }
     }
   ]
 }

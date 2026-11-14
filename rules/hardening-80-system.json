@@ -126,6 +126,204 @@
       "source": "https://learn.microsoft.com/en-us/intune/device-security/security-baselines/ref-windows-mdm-settings",
       "verified": "2026-11-12",
       "userRight": { "item": "Access this computer from the network", "right": "SeNetworkLogonRight", "allowed": [ "S-1-5-32-544", "S-1-5-32-555" ] }
+    },
+    {
+      "id": "harden.rights.tcb",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Right to act as the operating system",
+        "titlePass": "No account may act as part of the operating system",
+        "titleFail": "An account may act as part of the operating system",
+        "why": "This right lets a program become any user without a password. Windows needs no account to hold it.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Act as part of the operating system.",
+          "Remove every account."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/act-as-part-of-the-operating-system",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Act as part of the operating system", "right": "SeTcbPrivilege", "allowed": [ "S-1-5-18" ] }
+    },
+    {
+      "id": "harden.rights.create-token",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Right to create sign-in tokens",
+        "titlePass": "No account may make its own sign-in tokens",
+        "titleFail": "An account may make its own sign-in tokens",
+        "why": "With this right a program can give itself any rights at all. Only Windows itself needs it.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Create a token object.",
+          "Remove every account."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/create-a-token-object",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Create a token object", "right": "SeCreateTokenPrivilege", "allowed": [ "S-1-5-18" ] }
+    },
+    {
+      "id": "harden.rights.credential-manager",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Right to read saved passwords",
+        "titlePass": "No account may read saved passwords as a trusted caller",
+        "titleFail": "An account may read saved passwords as a trusted caller",
+        "why": "Windows uses this right to restore saved passwords from a backup. Held by an account, it opens every stored sign-in.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Access Credential Manager as a trusted caller.",
+          "Remove every account."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/access-credential-manager-as-a-trusted-caller",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Access Credential Manager as a trusted caller", "right": "SeTrustedCredManAccessPrivilege", "allowed": [ "S-1-5-18" ] }
+    },
+    {
+      "id": "harden.rights.load-drivers",
+      "category": "hardening",
+      "severity": "medium",
+      "text": {
+        "name": "Right to load drivers",
+        "titlePass": "Only administrators may load drivers",
+        "titleFail": "Other accounts may load drivers",
+        "why": "A driver runs inside Windows itself, without limits. Loading one is as good as full control.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Load and unload device drivers.",
+          "Leave only Administrators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/load-and-unload-device-drivers",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Load and unload device drivers", "right": "SeLoadDriverPrivilege", "allowed": [ "S-1-5-32-544" ] }
+    },
+    {
+      "id": "harden.rights.take-ownership",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to take ownership",
+        "titlePass": "Only administrators may take ownership of files",
+        "titleFail": "Other accounts may take ownership of files",
+        "why": "Taking ownership of a file or setting lets the new owner change who may use it, past every other protection.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Take ownership of files or other objects.",
+          "Leave only Administrators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/take-ownership-of-files-or-other-objects",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Take ownership of files or other objects", "right": "SeTakeOwnershipPrivilege", "allowed": [ "S-1-5-32-544" ] }
+    },
+    {
+      "id": "harden.rights.backup",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to back up files",
+        "titlePass": "Only administrators and backup operators may back up files",
+        "titleFail": "Other accounts may read every file through backup rights",
+        "why": "The backup right reads any file whatever its permissions, the password database included.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Back up files and directories.",
+          "Leave only Administrators and Backup Operators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/back-up-files-and-directories",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Back up files and directories", "right": "SeBackupPrivilege", "allowed": [ "S-1-5-32-544", "S-1-5-32-551" ] }
+    },
+    {
+      "id": "harden.rights.restore",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to restore files",
+        "titlePass": "Only administrators and backup operators may restore files",
+        "titleFail": "Other accounts may overwrite any file through restore rights",
+        "why": "The restore right writes any file whatever its permissions, Windows' own programs included.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Restore files and directories.",
+          "Leave only Administrators and Backup Operators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/restore-files-and-directories",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Restore files and directories", "right": "SeRestorePrivilege", "allowed": [ "S-1-5-32-544", "S-1-5-32-551" ] }
+    },
+    {
+      "id": "harden.rights.firmware",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to change firmware settings",
+        "titlePass": "Only administrators may change firmware settings",
+        "titleFail": "Other accounts may change firmware settings",
+        "why": "Firmware settings decide how the PC starts. Changing them can weaken the protections that run before Windows does.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Modify firmware environment values.",
+          "Leave only Administrators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/modify-firmware-environment-values",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Modify firmware environment values", "right": "SeSystemEnvironmentPrivilege", "allowed": [ "S-1-5-32-544" ] }
+    },
+    {
+      "id": "harden.rights.security-log",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Right to manage the security log",
+        "titlePass": "Only administrators may manage the security log",
+        "titleFail": "Other accounts may manage the security log",
+        "why": "This right reads and clears the security log, the record of sign-ins and changes. An intruder clears it to hide.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "On a single PC, open secpol.msc > Local Policies > User Rights Assignment > Manage auditing and security log.",
+          "Leave only Administrators."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/manage-auditing-and-security-log",
+      "verified": "2026-11-13",
+      "userRight": { "item": "Manage auditing and security log", "right": "SeSecurityPrivilege", "allowed": [ "S-1-5-32-544" ] }
     }
   ]
 }

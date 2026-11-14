@@ -237,6 +237,342 @@
       "source": "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/audit-policy-recommendations",
       "verified": "2026-11-12",
       "auditPolicy": { "item": "Security Group Management", "subcategory": "0cce9237-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.pnp",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: devices plugged in",
+        "titlePass": "Plugged-in devices are recorded",
+        "titleFail": "Plugged-in devices are not recorded",
+        "why": "A record of each device connected shows when a USB drive or other hardware was attached, for example to copy data off.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Detailed Tracking > Audit PNP Activity, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-pnp-activity",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "PNP Activity", "subcategory": "0cce9248-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.group-membership",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: group membership at sign-in",
+        "titlePass": "Group memberships at each sign-in are recorded",
+        "titleFail": "Group memberships at sign-in are not recorded",
+        "why": "The groups a user held at sign-in show when an account suddenly had more rights than usual.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Logon/Logoff > Audit Group Membership, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-group-membership",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Group Membership", "subcategory": "0cce9249-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.other-logon",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: locks and reconnections",
+        "titlePass": "Locks, unlocks and remote reconnections are recorded",
+        "titleFail": "Locks, unlocks and remote reconnections are not recorded",
+        "why": "These events show when the screen was unlocked and when remote sessions came and went, filling gaps in the sign-in record.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Logon/Logoff > Audit Other Logon/Logoff Events, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-other-logonlogoff-events",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Other Logon/Logoff Events", "subcategory": "0cce921c-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.special-logon",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: administrator sign-ins",
+        "titlePass": "Sign-ins with administrator rights are recorded",
+        "titleFail": "Sign-ins with administrator rights are not recorded",
+        "why": "Each sign-in that receives powerful rights is flagged, so misuse of an administrator account stands out.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Logon/Logoff > Audit Special Logon, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-special-logon",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Special Logon", "subcategory": "0cce921b-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.detailed-file-share",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: refused access to shared files",
+        "titlePass": "Refused access to shared files is recorded",
+        "titleFail": "Refused access to shared files is not recorded",
+        "why": "Refused attempts on shared files show someone searching this PC's shares for what they may not open.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Object Access > Audit Detailed File Share, with Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-detailed-file-share",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Detailed File Share", "subcategory": "0cce9244-69ae-11d9-bed3-505054503030", "success": false, "failure": true }
+    },
+    {
+      "id": "harden.audit.file-share",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: access to shared folders",
+        "titlePass": "Access to shared folders is recorded",
+        "titleFail": "Access to shared folders is not recorded",
+        "why": "Connections to this PC's shared folders, and refusals, show who reached its files over the network.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Object Access > Audit File Share, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-file-share",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "File Share", "subcategory": "0cce9224-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.other-object-access",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: scheduled tasks",
+        "titlePass": "Changes to scheduled tasks are recorded",
+        "titleFail": "Changes to scheduled tasks are not recorded",
+        "why": "Malware often creates a scheduled task to start again later. This records tasks being created, changed or removed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Object Access > Audit Other Object Access Events, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-other-object-access-events",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Other Object Access Events", "subcategory": "0cce9227-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.removable-storage",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: files on USB drives",
+        "titlePass": "File access on USB drives is recorded",
+        "titleFail": "File access on USB drives is not recorded",
+        "why": "Recording reads and writes on removable drives shows what was copied to or from them.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Object Access > Audit Removable Storage, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-removable-storage",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Removable Storage", "subcategory": "0cce9245-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.authentication-policy",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: changes to sign-in policy",
+        "titlePass": "Changes to sign-in and trust policy are recorded",
+        "titleFail": "Changes to sign-in and trust policy are not recorded",
+        "why": "An intruder may grant rights or weaken sign-in rules to keep access. This records such changes.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Policy Change > Audit Authentication Policy Change, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-authentication-policy-change",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Authentication Policy Change", "subcategory": "0cce9230-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.firewall-rules",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: firewall rule changes",
+        "titlePass": "Changes to firewall rules are recorded",
+        "titleFail": "Changes to firewall rules are not recorded",
+        "why": "Malware often opens the firewall for itself. This records each rule added, changed or removed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Policy Change > Audit MPSSVC Rule-Level Policy Change, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-mpssvc-rule-level-policy-change",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "MPSSVC Rule-Level Policy Change", "subcategory": "0cce9232-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.other-policy-change",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: failed policy changes",
+        "titlePass": "Failed security policy changes are recorded",
+        "titleFail": "Failed security policy changes are not recorded",
+        "why": "Failures here include errors applying security policy and handling protected keys, which can be the trace of tampering.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Policy Change > Audit Other Policy Change Events, with Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-other-policy-change-events",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Other Policy Change Events", "subcategory": "0cce9234-69ae-11d9-bed3-505054503030", "success": false, "failure": true }
+    },
+    {
+      "id": "harden.audit.sensitive-privilege",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: use of powerful rights",
+        "titlePass": "Use of powerful rights is recorded",
+        "titleFail": "Use of powerful rights is not recorded",
+        "why": "Rights such as debugging other programs or taking ownership of files are what attackers reach for. This records each use.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > Privilege Use > Audit Sensitive Privilege Use, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-sensitive-privilege-use",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Sensitive Privilege Use", "subcategory": "0cce9228-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.other-system",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: firewall service and keys",
+        "titlePass": "Firewall service and key storage events are recorded",
+        "titleFail": "Firewall service and key storage events are not recorded",
+        "why": "This records the firewall service stopping or failing, and problems with stored encryption keys.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > System > Audit Other System Events, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-other-system-events",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Other System Events", "subcategory": "0cce9214-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
+    },
+    {
+      "id": "harden.audit.security-state",
+      "category": "hardening",
+      "severity": "info",
+      "text": {
+        "name": "Audit: start-up, shutdown and clock",
+        "titlePass": "Start-up, shutdown and clock changes are recorded",
+        "titleFail": "Start-up, shutdown and clock changes are not recorded",
+        "why": "A gap in the record or a changed clock can hide activity. This records when Windows started and stopped and when its time was changed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > System > Audit Security State Change, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-security-state-change",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Security State Change", "subcategory": "0cce9210-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.security-extension",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: new services",
+        "titlePass": "New services and security add-ins are recorded",
+        "titleFail": "New services and security add-ins are not recorded",
+        "why": "Installing a service is a common way for malware to start with every boot. This records each one installed.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > System > Audit Security System Extension, with Success."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-security-system-extension",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "Security System Extension", "subcategory": "0cce9211-69ae-11d9-bed3-505054503030", "success": true, "failure": false }
+    },
+    {
+      "id": "harden.audit.system-integrity",
+      "category": "hardening",
+      "severity": "low",
+      "text": {
+        "name": "Audit: system integrity",
+        "titlePass": "Tampering with Windows' security checks is recorded",
+        "titleFail": "Tampering with Windows' security checks is not recorded",
+        "why": "This records failed integrity checks and lost audit events, which can be the trace of an attacker tampering with Windows.",
+        "fix": [
+          "This is normally set for all PCs at once: tell IT.",
+          "The setting is Advanced Audit Policy > System > Audit System Integrity, with Success and Failure."
+        ],
+        "timeToFix": "5 min",
+        "settingsLink": null,
+        "references": []
+      },
+      "source": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-system-integrity",
+      "verified": "2026-11-13",
+      "auditPolicy": { "item": "System Integrity", "subcategory": "0cce9212-69ae-11d9-bed3-505054503030", "success": true, "failure": true }
     }
   ]
 }
