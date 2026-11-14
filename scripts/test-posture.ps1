@@ -213,9 +213,12 @@ Set-Content -LiteralPath (Join-Path $mkcert 'rootCA.pem') -Value @"
 Set-Content -LiteralPath (Join-Path $mkcert 'rootCA-key.pem') -Value 'Not a key: made up for a test.'
 '@
     $weaken = $weaken.Replace('{SCRIPT}', $proxyScript).Replace('{USER}', $transferUser).Replace('{PASS}', $secrets[2]).Replace('{PEM}', $authorityPem.Trim())
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($weaken))
+    # A file, not -EncodedCommand: Windows starts a process as another user with at most
+    # 1,024 characters of command line.
+    $weakenFile = Join-Path $shared 'weaken.ps1'
+    Set-Content -LiteralPath $weakenFile -Value $weaken
     $shell = (Get-Process -Id $PID).Path
-    $process = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded `
+    $process = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$weakenFile`"" `
         -Credential $credential -LoadUserProfile -WorkingDirectory $shared -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "Posture test: weakening the test account's settings ended with $($process.ExitCode)." }
 
