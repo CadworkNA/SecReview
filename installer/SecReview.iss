@@ -37,6 +37,14 @@
 #ifndef Stage
   #define Stage "..\artifacts\stage"
 #endif
+; The date every installed file carries, in UTC: build.ps1 passes the commit's, so one commit
+; packs to the same setup program whenever it is built.
+#ifndef FileDate
+  #define FileDate "2026-01-01"
+#endif
+#ifndef FileTime
+  #define FileTime "00:00:00"
+#endif
 #ifndef Publisher
   #define Publisher "SecReview"
 #endif
@@ -73,6 +81,10 @@ OutputDir={#OutputFolder}
 OutputBaseFilename={#AppName}-{#AppVersion}-setup
 Compression=lzma2/max
 SolidCompression=yes
+; Files carry the date above (the "touch" flag in [Files]), not the time they were built.
+TouchDate={#FileDate}
+TouchTime={#FileTime}
+TimeStampsInUTC=yes
 WizardStyle=modern
 ; Running copies are ended by setup itself (see [Code]), also where nobody can be asked.
 CloseApplications=no
@@ -88,7 +100,7 @@ Name: autostart; Description: "Keep SecReview in the notification area (starts w
 [Files]
 ; What an earlier version left in the folder is removed first (see [Code]), so the folder
 ; holds exactly this version afterwards.
-Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs touch
 
 [Icons]
 ; The identity and the class are what make SecReview's notifications stay in the notification
