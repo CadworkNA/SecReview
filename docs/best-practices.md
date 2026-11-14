@@ -1,8 +1,8 @@
 # Answers for the OpenSSF Best Practices badge
 
 Answers for the passing level of SecReview's project,
-<https://www.bestpractices.dev/en/projects/16659>. The maintainer pastes them in; once it
-passes, the badge goes at the top of the README. Keep this file true: when a practice changes,
+<https://www.bestpractices.dev/en/projects/16659>. The maintainer pastes them in. It
+passes, and the badge is at the top of the README. Keep this file true: when a practice changes,
 change the answer here in the same pull request.
 
 "Met" unless it says otherwise. Paths are files in this repository. Where the site requires a
