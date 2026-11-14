@@ -53,6 +53,38 @@ public sealed partial class FindingRow
 }
 
 /// <summary>
+/// One answer of a check with its findings. A check usually has one, shown without a heading;
+/// when an answer read with administrator rights is kept beside the latest one, each has a
+/// heading that says how and when it was read.
+/// </summary>
+public sealed partial class AnswerItem
+{
+    public AnswerItem(CheckResult answer, bool withHeading)
+    {
+        ArgumentNullException.ThrowIfNull(answer);
+
+        Heading = withHeading ? ScanPresentation.AnswerHeading(answer) : string.Empty;
+        HasHeading = withHeading;
+        Summary = withHeading ? answer.Outcome.Summary : string.Empty;
+        Findings = answer.Outcome.Findings.Select(object (f) => new FindingRow(f)).ToList();
+    }
+
+    public string Heading { get; }
+
+    public bool HasHeading { get; }
+
+    /// <summary>The answer's own summary, under its heading; empty when the row's summary says it already.</summary>
+    public string Summary { get; }
+
+    public bool HasSummary => Summary.Length > 0;
+
+    /// <summary>The rows (<see cref="FindingRow"/>). Typed as objects because the list controls only accept that.</summary>
+    public List<object> Findings { get; }
+
+    public bool HasFindings => Findings.Count > 0;
+}
+
+/// <summary>
 /// A group of rows under one heading. It stays the same object while its rows and the words
 /// beside its title change, so the window only redraws what is new.
 /// </summary>
@@ -106,14 +138,17 @@ public sealed partial class CheckItem
         Check = check;
         Ignored = ignored;
 
-        CheckOutcome outcome = check.Result.Outcome;
+        CheckResult shown = check.Shown;
+        CheckOutcome outcome = shown.Outcome;
         Standing found = ScanPresentation.StandingOf(check);
         Standing = ignored is null ? found : Standing.Ignored;
 
         Id = check.Definition.Id;
         Title = check.Title;
         Summary = outcome.Summary;
-        Findings = outcome.Findings.Select(object (f) => new FindingRow(f)).ToList();
+        Answers = check.Administrator is { } administrator
+            ? [new AnswerItem(check.Result, withHeading: true), new AnswerItem(administrator, withHeading: true)]
+            : [new AnswerItem(check.Result, withHeading: false)];
         Why = check.Text.Why;
         SettingsLink = check.Text.SettingsLink;
         IsExpanded = isExpanded;
@@ -125,7 +160,7 @@ public sealed partial class CheckItem
         string status = ScanPresentation.StandingName(found);
         StatusText = string.Create(
             CultureInfo.CurrentCulture,
-            $"{status}{(SeverityText.Length > 0 ? $" · {SeverityText}" : string.Empty)} · {ScanPresentation.CategoryName(check.Definition.Category)} · checked {check.Result.CheckedAt.ToLocalTime():d MMM yyyy, HH:mm}{(check.Result.Elevated ? " with administrator rights" : string.Empty)}");
+            $"{status}{(SeverityText.Length > 0 ? $" · {SeverityText}" : string.Empty)} · {ScanPresentation.CategoryName(check.Definition.Category)} · checked {shown.CheckedAt.ToLocalTime():d MMM yyyy, HH:mm}{(shown.Elevated ? " with administrator rights" : string.Empty)}");
 
         IsIgnored = ignored is not null;
         IgnoredText = ignored is null
@@ -160,7 +195,8 @@ public sealed partial class CheckItem
 
     /// <summary>Whether this row still says everything about that result, so it can stay on screen as it is.</summary>
     public bool IsStill(ScannedCheck check, IgnoredCheck? ignored, bool isBeingChecked) =>
-        ReferenceEquals(Check.Result, check.Result) && Equals(Ignored, ignored) && IsBeingChecked == isBeingChecked;
+        ReferenceEquals(Check.Result, check.Result) && ReferenceEquals(Check.Administrator, check.Administrator) &&
+        Equals(Ignored, ignored) && IsBeingChecked == isBeingChecked;
 
     /// <summary>Where the check stands; the same answer the headline and the order use.</summary>
     public Standing Standing { get; }
@@ -175,10 +211,11 @@ public sealed partial class CheckItem
 
     public bool ShowSeverity => SeverityText.Length > 0 && !IsIgnored;
 
-    /// <summary>The rows (<see cref="FindingRow"/>). Typed as objects because the list controls only accept that.</summary>
-    public List<object> Findings { get; }
-
-    public bool HasFindings => Findings.Count > 0;
+    /// <summary>
+    /// The answers (<see cref="AnswerItem"/>): the latest, and an answer read with
+    /// administrator rights when one is kept beside it. Typed as objects for the list controls.
+    /// </summary>
+    public List<object> Answers { get; }
 
     public string Why { get; }
 

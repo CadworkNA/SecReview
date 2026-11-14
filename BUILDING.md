@@ -119,9 +119,12 @@ answer from a pipe.
 - **No Windows shell with administrator rights.** Drive encryption is read from BitLocker's
   own management class; the shell, which other software can extend, is not loaded.
 - **Saying no at the prompt** changes nothing: the checks stay "needs administrator".
-- **Afterwards** an ordinary scan keeps an administrator answer, with its date, for 30 days,
-  but only for checks it cannot read at all. Where it reads something itself (drive
-  encryption), its own answer is always shown.
+- **Afterwards** a check keeps both answers side by side, each with its date: the latest read
+  without administrator rights and, for 30 days, the latest read with them. A new answer
+  replaces only the earlier one of its own kind, so lists do not swap between scans. The
+  answer that says something worse decides where the check stands; where an ordinary scan
+  can only say "needs administrator rights", the administrator answer does. The window shows
+  both under their own headings.
 - **`--report` with administrator rights** never replaces an existing file: an elevated
   program that overwrites whatever it is pointed at could be used to destroy any file.
 - The build runs the compiled helper over a real pipe (`build.ps1` stands in for the app). On

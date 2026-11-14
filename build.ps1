@@ -328,8 +328,11 @@ Invoke-Step 'Smoke test' {
     $elevatedHere = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)
     $asking = @($administratorScan.checks | Where-Object { $_.status -eq 'NeedsAdmin' }).Count
-    if ($administratorScan.schemaVersion -ne 1 -or $administratorScan.appVersion -ne $Version -or $administratorScan.checks.Count -lt 5) {
+    if ($administratorScan.schemaVersion -ne 2 -or $administratorScan.appVersion -ne $Version -or $administratorScan.checks.Count -lt 5) {
         throw "The administrator helper's answer is malformed: $($answer.Substring(0, [Math]::Min(200, $answer.Length)))"
+    }
+    if (@($administratorScan.checks | Where-Object { $null -ne $_.administrator }).Count -gt 0) {
+        throw 'The administrator helper sent a second answer beside its own.'
     }
     if ($administratorScan.checks.Count -ge $report.checks.Count) { throw 'The administrator helper answered for more than the administrator checks.' }
     if ($administratorScan.elevated -ne $elevatedHere) { throw "The helper says elevated=$($administratorScan.elevated); this build runs elevated=$elevatedHere." }

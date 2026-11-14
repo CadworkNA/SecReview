@@ -190,7 +190,9 @@ public sealed class TrayLogicTests
 
         ScanResult kept = TrayLogic.Merge(before, after, Now);
 
-        Assert.AreSame(fromAdministrator, kept.Checks[0]);
+        Assert.AreSame(asks.Result, kept.Checks[0].Result);
+        Assert.AreSame(fromAdministrator.Result, kept.Checks[0].Administrator, "kept beside the new answer");
+        Assert.AreSame(fromAdministrator.Result, kept.Checks[0].Shown, "and it decides: the new answer could only ask");
         Assert.AreSame(firewallNow, kept.Checks[1]);
         Assert.AreEqual(Now, kept.FinishedAt);
         Assert.AreSame(after, TrayLogic.Merge(null, after, Now));

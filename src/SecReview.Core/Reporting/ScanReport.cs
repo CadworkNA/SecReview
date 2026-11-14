@@ -47,7 +47,7 @@ public static class ReportBuilder
         var reported = new List<ReportCheck>(scan.Checks.Count);
         foreach (ScannedCheck check in scan.Checks)
         {
-            CheckOutcome outcome = check.Result.Outcome;
+            CheckOutcome outcome = check.Shown.Outcome;
             reported.Add(new ReportCheck(
                 Id: check.Definition.Id,
                 Category: check.Definition.Category.ToString(),
@@ -56,7 +56,7 @@ public static class ReportBuilder
                 Title: check.Title,
                 Summary: outcome.Summary,
                 ManagedByPolicy: outcome.ManagedByPolicy,
-                CheckedAt: check.Result.CheckedAt,
+                CheckedAt: check.Shown.CheckedAt,
                 Findings: [.. outcome.Findings.Select(f =>
                     new ReportFinding(f.Item, f.Found, f.Expected, f.Status.ToString(), f.Source))]));
         }

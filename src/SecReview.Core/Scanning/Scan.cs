@@ -5,10 +5,52 @@ using SecReview.Probing;
 namespace SecReview.Scanning;
 
 /// <summary>One check as shown to the user: what it is, how it is worded, and how it ended.</summary>
+/// <param name="Definition">The check.</param>
+/// <param name="Text">Its wording.</param>
+/// <param name="Result">
+/// The latest answer. When <see cref="Administrator"/> is set, this is the latest answer read
+/// without administrator rights.
+/// </param>
 public sealed record ScannedCheck(CheckDefinition Definition, CheckText Text, CheckResult Result)
 {
+    /// <summary>
+    /// An earlier answer read with administrator rights, kept beside <see cref="Result"/> (read
+    /// without them) so that neither replaces the other; null when there is none. Each is shown
+    /// with its own date, and each is replaced only by a newer answer of its own kind.
+    /// </summary>
+    public CheckResult? Administrator { get; init; }
+
+    /// <summary>
+    /// The answer that decides where the check stands, its title and its summary. The
+    /// administrator answer decides when it says something worse, or when the other answer
+    /// read nothing more than "needs administrator rights" for a check only an administrator
+    /// can answer in full. Otherwise the answer read without the rights, the newer one, does.
+    /// </summary>
+    public CheckResult Shown => Administrator is { } administrator && AdministratorDecides(administrator) ? administrator : Result;
+
     /// <summary>The title that matches the outcome (see <see cref="CheckText.TitleFor"/>).</summary>
-    public string Title => Text.TitleFor(Result.Outcome.Status);
+    public string Title => Text.TitleFor(Shown.Outcome.Status);
+
+    private bool AdministratorDecides(CheckResult administrator)
+    {
+        CheckStatus ordinary = Result.Outcome.Status;
+        if (ordinary == CheckStatus.NeedsAdmin && (Definition.NeedsAdmin == AdminNeed.Yes || Definition.KeepsAdministratorAnswer))
+        {
+            return true;
+        }
+
+        return Weight(administrator.Outcome.Status) > Weight(ordinary);
+    }
+
+    /// <summary>How much an answer says is wrong: a failure, then "could not check", then "needs administrator".</summary>
+    private static int Weight(CheckStatus status) => status switch
+    {
+        CheckStatus.Fail => 4,
+        CheckStatus.Error => 3,
+        CheckStatus.NeedsAdmin => 2,
+        CheckStatus.Pass => 1,
+        _ => 0,
+    };
 }
 
 /// <summary>A finished scan.</summary>
@@ -17,7 +59,7 @@ public sealed record ScannedCheck(CheckDefinition Definition, CheckText Text, Ch
 /// <param name="Elevated">Whether it ran with administrator rights.</param>
 public sealed record ScanResult(IReadOnlyList<ScannedCheck> Checks, DateTimeOffset FinishedAt, bool Elevated)
 {
-    public int Count(CheckStatus status) => Checks.Count(c => c.Result.Outcome.Status == status);
+    public int Count(CheckStatus status) => Checks.Count(c => c.Shown.Outcome.Status == status);
 }
 
 /// <summary>Runs the catalogue of checks and pairs each result with its wording.</summary>

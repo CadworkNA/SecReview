@@ -67,7 +67,7 @@ public static class ScanPresentation
             return Standing.Ignored;
         }
 
-        return check.Result.Outcome.Status switch
+        return check.Shown.Outcome.Status switch
         {
             CheckStatus.Fail when check.Definition.Severity == Severity.Info => Standing.WorthKnowing,
             CheckStatus.Fail => Standing.NeedsAttention,
@@ -267,50 +267,45 @@ public static class ScanPresentation
         return !isIgnored && standing == Standing.NeedsAttention;
     }
 
-    /// <summary>An answer read with administrator rights is kept this long while ordinary scans cannot read it themselves.</summary>
+    /// <summary>An answer kept beside a newer one of the other kind (with or without administrator rights) is kept this long.</summary>
     public static readonly TimeSpan AdministratorAnswerLifetime = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// Which answer to show for a check when a new one arrives. The new one, except in one
-    /// case: about a check that only administrator rights can answer, an ordinary scan reads
-    /// nothing at all and can only say so, and an answer the administrator checks gave earlier
-    /// says more. That earlier answer is kept, with its own date, until it is older than
-    /// <see cref="AdministratorAnswerLifetime"/>.
+    /// What to show for a check when a new answer arrives. For a check that administrator
+    /// rights tell more about, the two kinds of answer are kept side by side: the new one
+    /// replaces only the earlier answer of its own kind (with or without administrator
+    /// rights), and the other stays, with its own date, until it is older than
+    /// <see cref="AdministratorAnswerLifetime"/>. So an ordinary scan after the administrator
+    /// checks changes nothing that it did not read itself, and the other way round.
+    /// <see cref="ScannedCheck.Shown"/> says which of the two decides where the check stands.
     /// </summary>
     /// <remarks>
-    /// Not for a check that an ordinary scan answers in part
-    /// (<see cref="AdminNeed.ForFullDetail"/>): there "needs administrator rights" is itself a
-    /// reading ("Windows does not confirm that the drive is protected"), and an older pass
-    /// must not hide it. The exception is a check that says of itself that its "needs
-    /// administrator rights" means "no problem in what I could read, and more to read"
-    /// (<see cref="CheckDefinition.KeepsAdministratorAnswer"/>): the administrator's answer
-    /// covers all of it and is kept the same way. Nor for an earlier answer dated after now:
-    /// its age cannot be trusted.
+    /// An earlier answer dated after now is not kept: its age cannot be trusted. A check that
+    /// administrator rights add nothing to keeps only the new answer.
     /// </remarks>
-    /// <param name="shown">The answer on screen; null when there is none.</param>
+    /// <param name="shown">What is on screen; null when there is none.</param>
     /// <param name="arrived">The answer that just came in.</param>
     /// <param name="now">The current time.</param>
     public static ScannedCheck Newer(ScannedCheck? shown, ScannedCheck arrived, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(arrived);
 
-        bool nothingMoreWasRead =
-            (arrived.Definition.NeedsAdmin == AdminNeed.Yes || arrived.Definition.KeepsAdministratorAnswer) &&
-            arrived.Result.Outcome.Status == CheckStatus.NeedsAdmin;
-        if (!nothingMoreWasRead || shown is not { Result.Elevated: true } || shown.Result.Outcome.Status == CheckStatus.NeedsAdmin)
+        if (shown is null || arrived.Definition.NeedsAdmin == AdminNeed.No)
         {
             return arrived;
         }
 
-        TimeSpan age = now - shown.Result.CheckedAt;
-        return age >= -ClockTolerance && age <= AdministratorAnswerLifetime ? shown : arrived;
+        bool elevated = arrived.Result.Elevated;
+        CheckResult? ordinary = elevated ? Kept(OrdinaryOf(shown), now) : arrived.Result;
+        CheckResult? administrator = elevated ? arrived.Result : Kept(AdministratorOf(shown), now);
+        return Assemble(arrived, ordinary, administrator);
     }
 
     /// <summary>
-    /// Takes into what one process knows the answers another process saved since: every
-    /// answer that is newer than the one known, by the time the check ran (and by the rule of
-    /// <see cref="Newer"/> for administrator answers). Answers known and not in
-    /// <paramref name="saved"/> stay. Returns whether anything changed.
+    /// Takes into what one process knows the answers another process saved since: for each
+    /// check and each kind of answer (with or without administrator rights), the newer one by
+    /// the time the check ran. Answers known and not in <paramref name="saved"/> stay. Returns
+    /// whether anything changed.
     /// </summary>
     public static bool TakeNewer(IDictionary<string, ScannedCheck> known, ScanResult saved, DateTimeOffset now)
     {
@@ -325,16 +320,64 @@ public static class ScanPresentation
             {
                 known[id] = check;
                 changed = true;
+                continue;
             }
-            else if (check.Result.CheckedAt > have.Result.CheckedAt && !ReferenceEquals(Newer(have, check, now), have))
+
+            if (check.Definition.NeedsAdmin == AdminNeed.No)
             {
-                known[id] = check;
+                if (check.Result.CheckedAt > have.Result.CheckedAt)
+                {
+                    known[id] = check;
+                    changed = true;
+                }
+
+                continue;
+            }
+
+            CheckResult? ordinary = Later(OrdinaryOf(have), OrdinaryOf(check));
+            CheckResult? administrator = Later(AdministratorOf(have), AdministratorOf(check));
+            if (!ReferenceEquals(ordinary, OrdinaryOf(have)) || !ReferenceEquals(administrator, AdministratorOf(have)))
+            {
+                // The newest answer always stays; the other only while it may be kept beside it.
+                CheckResult? newest = Later(ordinary, administrator);
+                known[id] = Assemble(
+                    check,
+                    ReferenceEquals(ordinary, newest) ? ordinary : Kept(ordinary, now),
+                    ReferenceEquals(administrator, newest) ? administrator : Kept(administrator, now));
                 changed = true;
             }
         }
 
         return changed;
     }
+
+    /// <summary>The answer read without administrator rights; null when there is only one read with them.</summary>
+    private static CheckResult? OrdinaryOf(ScannedCheck check) => check.Result.Elevated ? null : check.Result;
+
+    /// <summary>The answer read with administrator rights; null when there is none.</summary>
+    private static CheckResult? AdministratorOf(ScannedCheck check) => check.Administrator ?? (check.Result.Elevated ? check.Result : null);
+
+    /// <summary>An earlier answer, if it may still be shown beside a newer one: not too old, and not dated after now.</summary>
+    private static CheckResult? Kept(CheckResult? earlier, DateTimeOffset now)
+    {
+        if (earlier is null)
+        {
+            return null;
+        }
+
+        TimeSpan age = now - earlier.CheckedAt;
+        return age >= -ClockTolerance && age <= AdministratorAnswerLifetime ? earlier : null;
+    }
+
+    /// <summary>The later of two answers by when they were read; the first when they tie, so that reading the same answers again changes nothing.</summary>
+    private static CheckResult? Later(CheckResult? first, CheckResult? second) =>
+        first is null ? second : second is null ? first : second.CheckedAt > first.CheckedAt ? second : first;
+
+    /// <summary>One check with its answers in their places.</summary>
+    private static ScannedCheck Assemble(ScannedCheck check, CheckResult? ordinary, CheckResult? administrator) =>
+        ordinary is null
+            ? new ScannedCheck(check.Definition, check.Text, administrator ?? check.Result)
+            : new ScannedCheck(check.Definition, check.Text, ordinary) { Administrator = administrator };
 
     /// <summary>How far a saved time may lie ahead of the clock before it is not believed.</summary>
     private static readonly TimeSpan ClockTolerance = TimeSpan.FromMinutes(5);
@@ -387,7 +430,7 @@ public static class ScanPresentation
     {
         ArgumentNullException.ThrowIfNull(check);
 
-        CheckOutcome outcome = check.Result.Outcome;
+        CheckOutcome outcome = check.Shown.Outcome;
         Standing standing = StandingOf(check);
         var text = new StringBuilder();
         text.AppendLine(check.Title);
@@ -409,25 +452,20 @@ public static class ScanPresentation
             text.AppendLine("This setting is managed by your organisation.");
         }
 
-        if (outcome.Findings.Count > 0)
+        if (check.Administrator is { } administrator)
+        {
+            foreach (CheckResult answer in new[] { check.Result, administrator })
+            {
+                text.AppendLine();
+                text.AppendLine(AnswerHeading(answer));
+                text.AppendLine(answer.Outcome.Summary);
+                AppendFindings(text, answer.Outcome.Findings);
+            }
+        }
+        else if (outcome.Findings.Count > 0)
         {
             text.AppendLine();
-            foreach (Finding finding in outcome.Findings)
-            {
-                text.Append(finding.Status switch { FindingStatus.Ok => "[ok] ", FindingStatus.Problem => "[!!] ", _ => "[i]  " });
-                text.Append(finding.Item).Append(": ").Append(finding.Found);
-                if (finding.Status != FindingStatus.Note)
-                {
-                    text.Append(" (expected: ").Append(finding.Expected).Append(')');
-                }
-
-                if (!string.IsNullOrEmpty(finding.Source))
-                {
-                    text.Append(" — ").Append(finding.Source);
-                }
-
-                text.AppendLine();
-            }
+            AppendFindings(text, outcome.Findings);
         }
 
         text.AppendLine();
@@ -446,6 +484,38 @@ public static class ScanPresentation
         }
 
         return text.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// The heading of one of a check's two answers: "Without administrator rights · checked
+    /// 13 Nov 2026, 13:56", or "With administrator rights · …".
+    /// </summary>
+    public static string AnswerHeading(CheckResult answer)
+    {
+        ArgumentNullException.ThrowIfNull(answer);
+        return string.Create(
+            CultureInfo.CurrentCulture,
+            $"{(answer.Elevated ? "With" : "Without")} administrator rights · checked {answer.CheckedAt.ToLocalTime():d MMM yyyy, HH:mm}");
+    }
+
+    private static void AppendFindings(StringBuilder text, IReadOnlyList<Finding> findings)
+    {
+        foreach (Finding finding in findings)
+        {
+            text.Append(finding.Status switch { FindingStatus.Ok => "[ok] ", FindingStatus.Problem => "[!!] ", _ => "[i]  " });
+            text.Append(finding.Item).Append(": ").Append(finding.Found);
+            if (finding.Status != FindingStatus.Note)
+            {
+                text.Append(" (expected: ").Append(finding.Expected).Append(')');
+            }
+
+            if (!string.IsNullOrEmpty(finding.Source))
+            {
+                text.Append(" — ").Append(finding.Source);
+            }
+
+            text.AppendLine();
+        }
     }
 
     private static int Count(ScanResult scan, IReadOnlySet<string>? ignored, Standing standing) =>

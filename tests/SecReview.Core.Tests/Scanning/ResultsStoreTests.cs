@@ -80,6 +80,48 @@ public sealed class ResultsStoreTests
         Assert.AreEqual(1, Directory.GetFiles(_folder).Length, "no temporary file is left behind");
     }
 
+    private static ScanResult WithAdministratorAnswer()
+    {
+        ScanResult scan = Scan();
+        CheckResult administrator = new(
+            AntivirusCheck.Id, CheckOutcome.Pass("Microsoft Defender Antivirus is on."), When.AddDays(-1), Elevated: true, TimeSpan.FromMilliseconds(300));
+        return scan with { Checks = [scan.Checks[0], scan.Checks[1], scan.Checks[2] with { Administrator = administrator }] };
+    }
+
+    [TestMethod]
+    public void AnAdministratorAnswerKeptBesideTheLatest_ComesBackToo()
+    {
+        var store = new ResultsStore(_folder);
+        ScanResult scan = WithAdministratorAnswer();
+
+        Assert.IsTrue(store.Save(scan));
+        ScannedCheck read = store.Load(Checks, Texts)!.Checks[2];
+
+        Assert.AreEqual(scan.Checks[2].Result, read.Result with { Outcome = scan.Checks[2].Result.Outcome });
+        Assert.IsNotNull(read.Administrator);
+        Assert.IsTrue(read.Administrator.Elevated);
+        Assert.AreEqual(scan.Checks[2].Administrator!.CheckedAt, read.Administrator.CheckedAt);
+        Assert.AreEqual("Microsoft Defender Antivirus is on.", read.Administrator.Outcome.Summary);
+        Assert.IsNull(store.Load(Checks, Texts)!.Checks[0].Administrator, "a check without one has none");
+    }
+
+    [TestMethod]
+    [DataRow("\"elevated\":true,\"durationMs\":300", "\"elevated\":false,\"durationMs\":300", DisplayName = "an administrator answer read without the rights")]
+    [DataRow("\"elevated\":false,\"durationMs\":250,\"findings\":[],\"administrator\":{", "\"elevated\":true,\"durationMs\":250,\"findings\":[],\"administrator\":{", DisplayName = "beside an answer read with the rights")]
+    [DataRow("\"findings\":[],\"administrator\":null}}]", "\"findings\":[],\"administrator\":{\"administrator\":null}}}]", DisplayName = "an administrator answer that holds another")]
+    [DataRow("\"id\":\"antivirus.active\",\"status\":\"Pass\"", "\"id\":\"firewall.enabled\",\"status\":\"Pass\"", DisplayName = "an administrator answer for another check")]
+    public void AnAdministratorAnswerThatCannotBeTrue_MakesTheFileUnusable(string find, string replace)
+    {
+        var store = new ResultsStore(_folder);
+        store.Save(WithAdministratorAnswer());
+        string saved = System.IO.File.ReadAllText(File);
+        Assert.IsTrue(saved.Contains(find, StringComparison.Ordinal), $"the saved file has no {find}: {saved}");
+
+        System.IO.File.WriteAllText(File, saved.Replace(find, replace, StringComparison.Ordinal));
+
+        Assert.IsNull(store.Load(Checks, Texts));
+    }
+
     [TestMethod]
     public void AResultForACheckThisVersionDoesNotHave_IsLeftOut()
     {
@@ -92,7 +134,8 @@ public sealed class ResultsStoreTests
     }
 
     [TestMethod]
-    [DataRow("\"schemaVersion\":1", "\"schemaVersion\":2", DisplayName = "another shape")]
+    [DataRow("\"schemaVersion\":2", "\"schemaVersion\":1", DisplayName = "the shape before")]
+    [DataRow("\"schemaVersion\":2", "\"schemaVersion\":3", DisplayName = "another shape")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\"Passed\"", DisplayName = "a status this version does not know")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\"1\"", DisplayName = "a status as a number")]
     [DataRow("\"status\":\"Pass\"", "\"status\":\" 1\"", DisplayName = "a status as a padded number")]
