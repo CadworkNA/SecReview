@@ -19,7 +19,8 @@ public sealed class ResultsStore
     public const string FileName = "results.json";
 
     /// <summary>The shape of the file. A file of another shape is not used.</summary>
-    public const int SchemaVersion = 1;
+    /// <remarks>2: a check may hold an answer read with administrator rights beside its latest one.</remarks>
+    public const int SchemaVersion = 2;
 
     private const int MaximumBytes = 8 * 1024 * 1024;
     private const int MaximumTextLength = 4000;
@@ -75,18 +76,23 @@ public sealed class ResultsStore
             ProductInfo.Version,
             scan.FinishedAt,
             scan.Elevated,
-            [.. scan.Checks.Select(check => new StoredCheck(
-                check.Definition.Id,
-                check.Result.Outcome.Status.ToString(),
-                Fit(check.Result.Outcome.Summary),
-                check.Result.Outcome.ManagedByPolicy,
-                check.Result.CheckedAt,
-                check.Result.Elevated,
-                (long)check.Result.Duration.TotalMilliseconds,
-                [.. check.Result.Outcome.Findings.Take(MaximumFindings).Select(f =>
-                    new StoredFinding(Fit(f.Item), Fit(f.Found), Fit(f.Expected), f.Status.ToString(), f.Source is null ? null : Fit(f.Source)))]))]);
+            [.. scan.Checks.Select(check => Stored(check.Definition.Id, check.Result) with
+            {
+                Administrator = check.Administrator is { } administrator ? Stored(check.Definition.Id, administrator) : null,
+            })]);
         return JsonSerializer.SerializeToUtf8Bytes(stored, ResultsJson.Default.StoredScan);
     }
+
+    private static StoredCheck Stored(string id, CheckResult result) => new(
+        id,
+        result.Outcome.Status.ToString(),
+        Fit(result.Outcome.Summary),
+        result.Outcome.ManagedByPolicy,
+        result.CheckedAt,
+        result.Elevated,
+        (long)result.Duration.TotalMilliseconds,
+        [.. result.Outcome.Findings.Take(MaximumFindings).Select(f =>
+            new StoredFinding(Fit(f.Item), Fit(f.Found), Fit(f.Expected), f.Status.ToString(), f.Source is null ? null : Fit(f.Source)))]);
 
     /// <summary>
     /// The last scan, with the wording of this version's catalogue; null when there is none
@@ -159,20 +165,41 @@ public sealed class ResultsStore
                 continue;
             }
 
-            // An answer dated before SecReview existed or after now was not saved by a working
-            // clock; how old it is, which decides how long it is kept, could not be told.
-            if (Outcome(saved) is not { } outcome || saved.CheckedAt.Year < 2025 || saved.CheckedAt > DateTimeOffset.UtcNow.AddDays(1))
+            if (Result(id, saved) is not { } result)
             {
                 return null;
             }
 
-            scanned.Add(new ScannedCheck(
-                check.Definition,
-                texts[id],
-                new CheckResult(id, outcome, saved.CheckedAt, saved.Elevated, TimeSpan.FromMilliseconds(Math.Clamp(saved.DurationMs, 0, 3_600_000)))));
+            // An administrator answer sits only beside one read without the rights, and holds
+            // no third answer of its own.
+            CheckResult? administrator = null;
+            if (saved.Administrator is { } kept)
+            {
+                if (result.Elevated || !kept.Elevated || kept.Administrator is not null || kept.Id != id || Result(id, kept) is not { } read)
+                {
+                    return null;
+                }
+
+                administrator = read;
+            }
+
+            scanned.Add(new ScannedCheck(check.Definition, texts[id], result) { Administrator = administrator });
         }
 
         return scanned.Count == 0 ? null : new ScanResult(scanned, stored.FinishedAt, stored.Elevated);
+    }
+
+    /// <summary>A saved answer; null when it cannot be used.</summary>
+    private static CheckResult? Result(string id, StoredCheck saved)
+    {
+        // An answer dated before SecReview existed or after now was not saved by a working
+        // clock; how old it is, which decides how long it is kept, could not be told.
+        if (Outcome(saved) is not { } outcome || saved.CheckedAt.Year < 2025 || saved.CheckedAt > DateTimeOffset.UtcNow.AddDays(1))
+        {
+            return null;
+        }
+
+        return new CheckResult(id, outcome, saved.CheckedAt, saved.Elevated, TimeSpan.FromMilliseconds(Math.Clamp(saved.DurationMs, 0, 3_600_000)));
     }
 
     /// <summary>A saved outcome; null when it holds something this version does not know or that cannot be SecReview's.</summary>
@@ -223,7 +250,11 @@ public sealed class ResultsStore
         DateTimeOffset CheckedAt,
         bool Elevated,
         long DurationMs,
-        IReadOnlyList<StoredFinding?>? Findings);
+        IReadOnlyList<StoredFinding?>? Findings)
+    {
+        /// <summary>An answer read with administrator rights, kept beside this one; null when there is none.</summary>
+        public StoredCheck? Administrator { get; init; }
+    }
 
     internal sealed record StoredFinding(string? Item, string? Found, string? Expected, string? Status, string? Source);
 }

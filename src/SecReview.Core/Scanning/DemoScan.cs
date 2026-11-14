@@ -63,6 +63,12 @@ public static class DemoScan
         [SshConfigCheck.Id] = CheckOutcome.NotApplicable("No SSH client settings file."),
     };
 
+    /// <summary>What the administrator checks read about drive encryption: more than an ordinary scan can.</summary>
+    private static readonly CheckOutcome AdministratorDriveEncryption = CheckOutcome.Fail(
+        "BitLocker is suspended on C:.",
+        Finding.Problem("C: (Windows)", "Suspended", "On"),
+        Finding.Ok("D:", "On", "On"));
+
     /// <summary>The names the command line knows the states by.</summary>
     public static IReadOnlyDictionary<string, DemoState> StateNames { get; } = new Dictionary<string, DemoState>(StringComparer.Ordinal)
     {
@@ -102,7 +108,13 @@ public static class DemoScan
                     ? made
                     : CheckOutcome.Pass(texts[id].TitlePass + ".");
                 return new ScannedCheck(
-                    check.Definition, texts[id], new CheckResult(id, outcome, now, Elevated: false, TimeSpan.FromMilliseconds(40)));
+                    check.Definition, texts[id], new CheckResult(id, outcome, now, Elevated: false, TimeSpan.FromMilliseconds(40)))
+                {
+                    // An answer the administrator checks gave yesterday, kept beside today's.
+                    Administrator = state != DemoState.AllPass && id == DriveEncryptionCheck.Id
+                        ? new CheckResult(id, AdministratorDriveEncryption, now.AddDays(-1), Elevated: true, TimeSpan.FromMilliseconds(900))
+                        : null,
+                };
             })],
             now,
             Elevated: false);

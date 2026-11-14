@@ -281,90 +281,115 @@
                                                         Text="{x:Bind StatusText}"
                                                         TextWrapping="Wrap" />
 
-                                                    <!-- Found versus expected. -->
-                                                    <StackPanel Spacing="6" Visibility="{x:Bind HasFindings}">
-                                                        <Grid ColumnSpacing="12">
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="24" />
-                                                                <ColumnDefinition Width="2*" />
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock
-                                                                Grid.Column="1"
-                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                                Text="Setting" />
-                                                            <TextBlock
-                                                                Grid.Column="2"
-                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                                Text="Found" />
-                                                            <TextBlock
-                                                                Grid.Column="3"
-                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                                Text="Expected" />
-                                                        </Grid>
-                                                        <ItemsRepeater ItemsSource="{x:Bind Findings}">
-                                                            <ItemsRepeater.Layout>
-                                                                <StackLayout Spacing="6" />
-                                                            </ItemsRepeater.Layout>
-                                                            <ItemsRepeater.ItemTemplate>
-                                                                <DataTemplate x:DataType="vm:FindingRow">
-                                                                    <Grid AutomationProperties.Name="{x:Bind Description}" ColumnSpacing="12">
-                                                                        <Grid.ColumnDefinitions>
-                                                                            <ColumnDefinition Width="24" />
-                                                                            <ColumnDefinition Width="2*" />
-                                                                            <ColumnDefinition Width="*" />
-                                                                            <ColumnDefinition Width="*" />
-                                                                        </Grid.ColumnDefinitions>
-                                                                        <Grid Grid.Column="0" AutomationProperties.AccessibilityView="Raw">
-                                                                            <FontIcon
-                                                                                FontSize="14"
-                                                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                                                                Glyph="&#xE73E;"
-                                                                                Visibility="{x:Bind IsOk}" />
-                                                                            <FontIcon
-                                                                                FontSize="14"
-                                                                                Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                                                                                Glyph="&#xE711;"
-                                                                                Visibility="{x:Bind IsProblem}" />
-                                                                            <FontIcon
-                                                                                FontSize="14"
-                                                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
-                                                                                Glyph="&#xE946;"
-                                                                                Visibility="{x:Bind IsNote}" />
-                                                                        </Grid>
-                                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                    <!--
+                                                        Found versus expected, for each answer: usually one, without a heading; two, each
+                                                        with its heading, when an answer read with administrator rights is kept beside the
+                                                        latest one.
+                                                    -->
+                                                    <ItemsRepeater ItemsSource="{x:Bind Answers}">
+                                                        <ItemsRepeater.Layout>
+                                                            <StackLayout Spacing="16" />
+                                                        </ItemsRepeater.Layout>
+                                                        <ItemsRepeater.ItemTemplate>
+                                                            <DataTemplate x:DataType="vm:AnswerItem">
+                                                                <StackPanel Spacing="6">
+                                                                    <TextBlock
+                                                                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                        Text="{x:Bind Heading}"
+                                                                        TextWrapping="Wrap"
+                                                                        Visibility="{x:Bind HasHeading}" />
+                                                                    <TextBlock
+                                                                        IsTextSelectionEnabled="True"
+                                                                        Text="{x:Bind Summary}"
+                                                                        TextWrapping="Wrap"
+                                                                        Visibility="{x:Bind HasSummary}" />
+                                                                    <StackPanel Spacing="6" Visibility="{x:Bind HasFindings}">
+                                                                        <Grid ColumnSpacing="12">
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="24" />
+                                                                                <ColumnDefinition Width="2*" />
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="*" />
+                                                                            </Grid.ColumnDefinitions>
                                                                             <TextBlock
-                                                                                IsTextSelectionEnabled="True"
-                                                                                Text="{x:Bind Item}"
-                                                                                TextWrapping="Wrap" />
-                                                                            <TextBlock
+                                                                                Grid.Column="1"
                                                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                                IsTextSelectionEnabled="True"
                                                                                 Style="{StaticResource CaptionTextBlockStyle}"
-                                                                                Text="{x:Bind Source}"
-                                                                                TextWrapping="Wrap"
-                                                                                Visibility="{x:Bind HasSource}" />
-                                                                        </StackPanel>
-                                                                        <TextBlock
-                                                                            Grid.Column="2"
-                                                                            IsTextSelectionEnabled="True"
-                                                                            Text="{x:Bind Found}"
-                                                                            TextWrapping="Wrap" />
-                                                                        <TextBlock
-                                                                            Grid.Column="3"
-                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                            IsTextSelectionEnabled="True"
-                                                                            Text="{x:Bind Expected}"
-                                                                            TextWrapping="Wrap" />
-                                                                    </Grid>
-                                                                </DataTemplate>
-                                                            </ItemsRepeater.ItemTemplate>
-                                                        </ItemsRepeater>
-                                                    </StackPanel>
+                                                                                Text="Setting" />
+                                                                            <TextBlock
+                                                                                Grid.Column="2"
+                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                                Text="Found" />
+                                                                            <TextBlock
+                                                                                Grid.Column="3"
+                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                                Text="Expected" />
+                                                                        </Grid>
+                                                                        <ItemsRepeater ItemsSource="{x:Bind Findings}">
+                                                                            <ItemsRepeater.Layout>
+                                                                                <StackLayout Spacing="6" />
+                                                                            </ItemsRepeater.Layout>
+                                                                            <ItemsRepeater.ItemTemplate>
+                                                                                <DataTemplate x:DataType="vm:FindingRow">
+                                                                                    <Grid AutomationProperties.Name="{x:Bind Description}" ColumnSpacing="12">
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                            <ColumnDefinition Width="24" />
+                                                                                            <ColumnDefinition Width="2*" />
+                                                                                            <ColumnDefinition Width="*" />
+                                                                                            <ColumnDefinition Width="*" />
+                                                                                        </Grid.ColumnDefinitions>
+                                                                                        <Grid Grid.Column="0" AutomationProperties.AccessibilityView="Raw">
+                                                                                            <FontIcon
+                                                                                                FontSize="14"
+                                                                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                                                                Glyph="&#xE73E;"
+                                                                                                Visibility="{x:Bind IsOk}" />
+                                                                                            <FontIcon
+                                                                                                FontSize="14"
+                                                                                                Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                                                                                Glyph="&#xE711;"
+                                                                                                Visibility="{x:Bind IsProblem}" />
+                                                                                            <FontIcon
+                                                                                                FontSize="14"
+                                                                                                Foreground="{ThemeResource SystemFillColorNeutralBrush}"
+                                                                                                Glyph="&#xE946;"
+                                                                                                Visibility="{x:Bind IsNote}" />
+                                                                                        </Grid>
+                                                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                                                            <TextBlock
+                                                                                                IsTextSelectionEnabled="True"
+                                                                                                Text="{x:Bind Item}"
+                                                                                                TextWrapping="Wrap" />
+                                                                                            <TextBlock
+                                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                                                IsTextSelectionEnabled="True"
+                                                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                                                Text="{x:Bind Source}"
+                                                                                                TextWrapping="Wrap"
+                                                                                                Visibility="{x:Bind HasSource}" />
+                                                                                        </StackPanel>
+                                                                                        <TextBlock
+                                                                                            Grid.Column="2"
+                                                                                            IsTextSelectionEnabled="True"
+                                                                                            Text="{x:Bind Found}"
+                                                                                            TextWrapping="Wrap" />
+                                                                                        <TextBlock
+                                                                                            Grid.Column="3"
+                                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                                            IsTextSelectionEnabled="True"
+                                                                                            Text="{x:Bind Expected}"
+                                                                                            TextWrapping="Wrap" />
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ItemsRepeater.ItemTemplate>
+                                                                        </ItemsRepeater>
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsRepeater.ItemTemplate>
+                                                    </ItemsRepeater>
 
                                                     <StackPanel Spacing="4">
                                                         <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Why it matters" />

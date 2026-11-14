@@ -139,8 +139,8 @@ public static class ErrorReports
         string[] lines =
         [
             .. scan.Checks
-                .Where(check => check.Result.Outcome.Status is not (CheckStatus.Pass or CheckStatus.NotApplicable))
-                .Select(check => $"{check.Definition.Id}: {check.Result.Outcome.Status}"),
+                .Where(check => check.Shown.Outcome.Status is not (CheckStatus.Pass or CheckStatus.NotApplicable))
+                .Select(check => $"{check.Definition.Id}: {check.Shown.Outcome.Status}"),
         ];
         int passed = scan.Count(CheckStatus.Pass);
         return lines.Length == 0

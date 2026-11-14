@@ -219,7 +219,7 @@ public static class AdministratorScan
         }
 
         // An answer read without administrator rights is not what was asked for.
-        if (!scan.Elevated || scan.Checks.Any(check => !check.Result.Elevated))
+        if (!scan.Elevated || scan.Checks.Any(check => !check.Result.Elevated || check.Administrator is not null))
         {
             return Failed("The administrator checks ran without administrator rights; their answer was not used.");
         }

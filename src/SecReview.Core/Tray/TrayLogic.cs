@@ -176,7 +176,7 @@ public static class TrayLogic
             0 => null,
             1 => new TrayNotification(
                 Cut(newFailures[0].Title, MaximumNotificationTitle),
-                Cut(newFailures[0].Result.Outcome.Summary, MaximumNotificationText),
+                Cut(newFailures[0].Shown.Outcome.Summary, MaximumNotificationText),
                 newFailures[0].Definition.Id),
             _ => new TrayNotification(
                 string.Create(CultureInfo.InvariantCulture, $"{newFailures.Count} checks started failing"),
@@ -186,8 +186,8 @@ public static class TrayLogic
     }
 
     /// <summary>
-    /// A new scan as it is kept: its answers, except where it can only say "needs
-    /// administrator rights" and the administrator checks answered earlier (see
+    /// A new scan as it is kept: its answers, each beside the answer of the other kind
+    /// (with or without administrator rights) that came earlier (see
     /// <see cref="ScanPresentation.Newer"/>).
     /// </summary>
     public static ScanResult Merge(ScanResult? before, ScanResult after, DateTimeOffset now)
