@@ -29,7 +29,8 @@
 
   <ItemGroup Label="Reproducible build">
     <!-- Native AOT: the linker writes a hash of the program instead of the time it ran, and
-         derives the symbol file's identity from it, so one commit links to the same bytes. -->
+         derives the symbol file's identity from it, so one commit links to the same bytes.
+         The switch is not in the linker's documentation; reproducible.yml shows it works. -->
     <LinkerArg Include="/Brepro" />
   </ItemGroup>
 

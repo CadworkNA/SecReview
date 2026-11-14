@@ -1,8 +1,10 @@
 name: Reproducible build
 
-# Two machines build the same commit, setup program included, and every file must come out
-# with the same SHA-256. Unsigned: a signature always differs, it carries the time it was made.
-# Runs when something that shapes the output changes, and by hand.
+# Two machines build the same commit, unsigned, and every file must come out with the same
+# SHA-256, except the two named in KNOWN_DIFFERENT below. Each machine also packs its staged
+# folder a second time: the two setup programs must be identical, so packing adds no difference.
+# Runs when something that shapes the output changes, weekly (the machine image changes), and
+# by hand.
 on:
   pull_request:
     paths:
@@ -14,6 +16,8 @@ on:
       - 'installer/**'
       - 'scripts/**'
       - 'src/**/*.csproj'
+  schedule:
+    - cron: '17 6 * * 1'
   workflow_dispatch:
 
 permissions: {}
@@ -48,6 +52,16 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Locked -NoTests -Installer -Version 0.0.0-repro
 
+      - name: Pack the same folder again
+        shell: pwsh
+        run: |
+          ./scripts/pack.ps1 -Stage artifacts/stage -Version 0.0.0-repro -Out artifacts/installer-again
+          $name = 'SecReview-0.0.0-repro-setup.exe'
+          $first = (Get-FileHash "artifacts/installer/$name").Hash
+          $again = (Get-FileHash "artifacts/installer-again/$name").Hash
+          if ($first -ne $again) { throw "Packing one folder twice gave two setup programs ($first, $again)." }
+          "Packed twice: identical ($first)."
+
       - name: Hash the output
         shell: pwsh
         run: |
@@ -69,30 +83,20 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # TEMPORARY: what the window program is made of, to find why two machines differ.
-      - name: Upload the window program's parts
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: parts-${{ matrix.copy }}
-          path: |
-            artifacts/stage/SecReview.exe
-            src/SecReview.App/obj/Release/*/win-x64/*.dll
-            src/SecReview.App/obj/Release/*/win-x64/*.pdb
-            src/SecReview.App/obj/Release/*/win-x64/*.cs
-            src/SecReview.App/obj/Release/*/win-x64/*.json
-            src/SecReview.App/obj/Release/*/win-x64/*.xbf
-            src/SecReview.App/obj/Release/*/win-x64/*.editorconfig
-            src/SecReview.App/obj/Release/*/win-x64/native/*.rsp
-            src/SecReview.App/obj/Release/*/win-x64/native/*.obj
-          retention-days: 1
-          if-no-files-found: error
-
   compare:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 
     permissions: {}
+
+    env:
+      # Microsoft's WinRT source generator (CsWinRT) writes its classes in an order that changes
+      # from one compiler process to the next, so the window program differs, and with it the
+      # setup program that packs it.
+      KNOWN_DIFFERENT: |
+        artifacts/stage/SecReview.exe
+        artifacts/installer/SecReview-0.0.0-repro-setup.exe
 
     steps:
       - name: Download the hashes
@@ -102,9 +106,16 @@ jobs:
 
       - name: Compare
         run: |
-          if diff hashes-first/hashes.txt hashes-second/hashes.txt; then
-            echo "Identical: $(wc -l < hashes-first/hashes.txt) files." | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "The two builds differ in the files above." | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+          sed -i 's/\r$//' hashes-first/hashes.txt hashes-second/hashes.txt
+          known=$(printf '%s\n' "$KNOWN_DIFFERENT" | sed '/^$/d' | sort)
+          differ=$(join -j 2 -o 0,1.1,2.1 <(sort -k2 hashes-first/hashes.txt) <(sort -k2 hashes-second/hashes.txt) | awk '$2 != $3 { print $1 }' | sort)
+          missing=$(diff <(awk '{ print $2 }' hashes-first/hashes.txt | sort) <(awk '{ print $2 }' hashes-second/hashes.txt | sort) || true)
+          unexpected=$(comm -23 <(echo "$differ") <(echo "$known") | sed '/^$/d')
+          now_same=$(comm -13 <(echo "$differ") <(echo "$known") | sed '/^$/d')
+          total=$(wc -l < hashes-first/hashes.txt)
+          report() { echo "$1" | tee -a "$GITHUB_STEP_SUMMARY"; }
+          report "$total files; known to differ: $(echo "$known" | wc -l)."
+          if [ -n "$now_same" ] && [ -z "$missing" ]; then report "Now identical, take off the known list: $now_same"; fi
+          if [ -n "$missing" ]; then report "Files in one build only: $missing"; fi
+          if [ -n "$unexpected" ]; then report "Differ unexpectedly: $unexpected"; fi
+          if [ -n "$missing" ] || [ -n "$unexpected" ]; then exit 1; fi

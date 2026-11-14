@@ -512,37 +512,15 @@ if ($Installer) {
     # The setup program: the staged folder, packed. Compiled here, never run here.
     $installerOut = Join-Path $root 'artifacts\installer'
     if (Test-Path $installerOut) { Remove-Item $installerOut -Recurse -Force }
-    $iscc = & (Join-Path $root 'scripts\ensure-inno.ps1')
 
     # The folder was checked before the programs were tried out. Checked again here, so that
     # what is packed is exactly what was checked, whatever ran in between.
     Invoke-Step 'Check staged output again' {
         & (Join-Path $root 'scripts\check-stage.ps1') -Stage $stage -OursSigned:$Sign
     }
-    $numbers = ($Version -split '-', 2)[0]
-    $publisher = ([xml] (Get-Content (Join-Path $root 'Directory.Build.props') -Raw)).Project.PropertyGroup.Company |
-        Where-Object { $_ } | Select-Object -First 1
-    # Every packed file carries the commit's time, in UTC, not the time it was built.
-    $committed = git -C $root show -s --format=%cI HEAD
-    if ($LASTEXITCODE -or -not $committed) { throw 'The setup program needs the commit time, and git could not read it.' }
-    $committed = ([datetimeoffset]::Parse($committed, [cultureinfo]::InvariantCulture)).UtcDateTime
-    $isccArgs = @(
-        '/Q'
-        "/DAppVersion=$Version"
-        "/DFileDate=$($committed.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture))"
-        "/DFileTime=$($committed.ToString('HH:mm:ss', [cultureinfo]::InvariantCulture))"
-        "/DFileVersion=$numbers.0"
-        "/DStage=$stage"
-        "/DOutputFolder=$installerOut"
-        "/DPublisher=$publisher"
-    )
-    if ($Sign) {
-        # Inno Setup calls this for the uninstaller and for the setup program itself.
-        $isccArgs += '/DSIGN'
-        # ($q is Inno Setup's way of writing a quotation mark; $f is the file to sign.)
-        $isccArgs += '/Sartifactsigning=pwsh -NoProfile -File $q' + (Join-Path $root 'scripts\sign.ps1') + '$q $f'
+    Invoke-Step 'Build the setup program' {
+        & (Join-Path $root 'scripts\pack.ps1') -Stage $stage -Version $Version -Out $installerOut -Sign:$Sign
     }
-    Invoke-Step 'Build the setup program' { & $iscc @isccArgs (Join-Path $root 'installer\SecReview.iss') }
 
     $setup = Get-Item (Join-Path $installerOut "SecReview-$Version-setup.exe")
     if ($Sign) {

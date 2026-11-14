@@ -59,7 +59,7 @@ dotnet test --solution SecReview.slnx -c Release --no-build
 | `build.ps1` | The one entry point; CI runs the same script |
 | `.github/workflows/build.yml` | CI: locked restore, build, tests, publish, smoke test |
 | `.github/workflows/malware-index.yml` | Daily, on Linux: fetches the feed, builds the list and keeps it as the `known-malicious-index` artifact. The build fails rather than produce a list from a feed that looks broken |
-| `.github/workflows/reproducible.yml` | Two machines build one commit, setup program included; every file must have the same SHA-256. Runs when the build's inputs change, and by hand |
+| `.github/workflows/reproducible.yml` | Two machines build one commit, setup program included; every file but the window program and the setup program must have the same SHA-256, and packing one folder twice must give one setup program. Runs when the build's inputs change, weekly, and by hand |
 | `.github/workflows/codeql.yml`, `scorecard.yml` | CodeQL's security queries over the C# code and the workflows, and the OpenSSF Scorecard. Both do nothing while the repository is private and start by themselves once it is public |
 
 ## Damaged input
@@ -234,15 +234,20 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
    not be read with administrator rights, and no report may hold a made-up secret or a name.
    A release waits for this. The script refuses to run anywhere but GitHub's own machines.
 
-**Reproducible:** one commit, built unsigned on GitHub's image with the same version and list,
-gives the same programs and setup program. The linker writes a hash instead of the time
-(`/Brepro`), and packed files carry the commit's time. Limits:
+**Reproducible, except the window program:** one commit, built unsigned on GitHub's image with
+the same version, list, error-report address and update address, gives the same files. The
+linker writes a hash instead of the time (`/Brepro`), and packed files carry the commit's time.
+`reproducible.yml` checks it. Limits:
 
+- `SecReview.exe` differs from build to build: Microsoft's WinRT source generator writes its
+  classes in an order that changes between compiler runs. The setup program packs it, so it
+  differs too; packing one folder twice gives the same setup program.
 - A signed build always differs: each signature carries the time it was made.
-- The XAML compiler writes the build folder's path into the window program, so another folder
-  gives another program. GitHub always builds in the same one.
+- The XAML compiler writes the build folder's path into the window program. GitHub always
+  builds in the same folder.
 - The C++ linker and Inno Setup come from the machine image, so a later image can give
   other bytes.
+- The official error-report address is a secret, so nobody else can rebuild an official build.
 
 Start it by hand (Actions, "Package and release") to try all of this without a release. A
 release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.
