@@ -158,10 +158,26 @@ try {
     & icacls.exe $shared /grant "${user}:(OI)(CI)M" | Out-Null
     if ($LASTEXITCODE) { throw "Posture test: granting the test account access failed ($LASTEXITCODE)." }
 
+    # A process started as another user carries this account's environment, and with it this
+    # account's folders (APPDATA and the like). So the account is started once to make its
+    # profile, and every process after gets the account's own folders.
+    $shell = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-Command', 'exit' -Credential $credential -LoadUserProfile `
+        -WorkingDirectory $shared -Wait
+    $profileFolder = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$user" } | Select-Object -First 1).LocalPath
+    if (-not $profileFolder -or -not (Test-Path -LiteralPath $profileFolder)) { throw 'Posture test: the test account has no profile folder.' }
+    $roaming = Join-Path $profileFolder 'AppData\Roaming'
+    $local = Join-Path $profileFolder 'AppData\Local'
+    $userEnvironment = @{
+        USERNAME = $user; USERPROFILE = $profileFolder; APPDATA = $roaming; LOCALAPPDATA = $local
+        TEMP = Join-Path $local 'Temp'; TMP = Join-Path $local 'Temp'
+        HOMEDRIVE = $profileFolder.Substring(0, 2); HOMEPATH = $profileFolder.Substring(2)
+    }
+
     function Read-ChecksAsUser([string] $name) {
         $file = Join-Path $shared "$name.report.json"
         $process = Start-Process -FilePath $cliPath -ArgumentList '--report', "`"$file`"" -Credential $credential -LoadUserProfile `
-            -WorkingDirectory $shared -Wait -PassThru
+            -Environment $userEnvironment -WorkingDirectory $shared -Wait -PassThru
         if ($process.ExitCode -ne 0 -or -not (Test-Path $file)) { throw "Posture test: SecReviewCli --report as an ordinary user ended with $($process.ExitCode)." }
         ConvertTo-Scan $file
     }
@@ -192,14 +208,12 @@ try {
 
     # The account weakens its own settings: the ones every user can change for themselves.
     # The key file beside mkcert's authority holds no key; the check only sees that it is there.
-    # The account's own folders come from Windows: a process started as another user may carry
-    # the starting account's environment, and with it that account's APPDATA. An error goes to
-    # a file beside the script, for the build's log.
+    # The account's folders are written in; an error goes to a file beside the script, for the build's log.
     $weaken = @'
 $ErrorActionPreference = 'Stop'
 trap { Set-Content -LiteralPath (Join-Path $PSScriptRoot 'weaken.error.txt') -Value "$_ (line $($_.InvocationInfo.ScriptLineNumber))"; exit 1 }
-$roaming = [Environment]::GetFolderPath('ApplicationData')
-$local = [Environment]::GetFolderPath('LocalApplicationData')
+$roaming = '{ROAMING}'
+$local = '{LOCAL}'
 $internet = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
 $publishing = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\WinTrust\Trust Providers\Software Publishing'
 foreach ($key in $internet, $publishing) { if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null } }
@@ -218,23 +232,20 @@ Set-Content -LiteralPath (Join-Path $mkcert 'rootCA.pem') -Value @"
 "@
 Set-Content -LiteralPath (Join-Path $mkcert 'rootCA-key.pem') -Value 'Not a key: made up for a test.'
 '@
-    $weaken = $weaken.Replace('{SCRIPT}', $proxyScript).Replace('{USER}', $transferUser).Replace('{PASS}', $secrets[2]).Replace('{PEM}', $authorityPem.Trim())
+    $weaken = $weaken.Replace('{ROAMING}', $roaming).Replace('{LOCAL}', $local).Replace('{SCRIPT}', $proxyScript).Replace('{USER}', $transferUser).Replace('{PASS}', $secrets[2]).Replace('{PEM}', $authorityPem.Trim())
     # A file, not -EncodedCommand: Windows starts a process as another user with at most
     # 1,024 characters of command line.
     $weakenFile = Join-Path $shared 'weaken.ps1'
     Set-Content -LiteralPath $weakenFile -Value $weaken
-    $shell = (Get-Process -Id $PID).Path
     $process = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$weakenFile`"" `
-        -Credential $credential -LoadUserProfile -WorkingDirectory $shared -Wait -PassThru
+        -Credential $credential -LoadUserProfile -Environment $userEnvironment -WorkingDirectory $shared -Wait -PassThru
     if ($process.ExitCode -ne 0) {
         $why = Join-Path $shared 'weaken.error.txt'
         $reason = if (Test-Path -LiteralPath $why) { Get-Content -LiteralPath $why -Raw } else { 'no reason written' }
         throw "Posture test: weakening the test account's settings ended with $($process.ExitCode): $reason"
     }
 
-    # The first run made the account's profile; the token goes where npm keeps it.
-    $profileFolder = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$user" } | Select-Object -First 1).LocalPath
-    if (-not $profileFolder -or -not (Test-Path -LiteralPath $profileFolder)) { throw 'Posture test: the test account has no profile folder.' }
+    # The token goes where npm keeps it.
     $npmrc = Join-Path $profileFolder '.npmrc'
     Set-Content -LiteralPath $npmrc -Value "registry=https://registry.npmjs.org/`n//registry.npmjs.org/:_authToken=$token`n" -NoNewline
     & icacls.exe $npmrc /grant "${user}:R" | Out-Null
