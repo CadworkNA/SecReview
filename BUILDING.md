@@ -225,11 +225,13 @@ The **Package and release** workflow (`full.yml`) is the only place a release is
 5. A **draft** release with the setup program and the SBOM, and, once the repository is
    public, a Sigstore bundle proving where they were built.
 6. On a second machine, `scripts/test-posture.ps1` installs the setup program and weakens
-   five settings (firewall off for one network, Remote Desktop on without Network Level
-   Authentication, WDigest, AutoPlay, and a made-up npm token in the profile of an ordinary
-   user made for the test). Each check must fail for its own reason, the user's files must
-   not be read with administrator rights, and no report may hold the token or a name. A
-   release waits for this. The script refuses to run anywhere but GitHub's own machines.
+   what ten checks look at. For the PC: firewall off for one network, Remote Desktop on
+   without Network Level Authentication, WDigest, AutoPlay, more cached sign-ins. For an
+   ordinary user made for the test: a made-up npm token, a proxy script over plain HTTP,
+   revocation checks off, a FileZilla password, and a key file beside a trusted made-up
+   certificate authority. Each check must fail for its own reason, the user's files must
+   not be read with administrator rights, and no report may hold a made-up secret or a name.
+   A release waits for this. The script refuses to run anywhere but GitHub's own machines.
 
 Start it by hand (Actions, "Package and release") to try all of this without a release. A
 release is made by the maintainer: push the tag `vX.Y.Z`, wait for the draft, publish it.

@@ -3,9 +3,10 @@
 # settings of this machine to a good state, reads them with SecReviewCli, weakens them, and
 # reads them again.
 #
-# This weakens the machine it runs on, creates a local user account and writes a made-up token
-# into that account's profile. It runs on GitHub's own disposable build machines only and
-# refuses anywhere else. Never run it, or anything like it, on a real PC.
+# This weakens the machine it runs on, trusts a made-up certificate authority, creates a local
+# user account, weakens that account's settings and writes made-up secrets into its profile. It
+# runs on GitHub's own disposable build machines only and refuses anywhere else. Never run it,
+# or anything like it, on a real PC.
 #
 #   scripts\test-posture.ps1 -Cli "$env:ProgramFiles\SecReview\SecReviewCli.exe"
 param([Parameter(Mandatory)] [string] $Cli)
@@ -25,8 +26,14 @@ $terminalServer = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
 $listener = "$terminalServer\WinStations\RDP-Tcp"
 $wdigest = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest'
 $explorerPolicy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
-# Made up for this test; no part of it may appear in a report.
+$winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+$authorityName = 'CN=SecReview made-up test authority'
+# Made up for this test; no part of any of them may appear in a report.
 $token = 'npm_MadeUpForTheBuild0123456789abcdefghij'
+$transferPassword = 'MadeUpTransferPassword0123456789'
+$transferUser = 'made-up-transfer-user'
+$proxyScript = 'made-up-proxy-script.pac'
+$secrets = @($token, $transferPassword, [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($transferPassword)))
 
 function Set-Number([string] $key, [string] $name, [int] $value) {
     if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
@@ -39,6 +46,15 @@ function Set-GoodState {
     Set-Number $listener 'UserAuthentication' 1
     Set-Number $wdigest 'UseLogonCredential' 0
     Set-Number $explorerPolicy 'NoDriveTypeAutoRun' 255
+    # Windows keeps this number as text.
+    Set-ItemProperty -LiteralPath $winlogon -Name 'CachedLogonsCount' -Value '10' -Type String
+    # -DeleteKey exists only for a path in the certificate drive, not for piped certificates.
+    foreach ($store in 'My', 'Root') {
+        foreach ($made in @(Get-ChildItem "Cert:\LocalMachine\$store" | Where-Object Subject -eq $authorityName)) {
+            if ($made.HasPrivateKey) { Remove-Item -LiteralPath "Cert:\LocalMachine\$store\$($made.Thumbprint)" -DeleteKey }
+            else { Remove-Item -LiteralPath "Cert:\LocalMachine\$store\$($made.Thumbprint)" }
+        }
+    }
 }
 
 function ConvertTo-Scan([string] $file) {
@@ -63,17 +79,25 @@ function Assert-Status($scan, [string] $id, [string] $status) {
     if ($check.status -ne $status) {
         throw "Posture test: $id is $($check.status) ('$($check.summary)'), expected $status."
     }
-    Write-Host ("  {0,-22} {1,-5} {2}" -f $id, $check.status, $check.summary)
+    Write-Host ("  {0,-24} {1,-13} {2}" -f $id, $check.status, $check.summary)
     $check
 }
 
+# The findings of a check as one line of text, to match against.
+function Get-Findings($check) { $check.findings | ConvertTo-Json -Compress -Depth 5 }
+
 function Assert-NothingPrivate($scan, [string[]] $names) {
-    # Any stretch of the token, not only the whole of it.
-    foreach ($start in 0, 4, 12, ($token.Length - 10)) {
-        if ($scan.Text.Contains($token.Substring($start, 10))) { throw 'Posture test: the report contains part of the token.' }
+    # Any stretch of a secret, not only the whole of it.
+    foreach ($secret in $secrets) {
+        foreach ($start in 0, 4, 12, ($secret.Length - 10)) {
+            if ($scan.Text.Contains($secret.Substring($start, 10))) { throw 'Posture test: the report contains part of a made-up secret.' }
+        }
     }
     foreach ($name in $names) {
         if ($scan.Text -match [regex]::Escape($name)) { throw 'Posture test: the report names the user or the computer.' }
+    }
+    foreach ($private in $transferUser, $proxyScript) {
+        if ($scan.Text -match [regex]::Escape($private)) { throw 'Posture test: the report shows more of a setting than its server.' }
     }
 }
 
@@ -82,7 +106,7 @@ try {
     Set-GoodState
     Write-Host 'With the settings in order:'
     $before = Read-Checks 'before'
-    foreach ($id in 'firewall.enabled', 'remote.desktop', 'harden.wdigest', 'harden.autoplay') {
+    foreach ($id in 'firewall.enabled', 'remote.desktop', 'harden.wdigest', 'harden.autoplay', 'harden.cached-logons') {
         Assert-Status $before $id 'Pass' | Out-Null
     }
 
@@ -91,6 +115,7 @@ try {
     Set-Number $listener 'UserAuthentication' 0
     Set-Number $wdigest 'UseLogonCredential' 1
     Remove-ItemProperty -LiteralPath $explorerPolicy -Name 'NoDriveTypeAutoRun'
+    Set-ItemProperty -LiteralPath $winlogon -Name 'CachedLogonsCount' -Value '50' -Type String
 
     Write-Host 'With the settings weakened:'
     $after = Read-Checks 'after'
@@ -108,6 +133,8 @@ try {
     Assert-Status $after 'harden.wdigest' 'Fail' | Out-Null
     $autoplay = Assert-Status $after 'harden.autoplay' 'Fail'
     if (($autoplay.findings | ConvertTo-Json -Compress) -notmatch 'Not configured') { throw 'Posture test: the AutoPlay check does not say the setting is not configured.' }
+    $cached = Assert-Status $after 'harden.cached-logons' 'Fail'
+    if ((Get-Findings $cached) -notmatch '"found":"50"') { throw "Posture test: the cached sign-ins check does not show the number kept: $(Get-Findings $cached)" }
 
     # With administrator rights SecReview does not read a user's own files, and says so
     # instead of passing.
@@ -131,10 +158,26 @@ try {
     & icacls.exe $shared /grant "${user}:(OI)(CI)M" | Out-Null
     if ($LASTEXITCODE) { throw "Posture test: granting the test account access failed ($LASTEXITCODE)." }
 
+    # A process started as another user carries this account's environment, and with it this
+    # account's folders (APPDATA and the like). So the account is started once to make its
+    # profile, and every process after gets the account's own folders.
+    $shell = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-Command', 'exit' -Credential $credential -LoadUserProfile `
+        -WorkingDirectory $shared -Wait
+    $profileFolder = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$user" } | Select-Object -First 1).LocalPath
+    if (-not $profileFolder -or -not (Test-Path -LiteralPath $profileFolder)) { throw 'Posture test: the test account has no profile folder.' }
+    $roaming = Join-Path $profileFolder 'AppData\Roaming'
+    $local = Join-Path $profileFolder 'AppData\Local'
+    $userEnvironment = @{
+        USERNAME = $user; USERPROFILE = $profileFolder; APPDATA = $roaming; LOCALAPPDATA = $local
+        TEMP = Join-Path $local 'Temp'; TMP = Join-Path $local 'Temp'
+        HOMEDRIVE = $profileFolder.Substring(0, 2); HOMEPATH = $profileFolder.Substring(2)
+    }
+
     function Read-ChecksAsUser([string] $name) {
         $file = Join-Path $shared "$name.report.json"
         $process = Start-Process -FilePath $cliPath -ArgumentList '--report', "`"$file`"" -Credential $credential -LoadUserProfile `
-            -WorkingDirectory $shared -Wait -PassThru
+            -Environment $userEnvironment -WorkingDirectory $shared -Wait -PassThru
         if ($process.ExitCode -ne 0 -or -not (Test-Path $file)) { throw "Posture test: SecReviewCli --report as an ordinary user ended with $($process.ExitCode)." }
         ConvertTo-Scan $file
     }
@@ -148,21 +191,89 @@ try {
     $asking = @($userBefore.Checks.Values | Where-Object status -eq 'NeedsAdmin').Count
     if ($asking -eq 0) { throw 'Posture test: without administrator rights some checks must say they need them.' }
     Write-Host "  $asking checks say they need administrator rights; none of them passes instead."
+    foreach ($id in 'network.proxy', 'system.revocation', 'sc.trust.rootkeys') {
+        Assert-Status $userBefore $id 'Pass' | Out-Null
+    }
+    Assert-Status $userBefore 'sc.transfer.credentials' 'NotApplicable' | Out-Null
 
-    # The first run made the account's profile; the token goes where npm keeps it.
-    $profileFolder = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$user" } | Select-Object -First 1).LocalPath
-    if (-not $profileFolder -or -not (Test-Path -LiteralPath $profileFolder)) { throw 'Posture test: the test account has no profile folder.' }
+    # A certificate authority the whole PC trusts, made up for the test. The copy with its key
+    # is removed again; what is left is a trusted certificate without a key on the PC.
+    $authority = New-SelfSignedCertificate -Subject $authorityName -CertStoreLocation Cert:\LocalMachine\My `
+        -KeyUsage CertSign, CRLSign -TextExtension @('2.5.29.19={critical}{text}ca=1') -NotAfter (Get-Date).AddDays(2)
+    $authorityFile = Join-Path $work 'authority.cer'
+    Export-Certificate -Cert $authority -FilePath $authorityFile | Out-Null
+    Import-Certificate -FilePath $authorityFile -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+    Remove-Item -LiteralPath "Cert:\LocalMachine\My\$($authority.Thumbprint)" -DeleteKey
+    $authorityPem = "-----BEGIN CERTIFICATE-----`n$([Convert]::ToBase64String($authority.RawData, 'InsertLineBreaks'))`n-----END CERTIFICATE-----`n"
+
+    # The account weakens its own settings: the ones every user can change for themselves.
+    # The key file beside mkcert's authority holds no key; the check only sees that it is there.
+    # The account's folders are written in; an error goes to a file beside the script, for the build's log.
+    $weaken = @'
+$ErrorActionPreference = 'Stop'
+trap { Set-Content -LiteralPath (Join-Path $PSScriptRoot 'weaken.error.txt') -Value "$_ (line $($_.InvocationInfo.ScriptLineNumber))"; exit 1 }
+$roaming = '{ROAMING}'
+$local = '{LOCAL}'
+$internet = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+$publishing = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\WinTrust\Trust Providers\Software Publishing'
+foreach ($key in $internet, $publishing) { if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null } }
+Set-ItemProperty -LiteralPath $internet -Name 'AutoConfigURL' -Value 'http://proxy.example.invalid/{SCRIPT}' -Type String
+Set-ItemProperty -LiteralPath $internet -Name 'CertificateRevocation' -Value 0 -Type DWord
+$state = (Get-ItemProperty -LiteralPath $publishing).State
+if ($null -eq $state) { $state = 0x23c00 }
+Set-ItemProperty -LiteralPath $publishing -Name 'State' -Value ($state -bor 0x200) -Type DWord
+
+$fileZilla = New-Item -ItemType Directory -Path (Join-Path $roaming 'FileZilla') -Force
+Set-Content -LiteralPath (Join-Path $fileZilla 'sitemanager.xml') -Value '<?xml version="1.0" encoding="UTF-8"?><FileZilla3><Servers><Server><Host>files.example.invalid</Host><Port>21</Port><User>{USER}</User><Pass encoding="base64">{PASS}</Pass></Server></Servers></FileZilla3>'
+
+$mkcert = New-Item -ItemType Directory -Path (Join-Path $local 'mkcert') -Force
+Set-Content -LiteralPath (Join-Path $mkcert 'rootCA.pem') -Value @"
+{PEM}
+"@
+Set-Content -LiteralPath (Join-Path $mkcert 'rootCA-key.pem') -Value 'Not a key: made up for a test.'
+'@
+    $weaken = $weaken.Replace('{ROAMING}', $roaming).Replace('{LOCAL}', $local).Replace('{SCRIPT}', $proxyScript).Replace('{USER}', $transferUser).Replace('{PASS}', $secrets[2]).Replace('{PEM}', $authorityPem.Trim())
+    # A file, not -EncodedCommand: Windows starts a process as another user with at most
+    # 1,024 characters of command line.
+    $weakenFile = Join-Path $shared 'weaken.ps1'
+    Set-Content -LiteralPath $weakenFile -Value $weaken
+    $process = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$weakenFile`"" `
+        -Credential $credential -LoadUserProfile -Environment $userEnvironment -WorkingDirectory $shared -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        $why = Join-Path $shared 'weaken.error.txt'
+        $reason = if (Test-Path -LiteralPath $why) { Get-Content -LiteralPath $why -Raw } else { 'no reason written' }
+        throw "Posture test: weakening the test account's settings ended with $($process.ExitCode): $reason"
+    }
+
+    # The token goes where npm keeps it.
     $npmrc = Join-Path $profileFolder '.npmrc'
     Set-Content -LiteralPath $npmrc -Value "registry=https://registry.npmjs.org/`n//registry.npmjs.org/:_authToken=$token`n" -NoNewline
     & icacls.exe $npmrc /grant "${user}:R" | Out-Null
 
-    Write-Host 'As an ordinary user, with a token in .npmrc:'
+    Write-Host 'As an ordinary user, with weakened settings and made-up secrets:'
     $userAfter = Read-ChecksAsUser 'user-after'
     $npm = Assert-Status $userAfter 'sc.npm.credentials' 'Fail'
-    if (($npm.findings | ConvertTo-Json -Compress) -notmatch '\.npmrc') { throw 'Posture test: the npm check does not name the file the token is in.' }
+    if ((Get-Findings $npm) -notmatch '\.npmrc') { throw 'Posture test: the npm check does not name the file the token is in.' }
+
+    $proxy = Assert-Status $userAfter 'network.proxy' 'Fail'
+    $plain = @($proxy.findings | Where-Object { $_.status -eq 'Problem' })
+    if ($plain.Count -ne 1 -or $plain[0].found -notmatch 'plain HTTP from proxy\.example\.invalid$') { throw "Posture test: the proxy check does not name the script's server as plain HTTP: $(Get-Findings $proxy)" }
+
+    $revocation = Assert-Status $userAfter 'system.revocation' 'Fail'
+    $off = @($revocation.findings | Where-Object { $_.status -eq 'Problem' -and $_.found -eq 'Off' })
+    if ($off.Count -ne 2) { throw "Posture test: the revocation check does not say both checks are off: $(Get-Findings $revocation)" }
+
+    $transfer = Assert-Status $userAfter 'sc.transfer.credentials' 'Fail'
+    if ((Get-Findings $transfer) -notmatch 'FileZilla password for files\.example\.invalid') { throw "Posture test: the transfer check does not name FileZilla and the server: $(Get-Findings $transfer)" }
+
+    $rootKeys = Assert-Status $userAfter 'sc.trust.rootkeys' 'Fail'
+    $keyed = @($rootKeys.findings | Where-Object { $_.status -eq 'Problem' })
+    if ($keyed.Count -ne 1 -or $keyed[0].found -notmatch $authority.Thumbprint -or $keyed[0].source -notmatch 'rootCA-key\.pem$') {
+        throw "Posture test: the root keys check does not name the made-up authority and its key file: $(Get-Findings $rootKeys)"
+    }
     Assert-NothingPrivate $userAfter @($user, $env:COMPUTERNAME)
 
-    Write-Host 'Five weakened settings, five checks that say so, each for its own reason. With administrator rights the user''s files are not read, and the report says so. No part of the token and no name of a user or the computer is in any report.'
+    Write-Host 'Ten checks fail on weakened settings, each for its own reason. With administrator rights the user''s files are not read, and the report says so. No part of a made-up secret and no name of a user or the computer is in any report.'
 } finally {
     # The machine is thrown away after the build; this is tidiness, also when a check above failed.
     Set-GoodState
