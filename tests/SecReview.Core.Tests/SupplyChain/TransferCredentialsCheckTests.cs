@@ -1,5 +1,6 @@
 using SecReview.Checks;
 using SecReview.Probing;
+using SecReview.SupplyChain;
 using SecReview.SupplyChain.Credentials;
 using SecReview.Tests.Checks;
 using SecReview.Tests.Fakes;
@@ -199,6 +200,118 @@ public sealed class TransferCredentialsCheckTests
         Assert.AreEqual(CheckStatus.Error, Check.Run(broken).Status);
         Assert.AreEqual(CheckStatus.Error, Check.Run(denied).Status);
         Assert.AreEqual(CheckStatus.Fail, Check.Run(both).Status);
+    }
+
+    private static readonly string Profile = FakeProbes.FolderPath(KnownFolder.UserProfile);
+    private static readonly string ScoopWinScp = Profile + @"\scoop\apps\winscp\current";
+    private static readonly string ScoopFileZilla = Profile + @"\scoop\apps\filezilla\current";
+
+    private const string WinScpSaved = "[Sessions\\user1@files.example.test]\nHostName=files.example.test\nPassword=0B6E91D2C47F\n";
+    private const string FileZillaSaved =
+        "<FileZilla3><Servers><Server><Host>files.example.test</Host><User>user1</User><Pass encoding=\"base64\">bWFkZS11cA==</Pass></Server></Servers></FileZilla3>";
+
+    private static FakeProbes Scoop(FakeProbes probes) => probes.WithFile($@"{Profile}\scoop\apps\scoop\current\bin\scoop.ps1", "# scoop");
+
+    private static FakeProbes SearchPath(FakeProbes probes, string folder) =>
+        probes.WithRegistryValue(RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, "Path", RegistryValue.FromText($@"C:\Windows;{folder};relative\bin;\\server\share"));
+
+    private static string FileZillaDefaults(string location) =>
+        $"<FileZilla3><Settings><Setting name=\"Config Location\">{location}</Setting></Settings></FileZilla3>";
+
+    [TestMethod]
+    public void Portable_WinScpFromScoop_ReadsTheSettingsFileBesideTheProgram()
+    {
+        FakeProbes probes = Scoop(new FakeProbes())
+            .WithFile($@"{ScoopWinScp}\WinSCP.exe", "x")
+            .WithFile($@"{ScoopWinScp}\WinSCP.ini", WinScpSaved);
+
+        CheckOutcome outcome = Check.Run(probes);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("WinSCP password for files.example.test", outcome.Findings[0].Item);
+        Assert.AreEqual($@"{ScoopWinScp}\WinSCP.ini, line 1", outcome.Findings[0].Source);
+        Assert.IsFalse(Everything(outcome).Contains("0B6E", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Portable_FileZillaFromScoop_FollowsTheSettingsFolderItsDefaultsName()
+    {
+        FakeProbes probes = Scoop(new FakeProbes())
+            .WithFile($@"{ScoopFileZilla}\filezilla.exe", "x")
+            .WithFile($@"{ScoopFileZilla}\fzdefaults.xml", FileZillaDefaults(@"data\config"))
+            .WithFile($@"{ScoopFileZilla}\data\config\sitemanager.xml", FileZillaSaved);
+
+        CheckOutcome outcome = Check.Run(probes);
+
+        Assert.AreEqual(CheckStatus.Fail, outcome.Status);
+        Assert.AreEqual("FileZilla password for files.example.test", outcome.Findings[0].Item);
+        StringAssert.StartsWith(outcome.Findings[0].Source, $@"{ScoopFileZilla}\data\config\sitemanager.xml");
+        Assert.IsFalse(Everything(outcome).Contains("user1", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void Portable_OnTheSearchPath_OnlyBesideTheProgram_AndNeverOnTheNetwork()
+    {
+        const string Tools = @"D:\Tools\WinSCP";
+        FakeProbes beside = SearchPath(new FakeProbes(), Tools)
+            .WithFile($@"{Tools}\WinSCP.exe", "x")
+            .WithFile($@"{Tools}\WinSCP.ini", WinScpSaved);
+        FakeProbes withoutProgram = SearchPath(new FakeProbes(), Tools).WithFile($@"{Tools}\WinSCP.ini", WinScpSaved);
+        FakeProbes network = SearchPath(new FakeProbes(), Tools)
+            .WithFolderFailure(@"\\server\share", ProbeFailure.Failed("Network paths are never opened."))
+            .WithFile($@"{Tools}\WinSCP.exe", "x");
+
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(beside).Status);
+        Assert.AreEqual(CheckStatus.NotApplicable, Check.Run(withoutProgram).Status, "a settings file without the program beside it is no copy of WinSCP");
+        Assert.AreEqual(CheckStatus.NotApplicable, Check.Run(network).Status, "a network folder is not opened");
+    }
+
+    [TestMethod]
+    public void Portable_FileZillaDefaults_CanHoldSites_AndNameAFolderThroughAVariable()
+    {
+        const string Tools = @"D:\Tools\FileZilla";
+        FakeProbes sites = SearchPath(new FakeProbes(), Tools)
+            .WithFile($@"{Tools}\filezilla.exe", "x")
+            .WithFile($@"{Tools}\fzdefaults.xml", FileZillaSaved);
+        FakeProbes variable = SearchPath(new FakeProbes(), Tools)
+            .WithVariable("FZ_HOME", @"E:\Settings")
+            .WithFile($@"{Tools}\filezilla.exe", "x")
+            .WithFile($@"{Tools}\fzdefaults.xml", FileZillaDefaults("$FZ_HOME/filezilla/"))
+            .WithFile(@"E:\Settings\filezilla\recentservers.xml", FileZillaSaved);
+        FakeProbes unset = SearchPath(new FakeProbes(), Tools)
+            .WithFile($@"{Tools}\filezilla.exe", "x")
+            .WithFile($@"{Tools}\fzdefaults.xml", FileZillaDefaults("$NOT_SET/filezilla"));
+
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(sites).Status);
+        Assert.AreEqual(CheckStatus.Fail, Check.Run(variable).Status);
+        Assert.AreEqual(CheckStatus.Error, Check.Run(unset).Status, "a settings folder that cannot be told is could not check");
+    }
+
+    [TestMethod]
+    public void Portable_FileZillaDefaultsNamingTheUsualFolder_CountsEachPasswordOnce()
+    {
+        const string Tools = @"D:\Tools\FileZilla";
+        FakeProbes probes = SearchPath(new FakeProbes(), Tools)
+            .WithVariable("APPDATA", Roaming)
+            .WithFile($@"{Tools}\filezilla.exe", "x")
+            .WithFile($@"{Tools}\fzdefaults.xml", FileZillaDefaults(@"$APPDATA\FileZilla"))
+            .WithFile(SiteManager, FileZillaSaved);
+
+        Assert.AreEqual("File transfer tools: 1 secret is stored as plain text.", Check.Run(probes).Summary);
+    }
+
+    [TestMethod]
+    [DataRow(@"data\config", @"D:\FileZilla\data\config")]
+    [DataRow(@".", @"D:\FileZilla")]
+    [DataRow(@"..\settings\", @"D:\settings")]
+    [DataRow(@"E:/Settings/FileZilla/", @"E:\Settings\FileZilla")]
+    [DataRow(@"E:\$$money\fz", @"E:\$money\fz")]
+    [DataRow(@"$HOME_DIR\fz", @"E:\Home\fz")]
+    public void Portable_FileZillasConfigLocation_IsResolvedAsFileZillaDoes(string location, string expected)
+    {
+        IEnvironmentProbe environment = new FakeProbes().WithVariable("HOME_DIR", @"E:\Home").Build().Environment;
+
+        Assert.AreEqual(expected, TransferCredentialsCheck.SettingsFolder(location, @"D:\FileZilla", environment));
     }
 
     [TestMethod]

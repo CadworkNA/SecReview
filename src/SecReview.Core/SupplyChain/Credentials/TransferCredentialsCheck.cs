@@ -1,6 +1,7 @@
 using SecReview.Checks;
 using SecReview.Config;
 using SecReview.Probing;
+using SecReview.SupplyChain.Scoop;
 
 namespace SecReview.SupplyChain.Credentials;
 
@@ -8,7 +9,8 @@ namespace SecReview.SupplyChain.Credentials;
 /// File transfer tools must not keep server passwords where any program running as the user
 /// can read them back. FileZilla and WinSCP encrypt a saved password only when a master
 /// password is set; PuTTY keeps a proxy password as written. Only the server's name is
-/// shown: never a site's name, a user name or the stored value.
+/// shown: never a site's name, a user name or the stored value. Portable copies, which keep
+/// their settings beside the program, are looked for in fixed places only (see <see cref="Portable"/>).
 /// </summary>
 public sealed class TransferCredentialsCheck : ICheck
 {
@@ -19,7 +21,15 @@ public sealed class TransferCredentialsCheck : ICheck
     internal const string WinScpSessions = WinScpKey + @"\Sessions";
     internal const string WinScpSecurity = WinScpKey + @"\Configuration\Security";
 
+    internal const string WinScpProgram = "WinSCP.exe";
+    internal const string WinScpPortable = "WinSCP.ini";
+    internal const string FileZillaProgram = "filezilla.exe";
+    internal const string FileZillaDefaults = "fzdefaults.xml";
+
     private const string MasterPassword = "UseMasterPassword";
+
+    /// <summary>The names Scoop's Extras bucket installs these tools under.</summary>
+    private static readonly string[] ScoopApps = ["winscp", "filezilla"];
 
     /// <summary>What WinSCP keeps as written, whatever its master password setting.</summary>
     private static readonly string[] WinScpPlain =
@@ -42,22 +52,178 @@ public sealed class TransferCredentialsCheck : ICheck
         }
 
         var found = new SecretFindings();
-        FileZilla(probes.Files, $@"{roaming}\FileZilla\sitemanager.xml", found);
-        FileZilla(probes.Files, $@"{roaming}\FileZilla\recentservers.xml", found);
+        var read = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        FileZillaFolder(probes.Files, $@"{roaming}\FileZilla", found, read);
         Putty(probes.Registry, found);
         WinScpRegistry(probes.Registry, found);
-        WinScpFile(probes.Files, $@"{roaming}\WinSCP.ini", found);
+        WinScpFile(probes.Files, $@"{roaming}\{WinScpPortable}", found);
+        Portable(probes, found, read);
 
         return found.Outcome("File transfer tools", "passwords", "No file transfer tool is set up for this user.");
     }
 
-    private static void FileZilla(IFileProbe files, string path, SecretFindings found)
+    /// <summary>
+    /// Copies that keep their settings beside the program. WinSCP reads a WinSCP.ini there
+    /// before anything else; FileZilla reads an fzdefaults.xml there, which can hold sites and
+    /// name another settings folder. Only fixed places are looked at, never the whole disk: the
+    /// apps Scoop installed, for the user and for everyone, and the folders of the search path.
+    /// A folder that cannot be listed is passed over: it is not known to hold either tool.
+    /// </summary>
+    private static void Portable(SystemProbes probes, SecretFindings found, HashSet<string> read)
     {
-        if (found.LoadXml(files, path) is not { Root: { } root } file)
+        var folders = new List<string>();
+        if (ScoopLocator.Locate(probes, out ScoopInstall? scoop) is null && scoop is not null)
+        {
+            foreach (string root in new[] { scoop.Root, scoop.GlobalRoot })
+            {
+                folders.AddRange(ScoopApps.Select(name => ScoopLocator.App(probes.Files, root, name)?.Folder).OfType<string>());
+            }
+        }
+
+        if (SearchPath(probes, out IReadOnlyList<string> path) is { } unread)
+        {
+            // A password found elsewhere still fails the check; otherwise this is "could not check".
+            found.SawFile(unread.Summary);
+        }
+
+        folders.AddRange(path);
+        foreach (string folder in folders.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ProbeResult<IReadOnlyList<FileEntry>> entries = probes.Files.List(folder);
+            if (!entries.IsOk)
+            {
+                continue;
+            }
+
+            if (Has(entries.Value!, WinScpProgram))
+            {
+                WinScpFile(probes.Files, $@"{folder}\{WinScpPortable}", found);
+            }
+
+            if (Has(entries.Value!, FileZillaProgram))
+            {
+                FileZillaCopy(probes, folder, found, read);
+            }
+        }
+
+        static bool Has(IReadOnlyList<FileEntry> entries, string name) =>
+            entries.Any(entry => !entry.IsDirectory && entry.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The folders of the search path as Windows builds it: the PC's, then the user's. Only
+    /// full paths on a drive count; network folders are never opened.
+    /// </summary>
+    private static CheckOutcome? SearchPath(SystemProbes probes, out IReadOnlyList<string> folders)
+    {
+        folders = [];
+        if (RegistryReader.Text(
+                probes.Registry, RegistryRoot.LocalMachine, PersistentEnvironment.MachineKey, "Path", "the PC's search path", out string? machine) is { } failed)
+        {
+            return failed;
+        }
+
+        if (RegistryReader.Text(
+                probes.Registry, RegistryRoot.CurrentUser, PersistentEnvironment.UserKey, "Path", "your search path", out string? user) is { } failedToo)
+        {
+            return failedToo;
+        }
+
+        folders =
+        [
+            .. $"{machine};{user}".Split(';')
+                .Select(entry => PersistentEnvironment.Expand(entry.Trim().Trim('"'), probes.Environment).Replace('/', '\\').TrimEnd('\\'))
+                .Where(entry => entry.Length >= 2 && char.IsAsciiLetter(entry[0]) && entry[1] == ':' && Path.IsPathFullyQualified(entry + '\\')),
+        ];
+        return null;
+    }
+
+    /// <summary>A copy of FileZilla with an fzdefaults.xml beside it: the sites in it, and the settings folder it names.</summary>
+    private static void FileZillaCopy(SystemProbes probes, string folder, SecretFindings found, HashSet<string> read)
+    {
+        if (found.LoadXml(probes.Files, $@"{folder}\{FileZillaDefaults}") is not { Root: { } root } file)
         {
             return;
         }
 
+        FileZillaServers(file, root, found);
+        string? location = root.Child("Settings")?.ChildrenNamed("Setting")
+            .LastOrDefault(setting => setting.Attribute("name") == "Config Location")?.Text;
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return;
+        }
+
+        if (SettingsFolder(location, folder, probes.Environment) is { } settings)
+        {
+            FileZillaFolder(probes.Files, settings, found, read);
+        }
+        else
+        {
+            found.SawFile("Could not tell where a portable copy of FileZilla keeps its settings.");
+        }
+    }
+
+    /// <summary>
+    /// The folder FileZilla's "Config Location" names. A part of the path that starts with "$"
+    /// is an environment variable, one that starts with "$$" is written with one "$", and a
+    /// relative path starts beside fzdefaults.xml. Null when a variable is not set or the
+    /// result is not a path.
+    /// </summary>
+    internal static string? SettingsFolder(string location, string beside, IEnvironmentProbe environment)
+    {
+        var parts = new List<string>();
+        foreach (string part in location.Trim().Replace('/', '\\').Split('\\'))
+        {
+            if (part.StartsWith("$$", StringComparison.Ordinal))
+            {
+                parts.Add(part[1..]);
+            }
+            else if (part.StartsWith('$'))
+            {
+                if (environment.Variable(part[1..]) is not { Length: > 0 } value)
+                {
+                    return null;
+                }
+
+                parts.Add(value.Trim().Replace('/', '\\').TrimEnd('\\'));
+            }
+            else
+            {
+                parts.Add(part);
+            }
+        }
+
+        string joined = string.Join('\\', parts);
+        try
+        {
+            return Path.GetFullPath(Path.IsPathFullyQualified(joined) ? joined : Path.Join(beside, joined)).TrimEnd('\\');
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>FileZilla's files of saved and recent sites in a settings folder; a folder already read is not read again.</summary>
+    private static void FileZillaFolder(IFileProbe files, string folder, SecretFindings found, HashSet<string> read)
+    {
+        if (!read.Add(folder.TrimEnd('\\')))
+        {
+            return;
+        }
+
+        foreach (string name in new[] { "sitemanager.xml", "recentservers.xml" })
+        {
+            if (found.LoadXml(files, $@"{folder}\{name}") is { Root: { } root } file)
+            {
+                FileZillaServers(file, root, found);
+            }
+        }
+    }
+
+    private static void FileZillaServers(XmlFile file, MarkupElement root, SecretFindings found)
+    {
         // Sites sit in folders inside folders; the reader has already bounded how deep.
         var open = new Stack<MarkupElement>([root]);
         while (open.TryPop(out MarkupElement? element))

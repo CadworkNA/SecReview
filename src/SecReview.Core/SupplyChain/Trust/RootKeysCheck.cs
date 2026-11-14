@@ -21,8 +21,24 @@ public sealed class RootKeysCheck : ICheck
     internal const string MachinePersonal = @"SOFTWARE\Microsoft\SystemCertificates\MY\Certificates";
     internal const string UserPersonal = @"Software\Microsoft\SystemCertificates\My\Certificates";
     internal const string UserPersonalFolder = @"Microsoft\SystemCertificates\My\Certificates";
-    internal const string KeyFile = "rootCA-key.pem";
-    internal const string AuthorityFile = "rootCA.pem";
+
+    // Local HTTPS and debugging tools that keep their authority's key as a file beside its
+    // certificate. The places were checked against each tool's own source on 2026-11-13.
+    // mkcert: CAROOT, else %LOCALAPPDATA%\mkcert.
+    internal static readonly LocalAuthorityTool Mkcert = new("mkcert", "rootCA.pem", "rootCA-key.pem");
+
+    // mitmproxy: its confdir, ~\.mitmproxy. mitmproxy-ca.pem holds the certificate and the key.
+    internal static readonly LocalAuthorityTool Mitmproxy = new("mitmproxy", "mitmproxy-ca-cert.pem", "mitmproxy-ca.pem");
+
+    // HTTP Toolkit: env-paths' config folder, %APPDATA%\httptoolkit\Config.
+    internal static readonly LocalAuthorityTool HttpToolkit = new("HTTP Toolkit", "ca.pem", "ca.key");
+
+    // Caddy: XDG_DATA_HOME\caddy, else %APPDATA%\Caddy; a folder per authority under pki\authorities.
+    internal static readonly LocalAuthorityTool Caddy = new("Caddy", "root.crt", "root.key");
+
+    // Smallstep: STEPPATH, else ~\.step. step encrypts a key it makes, but that cannot be told
+    // without opening the key, so it is judged like the others.
+    internal static readonly LocalAuthorityTool Smallstep = new("Smallstep", @"certs\root_ca.crt", @"secrets\root_ca_key");
 
     /// <summary>Where Windows keeps the authorities it trusts. Each certificate is a key named after its thumbprint.</summary>
     internal static readonly (RegistryRoot Root, string Key)[] Trusted =
@@ -47,7 +63,7 @@ public sealed class RootKeysCheck : ICheck
         SystemProbes probes = context.Probes;
         IRegistryProbe registry = probes.Registry;
 
-        if (CredentialPlaces.Folders(probes, out _, out string roaming) is { } failed)
+        if (CredentialPlaces.Folders(probes, out string profile, out string roaming) is { } failed)
         {
             return failed;
         }
@@ -111,7 +127,7 @@ public sealed class RootKeysCheck : ICheck
             }
         }
 
-        if (LocalAuthority(probes, trusted, problems) is { } stopped)
+        foreach (string stopped in LocalAuthorities(probes, profile, roaming, trusted, problems))
         {
             unreadable ??= stopped;
         }
@@ -164,24 +180,78 @@ public sealed class RootKeysCheck : ICheck
     }
 
     /// <summary>
-    /// mkcert's authority: its key is a file beside the certificate. The key file is only seen
-    /// in the folder's list, never opened. Returns why this could not be looked at, if so.
+    /// The authorities of local tools whose key is a file beside the certificate.
+    /// A key file is only seen in its folder's list, never opened. Yields why a place could not
+    /// be looked at, for each that could not.
     /// </summary>
-    private static string? LocalAuthority(
-        SystemProbes probes, SortedDictionary<string, (RegistryRoot Root, string Key)> trusted, List<Finding> problems)
+    private static IEnumerable<string> LocalAuthorities(
+        SystemProbes probes, string profile, string roaming, SortedDictionary<string, (RegistryRoot Root, string Key)> trusted, List<Finding> problems)
     {
+        if (LocalFolders(probes, profile, roaming, out List<(LocalAuthorityTool Tool, string Folder)> places) is { } unread)
+        {
+            yield return unread;
+        }
+
+        foreach ((LocalAuthorityTool tool, string folder) in places)
+        {
+            if (LocalAuthority(probes.Files, tool, folder, trusted, problems) is { } stopped)
+            {
+                yield return stopped;
+            }
+        }
+    }
+
+    /// <summary>Where each tool's authority is. Returns why a place could not be told, if one could not.</summary>
+    private static string? LocalFolders(SystemProbes probes, string profile, string roaming, out List<(LocalAuthorityTool Tool, string Folder)> places)
+    {
+        places = [];
         ProbeResult<string> local = probes.Environment.Folder(KnownFolder.LocalAppData);
         if (!local.IsOk)
         {
             return "Windows did not say where your user folders are.";
         }
 
-        if (CredentialPlaces.Moved(probes, "CAROOT", $@"{local.Value}\mkcert", out string folder) is { } unread)
+        if (CredentialPlaces.Moved(probes, "CAROOT", $@"{local.Value}\mkcert", out string mkcert) is { } unread)
         {
             return unread.Summary;
         }
 
-        ProbeResult<IReadOnlyList<FileEntry>> entries = probes.Files.List(folder);
+        if (CredentialPlaces.Moved(probes, "STEPPATH", $@"{profile}\.step", out string step) is { } unreadStep)
+        {
+            return unreadStep.Summary;
+        }
+
+        if (CredentialPlaces.Moved(probes, "XDG_DATA_HOME", string.Empty, out string data) is { } unreadData)
+        {
+            return unreadData.Summary;
+        }
+
+        places.Add((Mkcert, mkcert));
+        places.Add((Mitmproxy, $@"{profile}\.mitmproxy"));
+        places.Add((HttpToolkit, $@"{roaming}\httptoolkit\Config"));
+        places.Add((Smallstep, step));
+
+        string caddy = data.Length > 0 ? $@"{data}\caddy\pki\authorities" : $@"{roaming}\Caddy\pki\authorities";
+        ProbeResult<IReadOnlyList<FileEntry>> authorities = probes.Files.List(caddy);
+        if (authorities.IsOk)
+        {
+            places.AddRange(authorities.Value!.Where(entry => entry.IsDirectory && !entry.IsLink).Select(entry => (Caddy, $@"{caddy}\{entry.Name}")));
+        }
+        else if (authorities.Status != ProbeStatus.NotFound)
+        {
+            return "Could not read the folder of Caddy's certificate authorities.";
+        }
+
+        return null;
+    }
+
+    /// <summary>One tool's authority: judged when its key file is there. Returns why it could not be looked at, if so.</summary>
+    private static string? LocalAuthority(
+        IFileProbe files, LocalAuthorityTool tool, string folder, SortedDictionary<string, (RegistryRoot Root, string Key)> trusted, List<Finding> problems)
+    {
+        string key = $@"{folder}\{tool.Key}";
+        int split = key.LastIndexOf('\\');
+        ProbeResult<IReadOnlyList<FileEntry>> entries = files.List(key[..split]);
         if (entries.Status == ProbeStatus.NotFound)
         {
             return null;
@@ -189,15 +259,16 @@ public sealed class RootKeysCheck : ICheck
 
         if (!entries.IsOk)
         {
-            return "Could not read the folder of the local certificate authority.";
+            return $"Could not read the folder of {tool.Name}'s certificate authority.";
         }
 
-        if (!entries.Value!.Any(entry => !entry.IsDirectory && entry.Name.Equals(KeyFile, StringComparison.OrdinalIgnoreCase)))
+        string keyName = key[(split + 1)..];
+        if (!entries.Value!.Any(entry => !entry.IsDirectory && entry.Name.Equals(keyName, StringComparison.OrdinalIgnoreCase)))
         {
             return null;
         }
 
-        ProbeResult<string> text = probes.Files.ReadText($@"{folder}\{AuthorityFile}");
+        ProbeResult<string> text = files.ReadText($@"{folder}\{tool.Certificate}");
         if (text.Status == ProbeStatus.NotFound)
         {
             return null;
@@ -205,13 +276,13 @@ public sealed class RootKeysCheck : ICheck
 
         if (!text.IsOk || StoredCertificate.ThumbprintOfPem(text.Value!) is not { } thumbprint)
         {
-            return $"Could not read {AuthorityFile}, whose key file is beside it.";
+            return $"Could not read {tool.Name}'s certificate, whose key file is beside it.";
         }
 
         if (trusted.ContainsKey(thumbprint) && !problems.Any(finding => finding.Found.Contains(thumbprint, StringComparison.Ordinal)))
         {
             problems.Add(Finding.Problem(
-                "Trusted certificate authority", $"Thumbprint {thumbprint}, with its private key in a file", Expected, $@"{folder}\{KeyFile}"));
+                "Trusted certificate authority", $"Thumbprint {thumbprint}, with its private key in a file of {tool.Name}", Expected, key));
         }
 
         return null;
@@ -250,6 +321,9 @@ public sealed class RootKeysCheck : ICheck
 
     private static bool IsThumbprint(string name) => name.Length == 40 && name.All(char.IsAsciiHexDigit);
 }
+
+/// <summary>A local tool's certificate authority: the certificate file and the key file, relative to its folder.</summary>
+internal sealed record LocalAuthorityTool(string Name, string Certificate, string Key);
 
 /// <summary>
 /// A certificate as Windows keeps it in a store: a run of properties, each a number, a
