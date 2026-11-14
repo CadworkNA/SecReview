@@ -1,23 +1,32 @@
 # SecReview
 
+[![Build](https://github.com/CadworkNA/SecReview/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/build.yml?query=branch%3Amain)
+[![CodeQL](https://github.com/CadworkNA/SecReview/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/codeql.yml?query=branch%3Amain)
+[![Reproducible build](https://github.com/CadworkNA/SecReview/actions/workflows/reproducible.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/reproducible.yml?query=branch%3Amain)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/CadworkNA/SecReview/badge)](https://scorecard.dev/viewer/?uri=github.com/CadworkNA/SecReview)
+[![Latest release](https://img.shields.io/github/v/release/CadworkNA/SecReview)](https://github.com/CadworkNA/SecReview/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/CadworkNA/SecReview)](LICENSE)
+
 SecReview checks a Windows PC's security settings and tells you **why** a check failed and how
 to fix it. It never changes a setting itself.
 
 It covers:
 
 - **The basics:** screen lock, sign-in, updates, firewall, disk encryption, antivirus.
-- **Hardening:** a curated set of rules, each resting on a page of Microsoft's documentation.
+- **Hardening:** 105 rules, among them the settings of Microsoft's Windows 11 security baseline
+  that matter on a PC of its own or a developer's. Each rests on a page of Microsoft's
+  documentation.
 - **Who can change what runs:** programs, services, scheduled tasks and settings that Windows
   runs or trusts for everyone, where a standard user could replace or redirect them.
 - **Developer supply chain:** release cooldowns of package managers (uv, pnpm, npm, Yarn, Bun,
   pip, Poetry, PDM, NuGet), unsafe package sources, switched-off protections, tokens stored as
   plain text, editor extensions, AI agents and MCP servers, and packages known to be malicious.
+- **Credentials and trust:** passwords saved by file-transfer tools (FileZilla, WinSCP), keys of
+  local certificate authorities left on disk (mkcert, mitmproxy, Caddy, HTTP Toolkit,
+  Smallstep), switched-off revocation checks and proxy settings.
 
 Every check ends as "pass", "fail" or "could not check", with the reason. What SecReview could
 not read is never shown as a pass.
-
-**Status:** the first release is being prepared. Until it is published there is nothing to
-download; SecReview can be [built from source](BUILDING.md).
 
 ## Install
 
@@ -37,6 +46,8 @@ To check a download before running it:
 - Its SHA-256 is on the release page: `Get-FileHash SecReview-<version>-setup.exe`.
 - The release page also says how to verify, with `gh attestation verify`, that the file was
   built by this repository's workflow.
+- Two builds of one commit give the same files, except the window program
+  ([BUILDING.md](BUILDING.md#the-setup-program-and-releases), "Reproducible").
 
 ## What SecReview does on your PC
 
