@@ -3,6 +3,7 @@
 [![Build](https://github.com/CadworkNA/SecReview/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/build.yml?query=branch%3Amain)
 [![CodeQL](https://github.com/CadworkNA/SecReview/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/codeql.yml?query=branch%3Amain)
 [![Reproducible build](https://github.com/CadworkNA/SecReview/actions/workflows/reproducible.yml/badge.svg?branch=main)](https://github.com/CadworkNA/SecReview/actions/workflows/reproducible.yml?query=branch%3Amain)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16659/badge)](https://www.bestpractices.dev/projects/16659)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/CadworkNA/SecReview/badge)](https://scorecard.dev/viewer/?uri=github.com/CadworkNA/SecReview)
 [![Latest release](https://img.shields.io/github/v/release/CadworkNA/SecReview)](https://github.com/CadworkNA/SecReview/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/CadworkNA/SecReview)](LICENSE)
